@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ToolNest — DIY, home & garden</title>
+<meta name="description" content="ToolNest — DIY, home improvement, garden and tools at smart prices.">
+<meta name="theme-color" content="#16233f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="images/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="site-header"></div>
+
+<main class="wrap">
+  <section class="hero">
+    <a class="hero-main" href="deals.html">
+      <div class="hero-txt">
+        <h2>Black-level deals<br>for every project</h2>
+        <p>Up to <span class="pct">-50%</span> on tools, home, garden &amp; more</p>
+      </div>
+    </a>
+    <div class="hero-side">
+      <div class="promo-card"><h3>Switch to Pro</h3><p>Big brands, negotiated prices and Pro services.</p></div>
+      <div class="promo-card"><h3>The one app for everything</h3><p>Price alerts and exclusive offers.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><h2>Our top selection</h2></div>
+    <div class="scroll-x" id="topSelection">__SK__</div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><h2>Our best sellers</h2><a href="deals.html">See all</a></div>
+    <div class="scroll-x" id="bestSellers">__SK__</div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><h2>Shop by category</h2></div>
+    <div class="cat-grid" id="catGrid"></div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><h2>Today's best finds</h2><span class="tag">Sponsored</span></div>
+    <div class="scroll-x" id="finds">__SK__</div>
+  </section>
+
+  <section class="features">
+    <div class="feature"><span class="fi" id="f1"></span>The DIY, home &amp; garden specialist</div>
+    <div class="feature"><span class="fi" id="f2"></span>Reliable delivery</div>
+    <div class="feature"><span class="fi" id="f3"></span>Flexible payment options</div>
+    <div class="feature"><span class="fi" id="f4"></span>7M+ happy customers</div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><h2>Our biggest brands</h2></div>
+    <div class="scroll-x brand-row" id="brands"></div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/cart.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/render.js"></script>
+<script src="js/home.js"></script>
+<script>
+  document.querySelectorAll(".scroll-x").forEach(function(el){ if(el.innerHTML==="__SK__") el.innerHTML=RENDER.skeletons(4); });
+  UI.mount({active:"home"}).then(HOME.init);
+  RENDER.wireAdd(document);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function(){});
+</script>
+</body>
+</html>

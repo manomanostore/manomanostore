@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Browse — ToolNest</title>
+<meta name="theme-color" content="#16233f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="images/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="site-header"></div>
+
+<main class="wrap">
+  <div class="crumbs"><a href="index.html">Home</a> › <span id="crumb">Browse</span></div>
+  <div class="block-head"><h2 id="pageTitle">Browse</h2><span class="tag" id="count"></span></div>
+
+  <div id="catIndex" class="cat-grid" hidden></div>
+
+  <div class="listing" id="listing">
+    <aside class="filters" id="filters"></aside>
+    <div>
+      <div class="filter-bar" id="sortBar"></div>
+      <div class="grid" id="grid">__SK__</div>
+      <div class="empty" id="noResults" hidden><h3>No products found</h3><p>Try another search or category.</p></div>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/cart.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/render.js"></script>
+<script src="js/category.js"></script>
+<script>
+  document.getElementById("grid").innerHTML = RENDER.skeletons(8);
+  UI.mount({active:"cats"}).then(CATEGORY.init);
+  RENDER.wireAdd(document);
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Product — ToolNest</title>
+<meta name="theme-color" content="#16233f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="images/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="site-header"></div>
+
+<main class="wrap">
+  <div class="crumbs" id="crumbs"><a href="index.html">Home</a></div>
+  <div id="pdp"></div>
+
+  <section class="block">
+    <div class="block-head"><h2>You may also like</h2></div>
+    <div class="scroll-x" id="related"></div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/cart.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/render.js"></script>
+<script src="js/product.js"></script>
+<script>
+  UI.mount({active:"cats"}).then(PRODUCT.init);
+  RENDER.wireAdd(document);
+</script>
+</body>
+</html>

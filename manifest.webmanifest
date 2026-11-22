@@ -1,0 +1,15 @@
+{
+  "name": "ToolNest — DIY, home & garden",
+  "short_name": "ToolNest",
+  "description": "DIY, home improvement, garden and tools at smart prices.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6fa",
+  "theme_color": "#16233f",
+  "icons": [
+    { "src": "images/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "images/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
