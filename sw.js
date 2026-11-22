@@ -1,5 +1,5 @@
 /* Service worker — app-shell cache for an app-like, offline-capable PWA */
-var CACHE = "toolnest-v1";
+var CACHE = "toolnest-v2";
 var SHELL = [
   "index.html", "category.html", "product.html", "cart.html", "login.html", "account.html",
   "css/styles.css",

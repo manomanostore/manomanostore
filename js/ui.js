@@ -45,7 +45,6 @@
         '<a class="nav-pill ghost" href="category.html?cat=garden">Garden</a>'+
         '<a class="nav-pill ghost" href="category.html?cat=bathroom">Bathroom</a>'+
       '</div></div>'+
-      '<div class="promo-strip">'+esc(C.BRAND_NAME)+' deals — leading brands at low prices '+ic.chev.replace('18','14')+'</div>'+
     '</header>';
   }
 
