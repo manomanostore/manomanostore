@@ -16,7 +16,7 @@
     card:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
     star:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.2l5.9-.9z"/></svg>'
   };
-  var LOGO = '<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="12" fill="#43cdb4"/><path d="M14 32V16l10 8 10-8v16" fill="none" stroke="#16233f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var LOGO = '<img class="logo" src="images/logo-192.png" alt="" width="36" height="36">';
 
   function esc(s){return String(s==null?"":s).replace(/[<&>"]/g,function(m){return{"<":"&lt;","&":"&amp;",">":"&gt;",'"':"&quot;"}[m];});}
   function brandMarkup(){ // bold the tail of the brand name in the accent colour
@@ -25,10 +25,14 @@
     return esc(n.slice(0,cut)) + "<b>" + esc(n.slice(cut)) + "</b>";
   }
 
+  function navLink(label, href, on) {
+    return '<a class="nav-link'+(on ? ' active' : '')+'" href="'+href+'"'+(on ? ' aria-current="page"' : '')+'>'+esc(label)+'</a>';
+  }
+
   function header(active) {
     return '' +
     '<header class="app">' +
-      '<div class="app-bar">' +
+      '<div class="app-top"><div class="app-bar">' +
         '<button class="icon-btn" id="menuBtn" aria-label="Menu">'+ic.menu+'</button>'+
         '<a class="brand" href="index.html">'+LOGO+'<span>'+brandMarkup()+'</span></a>'+
         '<form class="search" id="searchForm" role="search">'+ic.search+
@@ -36,15 +40,14 @@
         '</form>'+
         '<a class="icon-btn" href="login.html" aria-label="Account">'+ic.user+'</a>'+
         '<a class="icon-btn" href="cart.html" aria-label="Basket">'+ic.cart+'<span class="cart-count" data-cart-count hidden>0</span></a>'+
-      '</div>'+
-      '<div class="nav-row"><div class="scroll-x">'+
-        '<button class="nav-pill ghost" id="menuBtn2">'+ic.menu+' Products</button>'+
-        '<a class="nav-pill solid" href="deals.html">Deals</a>'+
-        '<a class="nav-pill lime" href="category.html?badge=choice">'+esc(C.BRAND_SHORT)+' Choice</a>'+
-        '<a class="nav-pill ghost" href="deals.html">Best sellers</a>'+
-        '<a class="nav-pill ghost" href="category.html?cat=garden">Garden</a>'+
-        '<a class="nav-pill ghost" href="category.html?cat=bathroom">Bathroom</a>'+
       '</div></div>'+
+      '<div class="nav-row"><nav class="scroll-x nav-links" aria-label="Main menu">'+
+        navLink("Home", "index.html", active === "home") +
+        navLink("Flash Sale", "deals.html", active === "deals") +
+        navLink("Blogs", "blog.html", active === "blog") +
+        navLink("All Brands", "brands.html", active === "brands") +
+        navLink("All categories", "category.html", active === "cats") +
+      '</nav></div>'+
     '</header>';
   }
 
@@ -64,12 +67,12 @@
 
   function footer() {
     var cols = [
-      ['Information', ['Track orders','Returns','Need help?','Contact us','Become a seller']],
-      ['Find out more', ['Our advice','Popular categories','Best sellers','Our brands']]
+      ['Information', [['Track orders','account.html'],['Returns','#'],['Need help?','#'],['Contact us','#'],['Become a seller','sell.html']]],
+      ['Find out more', [['Our advice','blog.html'],['Popular categories','category.html'],['Best sellers','deals.html'],['Our brands','brands.html']]]
     ];
     var html = '<footer class="app"><div class="cols">';
     cols.forEach(function (c) {
-      html += '<div><h4>'+c[0]+'</h4>'+c[1].map(function (l) { return '<a href="#">'+l+'</a>'; }).join('')+'</div>';
+      html += '<div><h4>'+c[0]+'</h4>'+c[1].map(function (l) { return '<a href="'+l[1]+'">'+l[0]+'</a>'; }).join('')+'</div>';
     });
     html += '<div><h4>Secure payment</h4><div class="pay">'+
       ['VISA','MC','AMEX','PayPal','G Pay','Pay'].map(function(p){return '<span>'+p+'</span>';}).join('')+
@@ -78,18 +81,14 @@
     return html;
   }
 
-  async function drawer() {
-    var cats = await DATA.categories();
-    var items = cats.map(function (c) {
-      return '<a class="d-item" href="category.html?cat='+c.key+'"><span class="di">'+
-        '<span style="width:34px;height:34px;border-radius:9px;display:inline-grid;place-items:center;background:'+c.color+'22;color:'+c.color+'">'+ic.tag+'</span>'+
-        esc(c.name)+'</span>'+ic.chev+'</a>';
-    }).join('');
+  // The drawer renders immediately; its category list fills in when the catalog
+  // arrives, so a slow or failed catalog load never delays the page.
+  function drawer() {
     return '<div class="drawer-back" id="drawerBack"></div>'+
       '<aside class="drawer" id="drawer">'+
         '<div class="d-head"><strong style="font-size:18px">Browse '+esc(C.BRAND_NAME)+'</strong>'+
           '<button class="icon-btn" id="drawerClose" style="color:var(--ink)">'+ic.close+'</button></div>'+
-        '<h3>Catalog</h3>'+items+
+        '<h3>Catalog</h3><div id="drawerCats"></div>'+
         '<h3>Account</h3>'+
         '<a class="d-item" href="login.html"><span class="di">'+ic.user+'Sign in / Register</span>'+ic.chev+'</a>'+
         '<a class="d-item" href="deals.html"><span class="di">'+ic.tag+'Today\'s deals</span>'+ic.chev+'</a>'+
@@ -115,7 +114,14 @@
     document.getElementById("site-header").innerHTML = header(opts.active);
     document.getElementById("site-footer").innerHTML = footer();
     document.body.insertAdjacentHTML("beforeend", bottomNav(opts.active));
-    document.body.insertAdjacentHTML("beforeend", await drawer());
+    document.body.insertAdjacentHTML("beforeend", drawer());
+    DATA.categories().then(function (cats) {
+      document.getElementById("drawerCats").innerHTML = cats.map(function (c) {
+        return '<a class="d-item" href="category.html?cat='+c.id+'"><span class="di">'+
+          '<span style="width:34px;height:34px;border-radius:9px;display:inline-grid;place-items:center;background:'+c.color+'22;color:'+c.color+'">'+ic.tag+'</span>'+
+          esc(c.name)+'</span>'+ic.chev+'</a>';
+      }).join('');
+    }).catch(function (e) { console.warn("Catalog unavailable:", e); });
 
     // search
     var form = document.getElementById("searchForm");
@@ -134,6 +140,82 @@
 
     updateCartBadges();
     document.addEventListener("cart:change", updateCartBadges);
+    stickyHeader();
+    passwordToggles();
+  }
+
+  // Show/hide button on every password field on every page — including fields
+  // added later (e.g. the Edit profile form), via a MutationObserver.
+  var EYE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EYE_OFF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.8 9.8 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>';
+
+  function enhancePassword(input) {
+    if (input.dataset.pwToggle) return;
+    input.dataset.pwToggle = "1";
+    var wrap = document.createElement("span"); wrap.className = "pw-wrap";
+    input.parentNode.insertBefore(wrap, input); wrap.appendChild(input);
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.className = "pw-toggle";
+    btn.setAttribute("aria-label", "Show password"); btn.setAttribute("aria-pressed", "false");
+    if (input.id) btn.setAttribute("aria-controls", input.id);
+    btn.innerHTML = EYE;
+    btn.addEventListener("mousedown", function (e) { e.preventDefault(); }); // keep focus in the field
+    btn.addEventListener("click", function () {
+      var show = input.type === "password";
+      var start = input.selectionStart, end = input.selectionEnd;
+      input.type = show ? "text" : "password";
+      btn.innerHTML = show ? EYE_OFF : EYE;
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      btn.setAttribute("aria-pressed", String(show));
+      if (document.activeElement === input && start != null) { try { input.setSelectionRange(start, end); } catch (e) {} }
+    });
+    wrap.appendChild(btn);
+  }
+  function passwordToggles() {
+    var scan = function (root) {
+      if (root.matches && root.matches('input[type="password"]')) enhancePassword(root);
+      if (root.querySelectorAll) root.querySelectorAll('input[type="password"]').forEach(enhancePassword);
+    };
+    scan(document.body);
+    if (!("MutationObserver" in window)) return;
+    new MutationObserver(function (muts) {
+      muts.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) scan(n); }); });
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Pinned header: the search bar always stays visible; the category row slides
+  // away while scrolling down and returns on scroll up (like big retail sites).
+  function stickyHeader() {
+    var wrap = document.getElementById("site-header");
+    var navRow = wrap && wrap.querySelector(".nav-row");
+    if (!wrap || !navRow) return;
+    var root = document.documentElement, lastY = window.scrollY, ticking = false;
+
+    function setVisible() {
+      var full = wrap.offsetHeight;
+      var hidden = wrap.classList.contains("compact") ? navRow.offsetHeight : 0;
+      root.style.setProperty("--header-visible", (full - hidden) + "px");
+    }
+    function update() {
+      ticking = false;
+      var y = Math.max(0, window.scrollY), dy = y - lastY;
+      wrap.classList.toggle("scrolled", y > 4);
+      if (Math.abs(dy) < 8) return;              // ignore tiny jitters
+      var compact = dy > 0 && y > wrap.offsetHeight;
+      if (compact !== wrap.classList.contains("compact")) {
+        wrap.classList.toggle("compact", compact);
+        setVisible();
+      }
+      lastY = y;
+    }
+    window.addEventListener("scroll", function () {
+      if (!ticking) { ticking = true; requestAnimationFrame(update); }
+    }, { passive: true });
+    window.addEventListener("resize", setVisible);
+    // Keep the full header visible while typing a search.
+    var input = document.getElementById("searchInput");
+    if (input) input.addEventListener("focus", function () { wrap.classList.remove("compact"); setVisible(); });
+    setVisible(); update();
   }
 
   window.UI = { mount: mount, toast: toast, icons: ic, esc: esc, updateCartBadges: updateCartBadges };

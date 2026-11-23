@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Become a seller — ManoMano</title>
+<meta name="theme-color" content="#16233f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="images/logo-64.png" type="image/png">
+<link rel="apple-touch-icon" href="images/logo-192.png">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="site-header"></div>
+
+<main class="wrap sell-wrap">
+  <div class="crumbs"><a href="index.html">Home</a> › <span>Become a seller</span></div>
+
+  <div class="sell-hero">
+    <h1>Register your shop</h1>
+    <p>Join the marketplace and start selling to thousands of customers. Applications are reviewed before your shop goes live.</p>
+  </div>
+
+  <form id="sellForm" novalidate>
+    <div id="sellMsg"></div>
+
+    <section class="sell-card">
+      <h2>Personal info</h2>
+      <div class="sell-grid">
+        <div class="field"><label for="sName">Your name <i>*</i></label><input id="sName" type="text" autocomplete="name" maxlength="80" placeholder="Full name" required></div>
+        <div class="field"><label for="sEmail">Your email <i>*</i></label><input id="sEmail" type="email" autocomplete="email" placeholder="you@example.com" required><small>You'll use this to sign in once approved.</small></div>
+        <div class="field"><label for="sPhone">Phone <span class="opt">(optional)</span></label><input id="sPhone" type="tel" autocomplete="tel" placeholder="+1 555 123 4567"></div>
+        <div class="field"><label for="sPw">Password <i>*</i></label><input id="sPw" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required>
+          <ul class="pw-rules" id="pwRules">
+            <li data-rule="len">At least 8 characters</li>
+            <li data-rule="upper">One uppercase letter (A–Z)</li>
+            <li data-rule="lower">One lowercase letter (a–z)</li>
+            <li data-rule="num">One number (0–9)</li>
+          </ul></div>
+        <div class="field"><label for="sPw2">Repeat password <i>*</i></label><input id="sPw2" type="password" autocomplete="new-password" placeholder="Re-enter password" required><small id="pwMatch" class="pw-match"></small></div>
+      </div>
+    </section>
+
+    <section class="sell-card">
+      <h2>Shop info</h2>
+      <div class="sell-grid">
+        <div class="field full"><label for="sShop">Shop name <i>*</i></label><input id="sShop" type="text" maxlength="100" placeholder="e.g. Acme Tools" required></div>
+        <div class="field full"><label for="sCertType">Certificates type <i>*</i></label>
+          <select id="sCertType" required>
+            <option value="">Choose…</option>
+            <option value="id_card">Id card</option>
+            <option value="passport">passport</option>
+            <option value="driving_license">driving license</option>
+            <option value="social_security">Social Security Card</option>
+          </select></div>
+        <div class="field"><label for="sCertFront">Certificates front <i>*</i></label><input id="sCertFront" type="file" accept="image/*" required><small>Clear photo or scan — front side.</small></div>
+        <div class="field"><label for="sCertBack">Certificates back <i>*</i></label><input id="sCertBack" type="file" accept="image/*" required><small>Clear photo or scan — back side.</small></div>
+        <div class="field full"><label for="sInvite">Invitation code <span class="opt">(optional)</span></label><input id="sInvite" type="text" maxlength="40" placeholder="If you were referred"></div>
+      </div>
+      <p class="sell-note">🔒 Your password is hashed on this device before it is ever sent or stored. We never ask for a transaction password.</p>
+    </section>
+
+    <div class="sell-actions">
+      <button class="btn btn-primary" id="sellSubmit" type="submit">Register your shop</button>
+    </div>
+  </form>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/config.js"></script>
+<script src="data/catalog.js"></script>
+<script src="js/data.js"></script>
+<script src="js/cart.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/render.js"></script>
+<script>
+  UI.mount({ active: "" });
+
+  function $(id) { return document.getElementById(id); }
+  function msg(text, kind) { $("sellMsg").innerHTML = text ? '<div class="msg '+(kind||"ok")+'">'+UI.esc(text)+'</div>' : ""; }
+
+  $("sellForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    msg("");
+    var name = $("sName").value.trim(), email = AUTH.normId($("sEmail").value), phone = $("sPhone").value.trim();
+    var pw = $("sPw").value, pw2 = $("sPw2").value;
+    var shop = $("sShop").value.trim(), certType = $("sCertType").value, invite = $("sInvite").value.trim();
+    var frontFile = $("sCertFront").files[0], backFile = $("sCertBack").files[0];
+
+    if (!name) return fail("Please enter your name.");
+    if (!AUTH.isEmail(email)) return fail("Please enter a valid email address.");
+    if (!pwStrong(pw)) return fail("Password must be at least 8 characters and include an uppercase letter, a lowercase letter and a number.");
+    if (pw !== pw2) return fail("The passwords don't match.");
+    if (!shop) return fail("Please enter your shop name.");
+    if (!certType) return fail("Please choose a certificates type.");
+    if (!frontFile) return fail("Please upload the front of your certificate.");
+    if (!backFile) return fail("Please upload the back of your certificate.");
+    if (!CONFIG.API_URL) return fail("Seller registration needs the online backend. Please try again later.");
+
+    var btn = $("sellSubmit"); btn.disabled = true; btn.textContent = "Submitting…";
+    try {
+      var passwordHash = await AUTH.hash("seller:" + email, pw);
+      var certFront = await fileToImage(frontFile), certBack = await fileToImage(backFile);
+      var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "registerSeller", name: name, email: email, phone: phone,
+          passwordHash: passwordHash, shopName: shop, certType: certType,
+          certFront: certFront, certBack: certBack, invite: invite }) });
+      var j = await r.json();
+      if (!j.ok) { btn.disabled = false; btn.textContent = "Register your shop"; return fail(j.error || "Couldn't submit your application."); }
+      $("sellForm").innerHTML = '<div class="sell-done"><div class="sell-done-ic">✓</div>' +
+        '<h2>Application submitted</h2><p>' + UI.esc(j.message || "Your shop is pending review.") +
+        '</p><a class="btn btn-primary" href="index.html">Back to the shop</a></div>';
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (x) {
+      btn.disabled = false; btn.textContent = "Register your shop";
+      fail("Can't reach the server right now. Please try again in a moment.");
+    }
+  });
+
+  function fail(t) { msg(t, "err"); window.scrollTo({ top: 0, behavior: "smooth" }); return false; }
+
+  // Strong-password policy (like a real storefront): 8+ chars with upper, lower
+  // and a number. The checklist below the field updates live as you type.
+  function pwChecks(pw) {
+    return { len: pw.length >= 8, upper: /[A-Z]/.test(pw), lower: /[a-z]/.test(pw), num: /[0-9]/.test(pw) };
+  }
+  function pwStrong(pw) { var c = pwChecks(pw); return c.len && c.upper && c.lower && c.num; }
+  (function () {
+    var pw = $("sPw"), pw2 = $("sPw2"), rules = $("pwRules"), match = $("pwMatch");
+    function paint() {
+      var c = pwChecks(pw.value);
+      [].forEach.call(rules.querySelectorAll("li"), function (li) { li.classList.toggle("ok", !!c[li.getAttribute("data-rule")]); });
+    }
+    function paintMatch() {
+      if (!pw2.value) { match.textContent = ""; match.className = "pw-match"; return; }
+      var ok = pw.value === pw2.value;
+      match.textContent = ok ? "✓ Passwords match" : "Passwords don't match yet";
+      match.className = "pw-match " + (ok ? "ok" : "no");
+    }
+    pw.addEventListener("input", function () { paint(); paintMatch(); });
+    pw2.addEventListener("input", paintMatch);
+  })();
+
+  // Downscale a chosen image to <=1200px and return a compact JPEG data URL,
+  // so certificate photos upload quickly and stay small in Drive.
+  function fileToImage(file) {
+    return new Promise(function (resolve) {
+      if (!file) return resolve("");
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var max = 1200, s = Math.min(1, max / Math.max(img.width, img.height));
+        var c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * s));
+        c.height = Math.max(1, Math.round(img.height * s));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        try { resolve(c.toDataURL("image/jpeg", 0.8)); } catch (e) { resolve(""); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(""); };
+      img.src = url;
+    });
+  }
+</script>
+</body>
+</html>

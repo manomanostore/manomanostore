@@ -36,7 +36,7 @@ window.CATEGORY = (function () {
     var grid = document.getElementById("catIndex"); grid.hidden = false;
     var cats = await DATA.categories();
     grid.innerHTML = cats.map(function (c) {
-      return '<a class="cat-card" href="category.html?cat='+c.key+'">'+
+      return '<a class="cat-card" href="category.html?cat='+c.id+'">'+
         '<div class="ci"><img loading="lazy" src="'+DATA.categoryImage(c)+'" alt="'+UI.esc(c.name)+'"></div>'+
         '<div class="cl">'+UI.esc(c.name)+'</div></a>';
     }).join("");
@@ -45,25 +45,42 @@ window.CATEGORY = (function () {
   function buildSort() {
     var opts = [["rel","Relevance"],["price-asc","Price: low to high"],["price-desc","Price: high to low"],["rating","Top rated"],["disc","Biggest discount"]];
     document.getElementById("sortBar").innerHTML =
+      '<button type="button" class="chip filter-toggle" id="filterToggle" aria-controls="filters" aria-expanded="false">'+
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>'+
+        'Filters<span class="fcount" id="filterCount" hidden></span></button>'+
       '<label class="chip" style="display:flex;gap:8px;align-items:center"><strong>Sort</strong>'+
       '<select id="sortSel" style="border:none;background:transparent;font-weight:600;color:var(--ink)">'+
       opts.map(function (o) { return '<option value="'+o[0]+'">'+o[1]+'</option>'; }).join("")+
       '</select></label>';
     document.getElementById("sortSel").addEventListener("change", function (e) { state.sort = e.target.value; apply(); });
+    document.getElementById("filterToggle").addEventListener("click", function () { sheet(true); });
   }
 
   function buildFilters(list) {
     var brands = count(list.map(function (p) { return p.brand; }));
-    var subs = count(list.map(function (p) { return p.sub; }));
     var el = document.getElementById("filters");
     el.innerHTML =
+      '<div class="sheet-head"><strong>Filters</strong>'+
+        '<button type="button" class="link" data-act="clear">Clear all</button>'+
+        '<button type="button" class="sheet-x" data-act="close" aria-label="Close filters">'+UI.icons.close+'</button></div>'+
       section("Price", [
         chk("price","0-50","Under $50"), chk("price","50-150","$50 – $150"),
         chk("price","150-300","$150 – $300"), chk("price","300+","$300+")
       ].join("")) +
-      section("Type", Object.keys(subs).slice(0,8).map(function (s) { return chk("sub",s,s+" ("+subs[s]+")"); }).join("")) +
-      section("Brand", Object.keys(brands).map(function (b) { return chk("brand",b,b+" ("+brands[b]+")"); }).join(""));
+      section("Brand", Object.keys(brands).map(function (b) { return chk("brand",b,b+" ("+brands[b]+")"); }).join("")) +
+      '<div class="sheet-foot"><button type="button" class="btn btn-primary btn-block" data-act="close" id="sheetApply">Show results</button></div>';
     el.addEventListener("change", apply);
+    el.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-act]"); if (!b) return;
+      if (b.dataset.act === "clear") {
+        el.querySelectorAll("input[type=checkbox]:checked").forEach(function (c) { c.checked = false; });
+        apply();
+      } else sheet(false);
+    });
+    var back = document.createElement("div"); back.className = "sheet-back"; back.id = "sheetBack";
+    back.addEventListener("click", function () { sheet(false); });
+    document.body.appendChild(back);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") sheet(false); });
   }
 
   function section(title, body) { return '<details open><summary>'+title+' '+UI.icons.chev+'</summary><div>'+body+'</div></details>'; }
@@ -84,10 +101,9 @@ window.CATEGORY = (function () {
   }
 
   function apply() {
-    var brands = selected("brand"), subs = selected("sub"), prices = selected("price");
+    var brands = selected("brand"), prices = selected("price");
     var list = state.full.filter(function (p) {
       return (!brands.length || brands.indexOf(p.brand) > -1)
-        && (!subs.length || subs.indexOf(p.sub) > -1)
         && inPrice(p, prices);
     });
     list.sort(function (a, b) {
@@ -101,8 +117,21 @@ window.CATEGORY = (function () {
     });
     var grid = document.getElementById("grid");
     document.getElementById("count").textContent = list.length + " products";
+    var active = brands.length + prices.length, fc = document.getElementById("filterCount");
+    if (fc) { fc.textContent = active; fc.hidden = active === 0; }
+    var sa = document.getElementById("sheetApply");
+    if (sa) sa.textContent = list.length ? "Show " + list.length + " result" + (list.length === 1 ? "" : "s") : "No matching products";
     document.getElementById("noResults").hidden = list.length > 0;
     grid.innerHTML = list.map(function (p) { return RENDER.productCard(p); }).join("");
+  }
+
+  // Bottom sheet for filters on phones/tablets (a plain sidebar on desktop).
+  function sheet(open) {
+    var listing = document.getElementById("listing"), t = document.getElementById("filterToggle");
+    listing.classList.toggle("filters-open", open);
+    var back = document.getElementById("sheetBack"); if (back) back.classList.toggle("open", open);
+    if (t) t.setAttribute("aria-expanded", String(open));
+    document.documentElement.classList.toggle("no-scroll", open);
   }
 
   return { init: init };

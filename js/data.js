@@ -8,24 +8,74 @@
   }
   function pct(p) { if (!p.oldPrice || p.oldPrice <= p.price) return 0; return Math.round((1 - p.price / p.oldPrice) * 100); }
 
-  // ---- load catalog: Google Sheet first (if API_URL set & non-empty), else local json
-  async function load() {
-    if (cache) return cache;
-    if (C.API_URL) {
-      try {
-        var r = await fetch(C.API_URL + "?action=getProducts", { method: "GET" });
-        var j = await r.json();
-        if (j.ok && j.products && j.products.length) { cache = normalize(j); return cache; }
-      } catch (e) { /* fall through to local */ }
-    }
-    var res = await fetch("data/products.json", { cache: "no-cache" });
-    cache = normalize(await res.json());
-    return cache;
+  // ---- load catalog -------------------------------------------------------
+  // Google Apps Script takes ~2-5 s per request, so pages never wait on it:
+  //   1. a saved copy of the Sheet catalog (localStorage)   -> instant
+  //   2. otherwise the bundled data/products.json            -> fast
+  //   3. only if both are unavailable (e.g. file://), wait for the Sheet
+  // The Sheet is re-checked in the background (at most every few minutes) and
+  // saved, so edits made in the Sheet show up on the next page view.
+  var SHEET_KEY = "mm_sheet_catalog_v1", REFRESH_MS = 5 * 60 * 1000;
+  var pending = null;
+
+  function load() {
+    if (cache) return Promise.resolve(cache);
+    if (!pending) pending = loadFresh().then(function (c) { cache = c; return c; }, function (e) { pending = null; throw e; });
+    return pending;
   }
 
+  async function loadFresh() {
+    var saved = readSaved();
+    if (saved && saved.products && saved.products.length) {
+      if (Date.now() - saved.at > REFRESH_MS) refreshFromSheet();
+      return normalize(saved);
+    }
+    // Embedded catalog (data/catalog.js) — works even from file:// where fetch
+    // of a local JSON file is blocked. The Sheet still refreshes in the background.
+    if (window.__CATALOG && window.__CATALOG.products && window.__CATALOG.products.length) {
+      if (!saved || Date.now() - saved.at > REFRESH_MS) refreshFromSheet();
+      return normalize(window.__CATALOG);
+    }
+    try {
+      var res = await fetch("data/products.json", { cache: "no-cache" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      var local = normalize(await res.json());
+      if (!saved || Date.now() - saved.at > REFRESH_MS) refreshFromSheet();
+      return local;
+    } catch (e) {
+      var sheet = await refreshFromSheet();           // last resort: wait for the Sheet
+      if (sheet) return normalize(sheet);
+      throw e;
+    }
+  }
+
+  // Fetch the Sheet catalog and remember it. Resolves with the data, or null.
+  async function refreshFromSheet() {
+    if (!C.API_URL) return null;
+    try {
+      var r = await fetch(C.API_URL + "?action=getProducts", { method: "GET" });
+      var j = await r.json();
+      if (!j.ok) return null;
+      var data = { at: Date.now(), categories: j.categories || [], products: j.products || [] };
+      // Empty Sheet: remember that too, so we don't keep asking on every page.
+      try { localStorage.setItem(SHEET_KEY, JSON.stringify(data)); } catch (e) {}
+      return data.products.length ? data : null;
+    } catch (e) { return null; }
+  }
+  function readSaved() { try { return JSON.parse(localStorage.getItem(SHEET_KEY)); } catch (e) { return null; } }
+
+  // IDs are numbers in the Sheet/JSON (1, 2, 3...) but arrive as text from URLs
+  // and data-attributes, so the client keeps every id as a string.
   function normalize(data) {
-    var cats = data.categories || DEFAULT_CATS;
+    var cats = ((data.categories && data.categories.length) ? data.categories : DEFAULT_CATS).map(function (c) {
+      return { id: String(c.id),
+               name: c.name || c.cate_name || "",
+               imageUrl: c.imageUrl || c.cat_img_url || "",
+               order: Number(c.order != null ? c.order : c.cat_order) || 0,
+               icon: c.icon, color: c.color };   // kept for fallback art when no image
+    }).sort(function (a, b) { return a.order - b.order; });
     var prods = (data.products || data).map(function (p) {
+      p.id = String(p.id); p.cat_id = String(p.cat_id);
       p.price = Number(p.price); if (p.oldPrice) p.oldPrice = Number(p.oldPrice);
       return p;
     });
@@ -34,26 +84,27 @@
   function index(arr) { var m = {}; arr.forEach(function (p) { m[p.id] = p; }); return m; }
 
   var DEFAULT_CATS = [
-    { key: "tools", name: "Tools", color: "#1f6f54" }
+    { id: "1", name: "Tools", color: "#1f6f54" }
   ];
 
   // ---------------- queries ----------------
   async function all() { return (await load()).products; }
   async function categories() { return (await load()).categories; }
-  async function get(id) { return (await load()).byId[id]; }
-  async function byCategory(key) { return (await all()).filter(function (p) { return p.category === key; }); }
+  async function get(id) { return (await load()).byId[String(id)]; }
+  async function byCategory(catId) { return (await all()).filter(function (p) { return p.cat_id === String(catId); }); }
   async function bestsellers() { return (await all()).filter(function (p) { return p.badge === "bestseller"; }); }
   async function deals() { return (await all()).filter(function (p) { return p.badge === "deal" || (p.oldPrice && p.oldPrice > p.price); }); }
   async function choice() { return (await all()).filter(function (p) { return p.choice; }); }
   async function search(q) {
     q = (q || "").trim().toLowerCase(); if (!q) return [];
+    var names = {}; (await categories()).forEach(function (c) { names[c.id] = c.name; });
     return (await all()).filter(function (p) {
-      return (p.name + " " + p.brand + " " + p.sub + " " + p.category).toLowerCase().indexOf(q) > -1;
+      return (p.name + " " + p.brand + " " + (names[p.cat_id] || "")).toLowerCase().indexOf(q) > -1;
     });
   }
-  async function catName(key) {
-    var c = (await categories()).find(function (x) { return x.key === key; });
-    return c ? c.name : key;
+  async function catName(catId) {
+    var c = (await categories()).find(function (x) { return x.id === String(catId); });
+    return c ? c.name : catId;
   }
 
   // ---------------- image generator (inline SVG, no external hosts) ----------------
@@ -72,7 +123,15 @@
     bolt:'M13 3L5 13h6l-2 8 8-10h-6z',
     heat:'M8 4v4a4 4 0 0 0 8 0M12 12v8M8 20h8'
   };
+  // A product's own photo (imageUrl) if it has a safe one, else a generated SVG.
+  function safeImageUrl(u) {
+    u = String(u || "").trim();
+    if (!/^(https?:\/\/|images\/)/i.test(u)) return "";
+    return u.replace(/["'<>\s]/g, function (c) { return encodeURIComponent(c); });
+  }
   function productImage(p, size) {
+    var own = safeImageUrl(p.imageUrl);
+    if (own) return own;
     size = size || 600;
     var color = p.color || "#2b5f8a";
     var icon = ICONS[p.icon] || ICONS.tools;
@@ -88,12 +147,14 @@
       '<text x="300" y="470" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" '+
          'font-size="30" font-weight="700" fill="'+shade(color,0.25)+'">'+esc(p.brand||'')+'</text>'+
       '<text x="300" y="512" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" '+
-         'font-size="22" fill="#6a7690">'+esc(clip(p.sub||p.name,28))+'</text>'+
+         'font-size="22" fill="#6a7690">'+esc(clip(p.caption||p.name,28))+'</text>'+
       '</svg>';
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
   function categoryImage(c) {
-    return productImage({ brand: c.name, sub: "", color: c.color, icon: c.icon }, 480);
+    var own = safeImageUrl(c.imageUrl || c.cat_img_url);
+    if (own) return own;
+    return productImage({ brand: c.name, caption: " ", color: c.color, icon: c.icon }, 480);
   }
   function shade(hex, t) { // mix hex toward white by t (0..1)
     var c = hex.replace("#", ""); if (c.length === 3) c = c.replace(/./g, "$&$&");
@@ -107,6 +168,8 @@
   window.DATA = {
     money: money, pct: pct, load: load, all: all, categories: categories, get: get,
     byCategory: byCategory, bestsellers: bestsellers, deals: deals, choice: choice,
-    search: search, catName: catName, productImage: productImage, categoryImage: categoryImage
+    search: search, catName: catName, productImage: productImage, categoryImage: categoryImage,
+    iconNames: Object.keys(ICONS), safeImageUrl: safeImageUrl,
+    clearSheetCache: function () { try { localStorage.removeItem(SHEET_KEY); } catch (e) {} cache = null; pending = null; }
   };
 })();

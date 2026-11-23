@@ -1,11 +1,12 @@
 /* Service worker — app-shell cache for an app-like, offline-capable PWA */
-var CACHE = "toolnest-v2";
+var CACHE = "manomano-v16";
 var SHELL = [
-  "index.html", "category.html", "product.html", "cart.html", "login.html", "account.html",
+  "index.html", "category.html", "product.html", "cart.html", "login.html", "account.html", "blog.html", "brands.html", "sell.html",
   "css/styles.css",
-  "js/config.js", "js/data.js", "js/cart.js", "js/auth.js", "js/ui.js", "js/render.js",
+  "js/config.js", "data/catalog.js", "js/data.js", "js/cart.js", "js/auth.js", "js/ui.js", "js/render.js",
   "js/home.js", "js/category.js", "js/product.js", "js/cart-page.js", "js/login.js", "js/account.js",
-  "data/products.json", "images/icon.svg", "manifest.webmanifest"
+  "data/products.json", "images/logo-64.png", "images/logo-192.png", "images/logo-512.png",
+  "images/banner-1.png", "images/banner-2.png", "images/banner-3.png", "images/banner-4.png", "manifest.webmanifest"
 ];
 
 self.addEventListener("install", function (e) {
@@ -21,6 +22,8 @@ self.addEventListener("fetch", function (e) {
   if (req.method !== "GET") return;                 // never cache POSTs (auth/orders)
   var url = new URL(req.url);
   if (url.origin !== location.origin) return;        // let API/cross-origin pass through
+  // Local development: always hit the network so edits show up on reload.
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") return;
 
   // network-first for the catalog so product updates show; cache fallback offline
   if (url.pathname.endsWith("products.json")) {

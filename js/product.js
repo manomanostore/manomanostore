@@ -9,9 +9,9 @@ window.PRODUCT = (function () {
     current = p;
     document.title = p.name + " — " + CONFIG.BRAND_NAME;
 
-    var catName = await DATA.catName(p.category);
+    var catName = await DATA.catName(p.cat_id);
     document.getElementById("crumbs").innerHTML =
-      '<a href="index.html">Home</a> › <a href="category.html?cat='+p.category+'">'+UI.esc(catName)+'</a> › <span>'+UI.esc(p.sub||"")+'</span>';
+      '<a href="index.html">Home</a> › <a href="category.html?cat='+encodeURIComponent(p.cat_id)+'">'+UI.esc(catName)+'</a> › <span>'+UI.esc(p.name)+'</span>';
 
     var off = DATA.pct(p);
     document.getElementById("pdp").innerHTML =
@@ -44,7 +44,7 @@ window.PRODUCT = (function () {
     document.getElementById("buyBtn").onclick = function () { CART.add(p, qty); location.href = "cart.html"; };
 
     // related
-    var rel = (await DATA.byCategory(p.category)).filter(function (x) { return x.id !== p.id; }).slice(0, 8);
+    var rel = (await DATA.byCategory(p.cat_id)).filter(function (x) { return x.id !== p.id; }).slice(0, 8);
     document.getElementById("related").innerHTML = rel.map(function (x) {
       return '<div style="width:180px">'+RENDER.productCard(x)+'</div>';
     }).join("");

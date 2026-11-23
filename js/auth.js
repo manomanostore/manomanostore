@@ -20,11 +20,18 @@
 
   // ---- POST helper: text/plain avoids CORS preflight against Apps Script ----
   async function post(payload) {
-    var r = await fetch(C.API_URL, {
-      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    });
-    return r.json();
+    try {
+      var r = await fetch(C.API_URL, {
+        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      return await r.json();
+    } catch (e) {
+      // Network error, or the Apps Script isn't deployed with access "Anyone"
+      // (Google then answers with a sign-in page instead of JSON).
+      console.warn("Backend unreachable:", e);
+      return { ok: false, error: "Can't reach the server right now. Please try again in a moment." };
+    }
   }
 
   // ---- local fallback store ----
@@ -47,7 +54,8 @@
     var users = localUsers();
     if (users.some(function (u) { return u.identifier === identifier; }))
       return { ok: false, error: "An account with that email/mobile already exists." };
-    var user = { id: "u-" + Date.now().toString(36), name: name, identifier: identifier, type: type, passwordHash: passwordHash };
+    var nextId = users.reduce(function (m, u) { return Math.max(m, Number(u.id) || 0); }, 0) + 1;
+    var user = { id: nextId, name: name, identifier: identifier, type: type, passwordHash: passwordHash };
     users.push(user); saveLocalUsers(users);
     setSession({ id: user.id, name: name, identifier: identifier });
     return { ok: true, user: { id: user.id, name: name, identifier: identifier } };
@@ -70,9 +78,57 @@
     return { ok: true, user: { id: user.id, name: user.name, identifier: identifier } };
   }
 
-  function setSession(user) { localStorage.setItem(SKEY, JSON.stringify(user)); document.dispatchEvent(new CustomEvent("auth:change")); }
-  function current() { try { return JSON.parse(localStorage.getItem(SKEY)); } catch (e) { return null; } }
-  function logout() { localStorage.removeItem(SKEY); document.dispatchEvent(new CustomEvent("auth:change")); }
+  // Update name, email/mobile and/or password. The current password is always
+  // required. The hash is salted with the identifier, so we send a fresh hash
+  // for the (possibly new) identifier with (possibly new) password.
+  async function updateProfile(fields) {
+    var me = current();
+    if (!me) return { ok: false, error: "Please log in again." };
+    var name = String(fields.name || "").trim();
+    var newIdent = normId(fields.identifier || me.identifier);
+    if (!name) return { ok: false, error: "Please enter your name." };
+    if (!isEmail(newIdent) && !isMobile(newIdent)) return { ok: false, error: "Enter a valid email or mobile number." };
+    if (!fields.currentPassword) return { ok: false, error: "Enter your current password to save changes." };
+    if (fields.newPassword && fields.newPassword.length < 6) return { ok: false, error: "New password must be at least 6 characters." };
 
-  window.AUTH = { signup: signup, login: login, current: current, logout: logout, isEmail: isEmail, isMobile: isMobile };
+    var passwordHash = await hash(me.identifier, fields.currentPassword);
+    var newPasswordHash = await hash(newIdent, fields.newPassword || fields.currentPassword);
+    var type = isEmail(newIdent) ? "email" : "mobile";
+
+    if (C.API_URL) {
+      var res = await post({ action: "updateProfile", identifier: me.identifier, passwordHash: passwordHash,
+        name: name, newIdentifier: newIdent, type: type, newPasswordHash: newPasswordHash });
+      if (res.ok) setSession(res.user);
+      return res;
+    }
+    var users = localUsers(), u = users.find(function (x) { return x.identifier === normId(me.identifier); });
+    if (!u) return { ok: false, error: "Account not found. Please log in again." };
+    if (u.passwordHash !== passwordHash) return { ok: false, error: "Your current password is incorrect." };
+    if (newIdent !== u.identifier && users.some(function (x) { return x.identifier === newIdent; }))
+      return { ok: false, error: "That email/mobile is already used by another account." };
+    u.name = name; u.identifier = newIdent; u.type = type; u.passwordHash = newPasswordHash;
+    saveLocalUsers(users);
+    var pub = { id: u.id, name: u.name, identifier: u.identifier, type: type };
+    setSession(pub);
+    return { ok: true, user: pub };
+  }
+
+  function setSession(user) { localStorage.setItem(SKEY, JSON.stringify(user)); document.dispatchEvent(new CustomEvent("auth:change")); }
+  function current() {
+    try {
+      var s = JSON.parse(localStorage.getItem(SKEY));
+      // Sessions from before numeric ids (e.g. "u-mwryz66n") no longer match the
+      // Sheet, so treat them as logged out and ask the customer to sign in again.
+      if (s && typeof s.id === "string" && !/^\d+$/.test(s.id)) { localStorage.removeItem(SKEY); return null; }
+      return s;
+    } catch (e) { return null; }
+  }
+  function logout() {
+    localStorage.removeItem(SKEY);
+    // Drop cached order history so the next person on this device can't see it.
+    try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf("mm_orders_") === 0) localStorage.removeItem(k); }); } catch (e) {}
+    document.dispatchEvent(new CustomEvent("auth:change"));
+  }
+
+  window.AUTH = { hash: hash, normId: normId, signup: signup, login: login, updateProfile: updateProfile, current: current, logout: logout, isEmail: isEmail, isMobile: isMobile };
 })();

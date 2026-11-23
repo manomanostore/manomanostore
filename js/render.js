@@ -56,7 +56,7 @@
 
   function skeletons(n) {
     var s = "";
-    for (var i = 0; i < n; i++) s += '<div class="prod"><div class="skeleton" style="aspect-ratio:1/1"></div><div class="body"><div class="skeleton" style="height:14px;width:90%"></div><div class="skeleton" style="height:14px;width:50%"></div><div class="skeleton" style="height:22px;width:60%"></div></div></div>';
+    for (var i = 0; i < n; i++) s += '<div class="row-item"><div class="prod"><div class="skeleton" style="aspect-ratio:1/1"></div><div class="body"><div class="skeleton" style="height:14px;width:90%"></div><div class="skeleton" style="height:14px;width:50%"></div><div class="skeleton" style="height:22px;width:60%"></div></div></div></div>';
     return s;
   }
 
