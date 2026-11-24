@@ -106,8 +106,12 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 
 /* pills & status select */
 .adm-pill{display:inline-block;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;background:#eaf0fb;color:var(--navy);white-space:nowrap}
+.adm-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;font-weight:700;letter-spacing:.5px;color:var(--navy)}
 .adm-pill.active,.adm-pill.delivered{background:#e4f7ef;color:#0c7a5b}
-.adm-pill.hidden,.adm-pill.inactive{background:#eef0f4;color:#5b667d}
+.adm-pill.hidden,.adm-pill.inactive,.adm-pill.unverified{background:#eef0f4;color:#5b667d}
+.adm-pill.pending{background:#fdf1dc;color:#9a6700}
+.adm-pill.verified{background:#e4f7ef;color:#0c7a5b}
+.adm-doclinks{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .adm-pill.pending{background:#fff4dc;color:#8a5a00}
 .adm-pill.blocked,.adm-pill.cancelled{background:#fde8ea;color:#b4121f}
 .adm-pill.admin{background:#16233f;color:var(--lime)}

@@ -17,7 +17,19 @@ window.I18N = (function () {
       "bn.home": "Home", "bn.cats": "Categories", "bn.deals": "Deals", "bn.basket": "Basket", "bn.account": "Account",
       "home.today": "Today's Deals", "home.hot": "Hot", "home.seeall": "See all deals ›", "home.topsel": "Our top selection",
       "home.best": "Our best sellers", "home.seeall2": "See all", "home.shopcat": "Shop by category", "home.finds": "Today's best finds",
-      "home.sponsored": "Sponsored", "home.brands": "Our biggest brands", "cta.add": "Add"
+      "home.sponsored": "Sponsored", "home.brands": "Our biggest brands", "cta.add": "Add",
+      "sd.dashboard": "Dashboard", "sd.products": "Products", "sd.storehouse": "Product Storehouse", "sd.orders": "Orders",
+      "sd.package": "Package", "sd.spread": "Spread Packages", "sd.affiliate": "Affiliate System", "sd.withdraw": "Money Withdraw",
+      "sd.conversations": "Conversations", "sd.shopsetting": "Shop Setting", "sd.refund": "Received Refund Request",
+      "sd.commission": "Commission History", "sd.queries": "Product Queries", "sd.logout": "Log out", "sd.sellercenter": "Seller Center",
+      "sd.credit": "Credit Score", "sd.seller": "Seller", "sd.guarantee": "Guarantee Money", "sd.welcome": "Welcome back",
+      "sd.overview": "Here's what's happening with your shop today.", "sd.rating": "Rating", "sd.verified": "Shop verified",
+      "sd.unverified": "Shop unverified", "sd.verifynow": "Verify Now", "sd.totalproducts": "Total Products", "sd.totalorder": "Total Orders",
+      "sd.totalsales": "Total Sales", "sd.balance": "Wallet Balance", "sd.salesstat": "Sales Statistics", "sd.last7": "Last 7 days",
+      "sd.catcount": "Category wise product count", "sd.orders.month": "Orders", "sd.thismonth": "This Month", "sd.neworder": "New Order",
+      "sd.cancelled": "Cancelled", "sd.ondelivery": "On delivery", "sd.purchased": "Purchased Package", "sd.current": "Current Package",
+      "sd.uploadlimit": "Products Upload Limit", "sd.times": "Times", "sd.expires": "Package Expires at", "sd.upgrade": "Upgrade Plan",
+      "sd.noproducts": "No products yet.", "sd.soon": "is coming soon.", "sd.verifymsg": "Your shop is reviewed by our team — you'll be verified once your documents are approved."
     },
     hi: {
       "nav.home": "होम", "nav.flash": "फ्लैश सेल", "nav.blogs": "ब्लॉग", "nav.brands": "सभी ब्रांड", "nav.cats": "सभी श्रेणियाँ",
@@ -28,7 +40,19 @@ window.I18N = (function () {
       "bn.home": "होम", "bn.cats": "श्रेणियाँ", "bn.deals": "ऑफ़र", "bn.basket": "बास्केट", "bn.account": "खाता",
       "home.today": "आज के ऑफ़र", "home.hot": "हॉट", "home.seeall": "सभी ऑफ़र देखें ›", "home.topsel": "हमारा शीर्ष चयन",
       "home.best": "हमारे बेस्ट सेलर", "home.seeall2": "सभी देखें", "home.shopcat": "श्रेणी अनुसार खरीदें", "home.finds": "आज की बेहतरीन खोज",
-      "home.sponsored": "प्रायोजित", "home.brands": "हमारे सबसे बड़े ब्रांड", "cta.add": "जोड़ें"
+      "home.sponsored": "प्रायोजित", "home.brands": "हमारे सबसे बड़े ब्रांड", "cta.add": "जोड़ें",
+      "sd.dashboard": "डैशबोर्ड", "sd.products": "प्रोडक्ट्स", "sd.storehouse": "प्रोडक्ट स्टोरहाउस", "sd.orders": "ऑर्डर",
+      "sd.package": "पैकेज", "sd.spread": "स्प्रेड पैकेज", "sd.affiliate": "एफिलिएट सिस्टम", "sd.withdraw": "पैसे निकालें",
+      "sd.conversations": "बातचीत", "sd.shopsetting": "शॉप सेटिंग", "sd.refund": "रिफंड अनुरोध",
+      "sd.commission": "कमीशन इतिहास", "sd.queries": "प्रोडक्ट प्रश्न", "sd.logout": "लॉग आउट", "sd.sellercenter": "सेलर सेंटर",
+      "sd.credit": "क्रेडिट स्कोर", "sd.seller": "विक्रेता", "sd.guarantee": "गारंटी राशि", "sd.welcome": "वापसी पर स्वागत है",
+      "sd.overview": "आज आपकी दुकान में क्या हो रहा है।", "sd.rating": "रेटिंग", "sd.verified": "शॉप सत्यापित",
+      "sd.unverified": "शॉप असत्यापित", "sd.verifynow": "अभी सत्यापित करें", "sd.totalproducts": "कुल प्रोडक्ट", "sd.totalorder": "कुल ऑर्डर",
+      "sd.totalsales": "कुल बिक्री", "sd.balance": "वॉलेट बैलेंस", "sd.salesstat": "बिक्री आँकड़े", "sd.last7": "पिछले 7 दिन",
+      "sd.catcount": "श्रेणी अनुसार प्रोडक्ट गिनती", "sd.orders.month": "ऑर्डर", "sd.thismonth": "इस महीने", "sd.neworder": "नया ऑर्डर",
+      "sd.cancelled": "रद्द", "sd.ondelivery": "डिलीवरी पर", "sd.purchased": "खरीदा गया पैकेज", "sd.current": "वर्तमान पैकेज",
+      "sd.uploadlimit": "प्रोडक्ट अपलोड सीमा", "sd.times": "बार", "sd.expires": "पैकेज समाप्ति", "sd.upgrade": "प्लान अपग्रेड करें",
+      "sd.noproducts": "अभी कोई प्रोडक्ट नहीं।", "sd.soon": "जल्द आ रहा है।", "sd.verifymsg": "आपकी दुकान की समीक्षा हमारी टीम कर रही है — दस्तावेज़ अनुमोदित होते ही आप सत्यापित हो जाएंगे।"
     }
   };
   var lang = read();

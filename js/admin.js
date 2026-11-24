@@ -675,22 +675,29 @@ window.ADMIN = (function () {
       '<div class="adm-toolbar"><span class="adm-count">'+cat.vendors.length+(cat.vendors.length===1?' seller':' sellers')+'</span>'+
         '<button class="btn btn-primary adm-btn" type="button" id="addVen">'+svg("plus")+' Add seller</button></div>'+
       '<section class="adm-card adm-flush">'+(cat.vendors.length ?
-        '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Shop</th><th>Contact</th><th>Phone</th><th>Products</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+
+        '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Shop</th><th>Contact</th><th>Products</th><th>Login</th><th>Shop</th><th class="r">Actions</th></tr></thead><tbody>'+
         cat.vendors.map(function (v) {
-          return '<tr><td><div class="adm-cell-main">'+esc(v.shopName || v.name)+'</div><div class="adm-cell-sub">#'+esc(v.id)+' · since '+fmtDate(v.createdAt)+'</div></td>'+
-            '<td><div class="adm-cell-main">'+esc(v.name || '—')+'</div>'+(v.email ? '<div class="adm-cell-sub"><a class="adm-link" href="mailto:'+esc(v.email)+'">'+esc(v.email)+'</a></div>' : '')+'</td><td>'+esc(v.phone || "—")+'</td>'+
-            '<td>'+(count[String(v.id)] || 0)+'</td><td>'+pill(v.status)+'</td>'+
-            '<td class="r"><div class="adm-actions">'+(v.status==="pending" ? '<button type="button" class="btn btn-ghost adm-mini" data-approve="'+esc(v.id)+'">Approve</button>' : '')+'<button type="button" class="adm-icon-btn" data-edit="'+esc(v.id)+'" aria-label="Edit '+esc(v.shopName||v.name)+'">'+svg("edit")+'</button>'+
-            '<button type="button" class="adm-icon-btn danger" data-del="'+esc(v.id)+'" aria-label="Delete '+esc(v.shopName||v.name)+'">'+svg("trash")+'</button></div></td></tr>';
+          var canLogin = v.status === "active", shopOk = v.shopStatus === "verified";
+          return '<tr><td><div class="adm-cell-main">'+esc(v.shopName || v.name)+'</div><div class="adm-cell-sub">#'+esc(v.id)+(v.staffCode?' · code '+esc(v.staffCode):'')+'</div></td>'+
+            '<td><div class="adm-cell-main">'+esc(v.name || '—')+'</div>'+(v.email ? '<div class="adm-cell-sub"><a class="adm-link" href="mailto:'+esc(v.email)+'">'+esc(v.email)+'</a></div>' : '')+(v.phone?'<div class="adm-cell-sub">'+esc(v.phone)+'</div>':'')+'</td>'+
+            '<td>'+(count[String(v.id)] || 0)+'</td>'+
+            '<td>'+pill(canLogin ? "active" : "pending")+'</td>'+
+            '<td>'+pill(shopOk ? "verified" : "unverified")+'</td>'+
+            '<td class="r"><div class="adm-actions">'+
+              '<button type="button" class="btn btn-ghost adm-mini" data-login="'+esc(v.id)+'" data-to="'+(canLogin?'0':'1')+'">'+(canLogin?'Revoke':'Approve')+'</button>'+
+              '<button type="button" class="btn btn-ghost adm-mini" data-shop="'+esc(v.id)+'" data-to="'+(shopOk?'0':'1')+'">'+(shopOk?'Unverify':'Verify')+'</button>'+
+              '<button type="button" class="adm-icon-btn" data-edit="'+esc(v.id)+'" aria-label="Edit '+esc(v.shopName||v.name)+'">'+svg("edit")+'</button>'+
+              '<button type="button" class="adm-icon-btn danger" data-del="'+esc(v.id)+'" aria-label="Delete '+esc(v.shopName||v.name)+'">'+svg("trash")+'</button></div></td></tr>';
         }).join("")+'</tbody></table></div>'
         : empty("No sellers yet", "Sellers who register from “Become a seller” appear here for approval. You can also add one manually.", '<button class="btn btn-primary" type="button" id="addVen2">Add a seller</button>'))+
       '</section>';
     $("addVen").onclick = function () { vendorForm(null); };
     if ($("addVen2")) $("addVen2").onclick = function () { vendorForm(null); };
     $("admView").onclick = async function (e) {
-      var b = e.target.closest("button[data-edit],button[data-del],button[data-approve]"); if (!b) return;
-      var v = cat.vendors.filter(function (x) { return String(x.id) === (b.dataset.edit || b.dataset.del || b.dataset.approve); })[0];
-      if (b.dataset.approve) { var ra = await api("saveVendor", { id: v.id, status: "active" }); if (!ra.ok) { toast(ra.error, true); return; } catalogChanged(); toast("Seller approved"); route(); return; }
+      var b = e.target.closest("button[data-edit],button[data-del],button[data-login],button[data-shop]"); if (!b) return;
+      var v = cat.vendors.filter(function (x) { return String(x.id) === (b.dataset.edit || b.dataset.del || b.dataset.login || b.dataset.shop); })[0];
+      if (b.dataset.login !== undefined) { var rl = await api("saveVendor", { id: v.id, status: b.dataset.to === "1" ? "active" : "pending" }); if (!rl.ok) { toast(rl.error, true); return; } catalogChanged(); toast(b.dataset.to === "1" ? "Login approved — seller can sign in" : "Login revoked"); route(); return; }
+      if (b.dataset.shop !== undefined) { var rs = await api("saveVendor", { id: v.id, shop_status: b.dataset.to === "1" ? 1 : 0 }); if (!rs.ok) { toast(rs.error, true); return; } catalogChanged(); toast(b.dataset.to === "1" ? "Shop verified" : "Shop set unverified"); route(); return; }
       if (b.dataset.edit) vendorForm(v);
       if (b.dataset.del) {
         if (!confirm('Delete the seller "' + (v.shopName||v.name) + '"?')) return;
@@ -701,19 +708,29 @@ window.ADMIN = (function () {
     };
   }
   function vendorForm(v) {
-    var isNew = !v; v = v || { shopName: "", name: "", email: "", phone: "", status: "active" };
-    var opt = function (val){ return ['active','pending','inactive'].map(function(st){ return '<option value="'+st+'"'+(val===st?' selected':'')+'>'+cap(st)+'</option>'; }).join(''); };
+    var isNew = !v; v = v || { shopName: "", name: "", email: "", phone: "", status: "pending", shopStatus: "unverified" };
+    var loginSel = '<select id="vStatus"><option value="active"'+(v.status==="active"?" selected":"")+'>Approved — can sign in</option><option value="pending"'+(v.status!=="active"?" selected":"")+'>Pending — sign-in blocked</option></select>';
+    var shopSel = '<select id="vShopStatus"><option value="1"'+(v.shopStatus==="verified"?" selected":"")+'>Verified</option><option value="0"'+(v.shopStatus!=="verified"?" selected":"")+'>Unverified</option></select>';
+    var extra = isNew ? "" :
+      f("vCode", "Invitation / staff code", '<input value="'+esc(v.staffCode || v.invite || "")+'" readonly>') +
+      f("vDocs", "Certificates", '<div class="adm-doclinks">'+
+        (v.certFront ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(v.certFront)+'">View front</a>' : '<span class="adm-cell-sub">No front</span>')+' · '+
+        (v.certBack ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(v.certBack)+'">View back</a>' : '<span class="adm-cell-sub">No back</span>')+'</div>');
     modal(isNew ? "Add seller" : "Edit seller #" + v.id,
       '<div class="adm-form-cols">'+
         f("vShop", "Shop name", '<input id="vShop" required maxlength="100" value="'+esc(v.shopName||'')+'">', "full") +
         f("vName", "Contact name", '<input id="vName" maxlength="80" value="'+esc(v.name)+'">') +
         f("vEmail", "Email", '<input id="vEmail" type="email" value="'+esc(v.email)+'">') +
         f("vPhone", "Phone", '<input id="vPhone" type="tel" value="'+esc(v.phone)+'">') +
-        f("vStatus", "Status", '<select id="vStatus">'+opt(v.status||'active')+'</select>') +
+        f("vStatus", "Login access", loginSel) +
+        f("vShopStatus", "Shop status", shopSel) +
+        f("vRating", "Rating <span class=\"opt\">(0–5)</span>", '<input id="vRating" type="number" min="0" max="5" step="0.5" value="'+esc(v.rating == null ? '' : v.rating)+'" placeholder="0–5">') +
+        extra +
       '</div>',
       async function () {
         if (!$("vShop").value.trim()) return "Shop name is required.";
-        var r = await api("saveVendor", { id: isNew ? undefined : v.id, shopName: $("vShop").value.trim(), name: $("vName").value.trim(), email: $("vEmail").value.trim(), phone: $("vPhone").value.trim(), status: $("vStatus").value });
+        var rating = Math.min(5, Math.max(0, Number($("vRating").value) || 0));
+        var r = await api("saveVendor", { id: isNew ? undefined : v.id, shopName: $("vShop").value.trim(), name: $("vName").value.trim(), email: $("vEmail").value.trim(), phone: $("vPhone").value.trim(), status: $("vStatus").value, shop_status: $("vShopStatus").value, rating: rating });
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Seller added" : "Seller saved"); route();
       });
@@ -732,11 +749,12 @@ window.ADMIN = (function () {
       '<div class="adm-toolbar"><span class="adm-count">'+admins.length+' admin'+(admins.length === 1 ? '' : 's')+'</span>'+
         '<button class="btn btn-ghost adm-btn" type="button" id="myPw">'+svg("key")+' Change my password</button>'+
         '<button class="btn btn-primary adm-btn" type="button" id="addAdm">'+svg("plus")+' Add admin</button></div>'+
-      '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Admin</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Added</th><th class="r">Actions</th></tr></thead><tbody>'+
+      '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Admin</th><th>Staff code</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Added</th><th class="r">Actions</th></tr></thead><tbody>'+
       admins.map(function (a) {
         var me = String(a.id) === meId;
         return '<tr><td><div class="adm-user"><span class="adm-avatar sm">'+esc((a.name || a.username).charAt(0).toUpperCase())+'</span><div>'+
             '<div class="adm-cell-main">'+esc(a.name || a.username)+(me ? ' <em class="adm-you">you</em>' : '')+'</div><div class="adm-cell-sub">@'+esc(a.username)+'</div></div></div></td>'+
+          '<td><span class="adm-code">'+esc(a.staffCode || '—')+'</span></td>'+
           '<td><span class="adm-pill '+esc(a.role)+'">'+esc(roleLabel(a.role))+'</span></td>'+
           '<td>'+pill(a.status === "disabled" ? "disabled" : "active", a.status === "disabled" ? "blocked" : "active")+'</td>'+
           '<td>'+(a.lastLoginAt ? fmtDate(a.lastLoginAt) : 'Never')+'</td><td>'+fmtDate(a.createdAt)+'</td>'+
@@ -769,6 +787,8 @@ window.ADMIN = (function () {
       '<div class="adm-form-cols">'+
         (isNew ? f("aUser", "Username", '<input id="aUser" required maxlength="32" autocapitalize="none" spellcheck="false" autocomplete="off" placeholder="e.g. priya">') : '') +
         f("aName", "Display name", '<input id="aName" maxlength="80" value="'+esc(a.name)+'">', isNew ? "" : "full") +
+        f("aCode", "Staff code", '<input id="aCode" value="'+esc(isNew ? '' : (a.staffCode || ''))+'"'+(isNew ? ' placeholder="Auto-generated on save (e.g. US445734)"' : '')+' readonly>'+
+          (isNew ? '<small>Created automatically — 2 letters + 6 digits.</small>' : '<small>System code — can\'t be changed.</small>'), isNew ? "" : "full") +
         f("aRole", "Role", roleSel + (isMe ? '<small>You can\'t change your own role.</small>' : '')) +
         (isNew ? '' : f("aStatus", "Status", '<select id="aStatus"><option value="active"'+(a.status !== "disabled" ? " selected" : "")+'>Active</option><option value="disabled"'+(a.status === "disabled" ? " selected" : "")+'>Disabled</option></select>')) +
         f("aPw", isNew ? "Password" : "New password <span class=\"opt\">(optional — resets it)</span>",

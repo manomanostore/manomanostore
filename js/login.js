@@ -11,8 +11,8 @@ window.SELLER = (function () {
 
 window.SELLERLOGIN = (function () {
   function init() {
-    if (SELLER.current()) { location.href = "index.html"; return; }
-    var next = new URLSearchParams(location.search).get("next") || "index.html";
+    if (SELLER.current()) { location.href = "seller-dashboard.html"; return; }
+    var next = new URLSearchParams(location.search).get("next") || "seller-dashboard.html";
 
     document.getElementById("authForm").addEventListener("submit", async function (e) {
       e.preventDefault();

@@ -53,9 +53,9 @@
             <option value="driving_license">driving license</option>
             <option value="social_security">Social Security Card</option>
           </select></div>
-        <div class="field"><label for="sCertFront">Certificates front <i>*</i></label><input id="sCertFront" type="file" accept="image/*" required><small>Clear photo or scan — front side.</small></div>
-        <div class="field"><label for="sCertBack">Certificates back <i>*</i></label><input id="sCertBack" type="file" accept="image/*" required><small>Clear photo or scan — back side.</small></div>
-        <div class="field full"><label for="sInvite">Invitation code <span class="opt">(optional)</span></label><input id="sInvite" type="text" maxlength="40" placeholder="If you were referred"></div>
+        <div class="field"><label for="sCertFront">Certificates front <i>*</i></label><input id="sCertFront" type="file" accept="image/*,application/pdf,.pdf" required><small>Clear photo, scan or PDF — front side.</small></div>
+        <div class="field"><label for="sCertBack">Certificates back <i>*</i></label><input id="sCertBack" type="file" accept="image/*,application/pdf,.pdf" required><small>Clear photo, scan or PDF — back side.</small></div>
+        <div class="field full"><label for="sInvite">Invitation code <i>*</i></label><input id="sInvite" type="text" maxlength="40" placeholder="Enter your staff invitation code" required autocapitalize="characters" spellcheck="false"><small>Required — the code from the staff member who referred you.</small></div>
       </div>
       <p class="sell-note">🔒 Your password is hashed on this device before it is ever sent or stored. We never ask for a transaction password.</p>
     </section>
@@ -97,12 +97,13 @@
     if (!certType) return fail("Please choose a certificates type.");
     if (!frontFile) return fail("Please upload the front of your certificate.");
     if (!backFile) return fail("Please upload the back of your certificate.");
+    if (!invite) return fail("Please enter your invitation code.");
     if (!CONFIG.API_URL) return fail("Seller registration needs the online backend. Please try again later.");
 
     var btn = $("sellSubmit"); btn.disabled = true; btn.textContent = "Submitting…";
     try {
       var passwordHash = await AUTH.hash("seller:" + email, pw);
-      var certFront = await fileToImage(frontFile), certBack = await fileToImage(backFile);
+      var certFront = await fileToData(frontFile), certBack = await fileToData(backFile);
       var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "registerSeller", name: name, email: email, phone: phone,
           passwordHash: passwordHash, shopName: shop, certType: certType,
@@ -160,6 +161,19 @@
       };
       img.onerror = function () { URL.revokeObjectURL(url); resolve(""); };
       img.src = url;
+    });
+  }
+
+  // Certificate can be an image (downscaled) or a PDF (sent as-is). Returns a
+  // base64 data URL the backend saves to Drive under seller/images/<seller_id>/.
+  function fileToData(file) {
+    if (!file) return Promise.resolve("");
+    if (/^image\//.test(file.type)) return fileToImage(file);
+    return new Promise(function (resolve) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result || "")); };
+      r.onerror = function () { resolve(""); };
+      r.readAsDataURL(file);
     });
   }
 </script>

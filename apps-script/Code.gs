@@ -46,10 +46,10 @@ var ADMIN_TOKEN_HOURS = 12;
 var ORDER_STATUSES = ["received", "processing", "shipped", "delivered", "cancelled"];
 
 var SHEETS = {
-  users:      { name: "Users",      headers: ["id","username","name","passwordHash","role","status","createdAt","updatedAt","lastLoginAt","tokenHash","tokenExpires"],
-                textCols: ["username","passwordHash","tokenHash"] },
-  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","createdAt","updatedAt","shopName","passwordHash","certType","certFront","certBack","invite"],
-                textCols: ["phone","email","passwordHash"] },
+  users:      { name: "Users",      headers: ["id","username","name","passwordHash","role","status","createdAt","updatedAt","lastLoginAt","tokenHash","tokenExpires","staff_code"],
+                textCols: ["username","passwordHash","tokenHash","staff_code"] },
+  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","invite","rating","passwordHash","createdAt","updatedAt"],
+                textCols: ["phone","email","passwordHash","staff_code"] },
   orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt"],
                 textCols: ["identifier"] },
   categories: { name: "Categories", headers: ["id","cat_name","cat_img_url","cat_order"] },
@@ -59,7 +59,7 @@ var SHEETS = {
   banners:    { name: "Banners",    headers: ["id","image_url","order","status"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
-var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10 };
+var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10, staffCode:11 };
 // Carts columns: 0 id | 1 cartId | 2 productId | 3 name | 4 price | 5 qty | 6 createdAt | 7 updatedAt
 var C = { id:0, cart:1, product:2, name:3, price:4, qty:5, created:6, updated:7 };
 var ADMIN_ROLES = ["superadmin", "manager", "staff"];
@@ -111,9 +111,21 @@ function doPost(e) {
 
 /* ------------------------------ Sellers ---------------------------------- */
 
-// Public "Become a seller" registration -> Sellers sheet (status "pending").
-// The password is hashed in the browser (salt "seller:<email>"), so sellers can
-// log in once approved. No transaction password is used.
+// A 1/0 (or active/pending) flag → true when "on". Used for a seller's login
+// status and their shop_status.
+function truthyFlag(v) {
+  var s = String(v == null ? "" : v).trim().toLowerCase();
+  return (s === "1" || s === "active" || s === "true" || s === "yes" || s === "verified" || s === "on");
+}
+
+// Public "Become a seller" registration -> Sellers sheet.
+// Rules:
+//  - An invitation code is REQUIRED and must match a staff member's staff_code
+//    in the Users tab (case-insensitive).
+//  - New sellers start LOCKED: status = 0 (can't sign in) and shop_status = 0
+//    (shop not verified). A staff/admin/manager sets status = 1 to allow login
+//    and shop_status = 1 to mark the shop verified.
+//  - The password is hashed in the browser (salt "seller:<email>").
 function registerSeller(b) {
   var email = normId(b.email), shop = String(b.shopName || "").trim(), name = String(b.name || "").trim();
   if (!shop)  return { ok: false, error: "Shop name is required." };
@@ -121,57 +133,78 @@ function registerSeller(b) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email address." };
   if (!b.passwordHash) return { ok: false, error: "A password is required." };
 
+  var invite = String(b.invite || "").trim();
+  if (!invite) return { ok: false, error: "An invitation code is required." };
+  var codes = readRows("users").map(function (u) { return String(u.staff_code || "").trim().toUpperCase(); });
+  if (codes.indexOf(invite.toUpperCase()) < 0)
+    return { ok: false, error: "Invalid invitation code." };
+
   var sh = sheet("sellers");
   if (readRows("sellers").some(function (v) { return normId(v.email) === email; }))
     return { ok: false, error: "A seller account with that email already exists." };
 
-  var id = nextId(sh), now = new Date().toISOString();
+  var id = nextId(sh), now = new Date().toISOString(), code = invite.toUpperCase();
   var rec = {
     id: id, name: name.slice(0, 80), email: email, phone: String(b.phone || "").trim(),
-    status: "pending", createdAt: now, updatedAt: now, shopName: shop.slice(0, 100),
-    passwordHash: b.passwordHash, certType: String(b.certType || ""),
-    certFront: saveCert(b.certFront, "front", email), certBack: saveCert(b.certBack, "back", email),
-    invite: String(b.invite || "").slice(0, 40)
+    status: 0, shop_status: 0, createdAt: now, updatedAt: now, shopName: shop.slice(0, 100),
+    passwordHash: b.passwordHash, staff_code: code, certType: String(b.certType || ""),
+    certFront: saveSellerDoc(b.certFront, id, "front"), certBack: saveSellerDoc(b.certBack, id, "back"),
+    invite: code
   };
-  appendRowAsText(sh, SHEETS.sellers.headers.map(function (h) { return rec[h] === undefined ? "" : rec[h]; }));
+  appendNamed("sellers", rec);
   return { ok: true, message: "Thanks! Your shop application has been submitted and is pending review." };
 }
 
-// Seller sign-in against the SAME Sellers sheet used at registration.
-// Password is hashed in the browser with salt "seller:<email>".
+// Seller sign-in against the SAME Sellers sheet used at registration. They can
+// only sign in once a staff member flips status to 1 (verified).
 function sellerLogin(b) {
   var email = normId(b.email);
   if (!email || !b.passwordHash) return { ok: false, error: "Enter your email and password." };
   var v = readRows("sellers").filter(function (r) { return normId(r.email) === email; })[0];
   if (!v || String(v.passwordHash) !== String(b.passwordHash))
     return { ok: false, error: "Incorrect email or password." };
-  var st = String(v.status || "").toLowerCase();
-  if (st === "pending")  return { ok: false, error: "Your shop is still pending review. You can sign in once it's approved." };
-  if (st && st !== "active") return { ok: false, error: "This seller account is not active. Please contact support." };
-  return { ok: true, seller: { id: v.id, name: v.name, email: v.email, phone: v.phone, shopName: v.shopName, status: v.status } };
+  if (!truthyFlag(v.status))
+    return { ok: false, error: "Your shop is pending review. You can sign in once a staff member approves it." };
+  return { ok: true, seller: { id: v.id, name: v.name, email: v.email, phone: v.phone, shopName: v.shopName,
+                               status: 1, shopStatus: truthyFlag(v.shop_status) ? 1 : 0,
+                               rating: clampRating(v.rating) } };
 }
 
-// Save a seller's certificate image (base64 data URL from the browser) into a
-// Drive folder and return its URL. Returns "" when nothing was provided.
-function saveCert(dataUrl, label, email) {
+// A seller's shop rating: a number from 0 to 5 (shown as stars on the seller
+// dashboard). Blank/invalid becomes 0.
+function clampRating(v) {
+  var n = Number(v);
+  if (!isFinite(n)) n = 0;
+  return Math.min(5, Math.max(0, n));
+}
+
+// Save a seller's certificate (image OR PDF data URL) into Drive under
+// seller/images/<sellerId>/ and return a viewable URL. Returns "" when nothing
+// was provided.
+function saveSellerDoc(dataUrl, sellerId, label) {
   var m = /^data:([^;]+);base64,(.*)$/.exec(String(dataUrl || ""));
   if (!m) return "";
   try {
-    var ext = (m[1].split("/")[1] || "jpg").split("+")[0];
-    var fname = label + "_" + String(email).replace(/[^a-z0-9]+/gi, "_") + "_" + Date.now() + "." + ext;
-    var blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], fname);
-    return sellerDocsFolder().createFile(blob).getUrl();
+    var mime = m[1], ext = (mime.split("/")[1] || "bin").split("+")[0];
+    var folder = driveChild(driveImagesFolder("seller"), String(sellerId));
+    var blob = Utilities.newBlob(Utilities.base64Decode(m[2]), mime, label + "_" + Date.now() + "." + ext);
+    var file = folder.createFile(blob);
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    if (/^image\//i.test(mime)) return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w1200";
+    return "https://drive.google.com/file/d/" + file.getId() + "/view";
   } catch (err) { return ""; }
 }
-function sellerDocsFolder() {
-  var name = "ManoMano Seller Documents";
-  var it = DriveApp.getFoldersByName(name);
-  return it.hasNext() ? it.next() : DriveApp.createFolder(name);
-}
 
+// For the admin: expose status as active/pending and shop_status as
+// verified/unverified, plus the raw fields the admin may want to see.
 function readSellers() {
   return readRows("sellers").filter(function (v) { return v.id !== ""; }).map(function (v) {
-    v.id = Number(v.id) || v.id; v.phone = String(v.phone || ""); v.status = String(v.status || "active"); return v;
+    v.id = Number(v.id) || v.id; v.phone = String(v.phone || "");
+    v.status = truthyFlag(v.status) ? "active" : "pending";
+    v.shopStatus = truthyFlag(v.shop_status) ? "verified" : "unverified";
+    v.staffCode = String(v.staff_code || "");
+    v.rating = clampRating(v.rating);
+    return v;
   });
 }
 
@@ -303,10 +336,28 @@ function readRows(key) {
   var h = rows[0], out = [];
   for (var i = 1; i < rows.length; i++) {
     var o = {};
-    for (var c = 0; c < h.length; c++) o[h[c]] = rows[i][c];
+    for (var c = 0; c < h.length; c++) o[String(h[c] == null ? "" : h[c]).trim()] = rows[i][c];
     out.push(o);
   }
   return out;
+}
+
+// The tab's ACTUAL header row (trimmed), used so writes line up by column NAME
+// instead of a fixed position — a hand-reordered or hand-extended sheet still
+// works. Falls back to the canonical headers when the sheet has no header yet.
+function sheetHeaders(key) {
+  var sh = sheet(key), n = Math.max(sh.getLastColumn(), 1);
+  var row = sh.getRange(1, 1, 1, n).getValues()[0].map(function (x) { return String(x == null ? "" : x).trim(); });
+  return row.some(function (h) { return h !== ""; }) ? row : SHEETS[key].headers.slice();
+}
+
+// Append a record placing each field under its matching header column by NAME.
+function appendNamed(key, rec) {
+  var sh = sheet(key), hdr = sheetHeaders(key), r = sh.getLastRow() + 1;
+  (SHEETS[key].textCols || []).forEach(function (name) { var c = hdr.indexOf(name) + 1; if (c > 0) sh.getRange(r, c).setNumberFormat("@"); });
+  var row = hdr.map(function (h) { return rec[h] === undefined || rec[h] === null ? "" : rec[h]; });
+  sh.getRange(r, 1, 1, row.length).setValues([row]);
+  return row;
 }
 
 // Run manually from the editor to fill Categories + Products from CATALOG_URL.
@@ -373,7 +424,16 @@ function requireAdmin(token) {
 function adminRole(r) { return String(r[A.role] || "superadmin"); }
 function publicAdmin(r) {
   return { id: Number(r[A.id]) || r[A.id], username: String(r[A.user] || ""), name: String(r[A.name] || ""),
-           role: adminRole(r), status: String(r[A.status] || "active"), createdAt: r[A.created], lastLoginAt: r[A.lastLogin] };
+           role: adminRole(r), status: String(r[A.status] || "active"), staffCode: String(r[A.staffCode] || ""),
+           createdAt: r[A.created], lastLoginAt: r[A.lastLogin] };
+}
+
+// Staff code: two uppercase letters + six digits, e.g. "US445734". Generated by
+// the system when an admin is created and never changed afterwards (read-only).
+function genStaffCode() {
+  var L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ", s = L.charAt(Math.floor(Math.random() * 26)) + L.charAt(Math.floor(Math.random() * 26));
+  for (var i = 0; i < 6; i++) s += Math.floor(Math.random() * 10);
+  return s;
 }
 
 function findAdmin(sh, username) {
@@ -393,7 +453,8 @@ function validUsername(u) { return /^[a-z0-9._-]{3,32}$/.test(u); }
 function adminList() {
   return readRows("users").filter(function (a) { return a.id !== ""; }).map(function (a) {
     return { id: Number(a.id) || a.id, username: String(a.username || ""), name: String(a.name || ""),
-             role: String(a.role || "superadmin"), status: String(a.status || "active"), createdAt: a.createdAt, lastLoginAt: a.lastLoginAt };
+             role: String(a.role || "superadmin"), status: String(a.status || "active"), staffCode: String(a.staff_code || ""),
+             createdAt: a.createdAt, lastLoginAt: a.lastLoginAt };
   });
 }
 
@@ -407,9 +468,10 @@ function adminSave(p, me) {
     if (findAdmin(sh, u)) return { ok: false, error: "That username is already taken." };
     if (!p.passwordHash) return { ok: false, error: "Set a password for the new admin." };
     var role = ADMIN_ROLES.indexOf(p.role) > -1 ? p.role : "staff";
-    var id = nextId(sh);
-    appendRowAsText(sh, [id, u, name, p.passwordHash, role, "active", now, now, "", "", ""]);
-    return { ok: true, admin: publicAdmin([id, u, name, p.passwordHash, role, "active", now]) };
+    var id = nextId(sh), code = genStaffCode();
+    var row = [id, u, name, p.passwordHash, role, "active", now, now, "", "", "", code];
+    appendRowAsText(sh, row);
+    return { ok: true, admin: publicAdmin(row) };
   }
   var idx = findRowById(sh, p.id);
   if (!idx) return { ok: false, error: "Admin not found." };
@@ -506,7 +568,7 @@ function adminStats() {
       products: products.length,
       hiddenProducts: products.filter(function (p) { return String(p.status) === "hidden"; }).length,
       vendors: sellers.length,
-      pendingVendors: sellers.filter(function (v) { return String(v.status) === "pending"; }).length,
+      pendingVendors: sellers.filter(function (v) { return !truthyFlag(v.status); }).length,
       byStatus: byStatus
     },
     recentOrders: orders.slice(0, 8)
@@ -536,25 +598,23 @@ function saveRecord(key, obj, validate) {
   var err = validate(obj);
   if (err) return { ok: false, error: err };
   var cfg = SHEETS[key], sh = sheet(key), now = new Date().toISOString();
+  var hdr = sheetHeaders(key);                     // position by the REAL columns
   var idx = obj.id ? findRowById(sh, obj.id) : 0;
   if (obj.id && !idx) return { ok: false, error: "Record not found — it may have been deleted." };
   var current = {};
   if (idx) {
-    var vals = sh.getRange(idx, 1, 1, cfg.headers.length).getValues()[0];
-    cfg.headers.forEach(function (h, i) { current[h] = vals[i]; });
+    var vals = sh.getRange(idx, 1, 1, hdr.length).getValues()[0];
+    hdr.forEach(function (h, i) { current[h] = vals[i]; });
   } else {
     current.id = nextId(sh);
-    if (cfg.headers.indexOf("createdAt") > -1) current.createdAt = now;
+    if (hdr.indexOf("createdAt") > -1) current.createdAt = now;
   }
-  cfg.headers.forEach(function (h) { if (h !== "id" && h !== "createdAt" && obj[h] !== undefined) current[h] = obj[h]; });
-  if (cfg.headers.indexOf("updatedAt") > -1) current.updatedAt = now;
-  var row = cfg.headers.map(function (h) { return current[h] === undefined || current[h] === null ? "" : current[h]; });
-  if (idx) {
-    (cfg.textCols || []).forEach(function (n) { var c = cfg.headers.indexOf(n) + 1; if (c) sh.getRange(idx, c).setNumberFormat("@"); });
-    sh.getRange(idx, 1, 1, row.length).setValues([row]);
-  } else {
-    appendRowAsText(sh, row);
-  }
+  hdr.forEach(function (h) { if (h !== "id" && h !== "createdAt" && obj[h] !== undefined) current[h] = obj[h]; });
+  if (hdr.indexOf("updatedAt") > -1) current.updatedAt = now;
+  var row = hdr.map(function (h) { return current[h] === undefined || current[h] === null ? "" : current[h]; });
+  var r = idx || (sh.getLastRow() + 1);
+  (cfg.textCols || []).forEach(function (n) { var c = hdr.indexOf(n) + 1; if (c > 0) sh.getRange(r, c).setNumberFormat("@"); });
+  sh.getRange(r, 1, 1, row.length).setValues([row]);
   return { ok: true, record: current };
 }
 
@@ -582,7 +642,10 @@ function deleteCategoryRec(id) {
 function deleteSellerRec(id) {
   var cur = readRows("sellers").filter(function (v) { return String(v.id) === String(id); })[0];
   var res = deleteIfUnused("sellers", id, "vendor_id", "seller");
-  if (res.ok && cur) { deleteDriveFile(cur.certFront); deleteDriveFile(cur.certBack); }
+  if (res.ok) {
+    if (cur) { deleteDriveFile(cur.certFront); deleteDriveFile(cur.certBack); }
+    try { var it = driveImagesFolder("seller").getFoldersByName(String(id)); while (it.hasNext()) it.next().setTrashed(true); } catch (e) {}
+  }
   return res;
 }
 // Deleting a product also removes its uploaded images + its products/images/<id> folder.
@@ -819,11 +882,14 @@ function deleteBannerRec(id, matchUrl) {
 function validateVendor(v) {
   // Only touch fields that were actually sent, so a status-only update (e.g.
   // approving a pending shop) doesn't blank the seller's name / shop name.
+  // status (login) and shop_status (shop verified) are stored as 1 / 0.
   if (v.name !== undefined) v.name = String(v.name).trim();
   if (v.shopName !== undefined) v.shopName = String(v.shopName).trim();
   if (!v.id && !v.shopName && !v.name) return "Shop name is required.";
   if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return "Enter a valid email address.";
-  if (v.status !== undefined && ["active", "inactive", "pending"].indexOf(String(v.status)) < 0) return "Invalid status.";
+  if (v.status !== undefined) v.status = truthyFlag(v.status) ? 1 : 0;
+  if (v.shop_status !== undefined) v.shop_status = truthyFlag(v.shop_status) ? 1 : 0;
+  if (v.rating !== undefined) v.rating = (v.rating === "" || v.rating == null) ? 0 : clampRating(v.rating);
   return "";
 }
 
@@ -841,7 +907,7 @@ function setupAdmin(p) {
   if (pw.length < 4) return { ok: false, error: "password must be at least 4 characters." };
   var now = new Date().toISOString();
   var hash = sha256(PASSWORD_PEPPER + "|admin:" + u + "|" + pw);
-  appendRowAsText(sh, [nextId(sh), u, "Administrator", hash, "superadmin", "active", now, now, "", "", ""]);
+  appendRowAsText(sh, [nextId(sh), u, "Administrator", hash, "superadmin", "active", now, now, "", "", "", genStaffCode()]);
   return { ok: true, message: "Admin '" + u + "' created. You can sign in now. (Web setup is now disabled.)" };
 }
 
@@ -860,7 +926,7 @@ function createAdmin() {
     writeAdminRow(sh, row.index, data);
     SpreadsheetApp.getActive().toast("Password reset for admin '" + u + "'. Now clear ADMIN_PASSWORD and Save.");
   } else {
-    appendRowAsText(sh, [nextId(sh), u, "Administrator", hash, "superadmin", "active", now, now, "", "", ""]);
+    appendRowAsText(sh, [nextId(sh), u, "Administrator", hash, "superadmin", "active", now, now, "", "", "", genStaffCode()]);
     SpreadsheetApp.getActive().toast("Admin '" + u + "' created. Now clear ADMIN_PASSWORD and Save.");
   }
 }
@@ -885,10 +951,12 @@ function migrateToNumericIds() {
 function initSheets() {
   Object.keys(SHEETS).forEach(function (k) {
     var cfg = SHEETS[k], sh = sheet(k);
-    var have = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
-    cfg.headers.forEach(function (h, i) { if (have[i] !== h) sh.getRange(1, i + 1).setValue(h); });
+    var have = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(function (x) { return String(x == null ? "" : x).trim(); });
+    // Add any missing expected column at the END — never reorder or rename the
+    // columns you already have, so a hand-edited tab can't get corrupted.
+    cfg.headers.forEach(function (h) { if (have.indexOf(h) < 0) { sh.getRange(1, have.length + 1).setValue(h); have.push(h); } });
     (cfg.textCols || []).forEach(function (name) {
-      var col = cfg.headers.indexOf(name) + 1;
+      var col = have.indexOf(name) + 1;
       if (col > 0) sh.getRange(1, col, sh.getMaxRows(), 1).setNumberFormat("@");
     });
   });
@@ -897,8 +965,20 @@ function initSheets() {
   Object.keys(SHEETS).forEach(backfillIds);
   fillBlank("users", "role", "superadmin");
   fillBlank("users", "status", "active");
-  fillBlank("sellers", "status", "pending");
+  fillBlank("sellers", "status", 0);
   fillBlank("products", "status", "active");
+  backfillStaffCodes();
+}
+
+// Give any admin missing a staff_code one (2 letters + 6 digits), so accounts
+// that existed before this column still get a code. New codes only; existing
+// ones are left untouched.
+function backfillStaffCodes() {
+  var sh = sheet("users"), c = sheetHeaders("users").indexOf("staff_code") + 1, last = sh.getLastRow();
+  if (!c || last < 2) return;
+  var rng = sh.getRange(2, c, last - 1, 1), v = rng.getValues(), changed = false;
+  v.forEach(function (row) { if (String(row[0] == null ? "" : row[0]).trim() === "") { row[0] = genStaffCode(); changed = true; } });
+  if (changed) { rng.setNumberFormat("@"); rng.setValues(v); }
 }
 
 // Fill blank ids in a tab (whose first column is "id") with the next numbers,
@@ -914,7 +994,7 @@ function backfillIds(key) {
 }
 
 function fillBlank(key, col, value) {
-  var sh = sheet(key), c = SHEETS[key].headers.indexOf(col) + 1, last = sh.getLastRow();
+  var sh = sheet(key), c = sheetHeaders(key).indexOf(col) + 1, last = sh.getLastRow();
   if (!c || last < 2) return;
   var r = sh.getRange(2, c, last - 1, 1), v = r.getValues();
   var changed = false;
