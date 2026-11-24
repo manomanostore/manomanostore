@@ -24,7 +24,7 @@
     return pending;
   }
 
-  function hasData(d) { return d && ((d.categories && d.categories.length) || (d.products && d.products.length)); }
+  function hasData(d) { return d && ((d.categories && d.categories.length) || (d.products && d.products.length) || (d.banners && d.banners.length)); }
 
   async function loadFresh() {
     var saved = readSaved();
@@ -63,7 +63,7 @@
       var r = await fetch(C.API_URL + "?action=getProducts", { method: "GET" });
       var j = await r.json();
       if (!j.ok) return null;
-      var data = { at: Date.now(), categories: j.categories || [], products: j.products || [] };
+      var data = { at: Date.now(), categories: j.categories || [], products: j.products || [], banners: j.banners || [] };
       try { localStorage.setItem(SHEET_KEY, JSON.stringify(data)); } catch (e) {}
       if (!hasData(data)) return null;
       var fresh = normalize(data);
@@ -77,7 +77,8 @@
   // Cheap fingerprint so we only re-render when the catalog actually changed.
   function sig(c) {
     return c.categories.map(function (x) { return x.id + ":" + x.name + ":" + x.imageUrl + ":" + x.order; }).join("|") +
-      " / " + c.products.map(function (x) { return x.id; }).join(",");
+      " / " + c.products.map(function (x) { return x.id; }).join(",") +
+      " / " + (c.banners || []).map(function (x) { return x.id + ":" + x.imageUrl + ":" + x.order; }).join("|");
   }
   function readSaved() { try { return JSON.parse(localStorage.getItem(SHEET_KEY)); } catch (e) { return null; } }
 
@@ -96,7 +97,11 @@
       p.price = Number(p.price); if (p.oldPrice) p.oldPrice = Number(p.oldPrice);
       return p;
     });
-    return { categories: cats, products: prods, byId: index(prods) };
+    var banners = (data.banners || []).map(function (b) {
+      return { id: String(b.id), imageUrl: b.imageUrl || b.image_url || "",
+               order: Number(b.order) || 0, link: b.link || "" };
+    }).filter(function (b) { return b.imageUrl; }).sort(function (a, b) { return a.order - b.order; });
+    return { categories: cats, products: prods, banners: banners, byId: index(prods) };
   }
   function index(arr) { var m = {}; arr.forEach(function (p) { m[p.id] = p; }); return m; }
 
@@ -107,6 +112,7 @@
   // ---------------- queries ----------------
   async function all() { return (await load()).products; }
   async function categories() { return (await load()).categories; }
+  async function banners() { return (await load()).banners || []; }
   async function get(id) { return (await load()).byId[String(id)]; }
   async function byCategory(catId) { return (await all()).filter(function (p) { return p.cat_id === String(catId); }); }
   async function bestsellers() { return (await all()).filter(function (p) { return p.badge === "bestseller"; }); }
@@ -184,7 +190,7 @@
 
   window.DATA = {
     money: money, pct: pct, load: load, all: all, categories: categories, get: get,
-    byCategory: byCategory, bestsellers: bestsellers, deals: deals, choice: choice,
+    byCategory: byCategory, bestsellers: bestsellers, deals: deals, choice: choice, banners: banners,
     search: search, catName: catName, productImage: productImage, categoryImage: categoryImage,
     iconNames: Object.keys(ICONS), safeImageUrl: safeImageUrl,
     clearSheetCache: function () { try { localStorage.removeItem(SHEET_KEY); } catch (e) {} cache = null; pending = null; }

@@ -55,7 +55,8 @@ var SHEETS = {
   categories: { name: "Categories", headers: ["id","cat_name","cat_img_url","cat_order"] },
   products:   { name: "Products",   headers: ["id","name","brand","cat_id","vendor_id","price","oldPrice","rating","reviews","badge","choice","options","color","icon","desc","imageUrl","status","createdAt","updatedAt"] },
   carts:      { name: "Carts",      headers: ["cart_id","productId","qty","createdAt","updatedAt"],
-                textCols: ["cartId","productId"] }
+                textCols: ["cartId","productId"] },
+  banners:    { name: "Banners",    headers: ["id","image_url","order"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
 var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10 };
@@ -69,6 +70,7 @@ var PERMS = {
   deleteProduct: ["superadmin", "manager"], saveCategory: ["superadmin", "manager"],
   deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
   deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
+  saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"]
 };
 
@@ -77,7 +79,7 @@ var PERMS = {
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || "health";
   try {
-    if (action === "getProducts") return json({ ok: true, categories: readCategories(), products: readProducts(false) });
+    if (action === "getProducts") return json({ ok: true, categories: readCategories(), products: readProducts(false), banners: readBanners() });
     if (action === "setupAdmin")  return json(withLock(function () { return setupAdmin(e.parameter || {}); }));
     if (action === "initSheets")  return json(withLock(function () { initSheets(); return { ok: true, message: "Sheets created / updated (columns added)." }; }));
     return json({ ok: true, status: "alive", brand: "ManoMano" });
@@ -444,7 +446,9 @@ function adminCall(b) {
       changePassword:  function () { return withLock(function () { return adminChangePassword(p, me); }); },
       listOrders:      function () { return { orders: adminOrders() }; },
       updateOrder:     function () { return withLock(function () { return adminUpdateOrder(p); }); },
-      listCatalog:     function () { return { categories: readCategories(), vendors: readSellers(), products: readProducts(true) }; },
+      listCatalog:     function () { return { categories: readCategories(), vendors: readSellers(), products: readProducts(true), banners: readBanners() }; },
+      saveBanner:      function () { return withLock(function () { return saveBannerRec(p); }); },
+      deleteBanner:    function () { return withLock(function () { return deleteBannerRec(p.id); }); },
       saveProduct:     function () { return withLock(function () { return saveRecord("products", p, validateProduct); }); },
       deleteProduct:   function () { return withLock(function () { return deleteRecord("products", p.id); }); },
       saveCategory:    function () { return withLock(function () { return saveCategoryRec(p); }); },
@@ -629,26 +633,71 @@ function deleteDriveFile(url) {
   return false;
 }
 
-// Upload a category image to Drive  categories/images, make it link-viewable,
-// and return an embeddable image URL. Returns "" if nothing valid was provided.
-function saveCategoryImage(dataUrl, name) {
+// Upload a base64 image into a Drive folder, make it link-viewable, and return
+// an embeddable image URL. Returns "" if nothing valid was provided.
+function uploadImageTo(dataUrl, name, folder, w) {
   var m = /^data:([^;]+);base64,(.*)$/.exec(String(dataUrl || ""));
   if (!m) return "";
   try {
     var ext = (m[1].split("/")[1] || "png").split("+")[0];
     var fname = String(name).replace(/[^a-z0-9]+/gi, "_").toLowerCase().slice(0, 40) + "_" + Date.now() + "." + ext;
     var blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], fname);
-    var file = categoriesImagesFolder().createFile(blob);
+    var file = folder.createFile(blob);
     try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-    return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w1000";
+    return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w" + (w || 1000);
   } catch (err) { return ""; }
 }
-function categoriesImagesFolder() {
-  return driveChild(driveChild(DriveApp.getRootFolder(), "categories"), "images");
-}
+function saveCategoryImage(dataUrl, name) { return uploadImageTo(dataUrl, name, driveImagesFolder("categories"), 1000); }
+function saveBannerImage(dataUrl, name)   { return uploadImageTo(dataUrl, name, driveImagesFolder("banners"), 1600); }
+function driveImagesFolder(top) { return driveChild(driveChild(DriveApp.getRootFolder(), top), "images"); }
 function driveChild(parent, name) {
   var it = parent.getFoldersByName(name);
   return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+/* ------------------------------ Banners ---------------------------------- */
+// Homepage hero banners — one row per slide: id | image_url | order | link.
+// Shown on the storefront in `order`; clicking a slide follows `link` (or the
+// deals page when blank).
+function readBanners() {
+  return readRows("banners").filter(function (b) { return b.id !== "" && (b.image_url || b.imageUrl); })
+    .map(function (b) {
+      return { id: Number(b.id) || b.id, imageUrl: String(b.image_url || b.imageUrl || ""),
+               order: Number(b.order) || 0, link: String(b.link || "") };
+    })
+    .sort(function (a, b) { return (a.order - b.order) || (Number(a.id) - Number(b.id)); });
+}
+
+function validateBanner(b) {
+  if (b.link !== undefined) {
+    b.link = String(b.link || "").trim();
+    if (b.link && !/^(https?:\/\/|[a-z0-9._-]+\.html)/i.test(b.link)) return "Link must be an https:// URL or a page like category.html.";
+  }
+  if (b.order !== undefined) b.order = (b.order === "" || b.order == null) ? 0 : Math.max(0, Math.floor(Number(b.order) || 0));
+  if (!b.id && !b.image_url && !b.imageData) return "A banner image is required.";
+  return "";
+}
+
+function saveBannerRec(p) {
+  var oldUrl = "";
+  if (p.id && p.imageData) {
+    var cur = readRows("banners").filter(function (b) { return String(b.id) === String(p.id); })[0];
+    if (cur) oldUrl = String(cur.image_url || "");
+  }
+  if (p.imageData) {
+    var url = saveBannerImage(p.imageData, "banner");
+    if (url) p.image_url = url;
+    delete p.imageData;
+  }
+  var res = saveRecord("banners", p, validateBanner);
+  if (res.ok && oldUrl && p.image_url && oldUrl !== p.image_url) deleteDriveFile(oldUrl);
+  return res;
+}
+function deleteBannerRec(id) {
+  var cur = readRows("banners").filter(function (b) { return String(b.id) === String(id); })[0];
+  var res = deleteRecord("banners", id);
+  if (res.ok && cur && cur.image_url) deleteDriveFile(cur.image_url);
+  return res;
 }
 function validateVendor(v) {
   // Only touch fields that were actually sent, so a status-only update (e.g.

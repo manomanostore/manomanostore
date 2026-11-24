@@ -14,6 +14,7 @@ window.ADMIN = (function () {
     deleteProduct: ["superadmin", "manager"], saveCategory: ["superadmin", "manager"],
     deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
     deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
+    saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
     listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"]
   };
   function role() { return (session && session.admin && session.admin.role) || "superadmin"; }
@@ -39,7 +40,8 @@ window.ADMIN = (function () {
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
     shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
-    key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>'
+    key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M4 18l5-5 4 4 3-3 4 4"/>'
   };
   function svg(name, size) {
     return '<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ic[name]+'</svg>';
@@ -119,7 +121,8 @@ window.ADMIN = (function () {
   /* -------------------------------- shell --------------------------------- */
   var NAV = [
     ["dashboard", "Dashboard", "dash", ADMIN_ROLES], ["orders", "Orders", "orders", ADMIN_ROLES], ["products", "Products", "box", ADMIN_ROLES],
-    ["categories", "Categories", "tag", ["superadmin", "manager"]], ["vendors", "Sellers", "store", ["superadmin", "manager"]],
+    ["categories", "Categories", "tag", ["superadmin", "manager"]], ["banners", "Banners", "image", ["superadmin", "manager"]],
+    ["vendors", "Sellers", "store", ["superadmin", "manager"]],
     ["admins", "Admins", "shield", ["superadmin"]]
   ];
   function canRoute(r) { var n = NAV.filter(function (x) { return x[0] === r; })[0]; return n && n[3].indexOf(role()) > -1; }
@@ -168,9 +171,9 @@ window.ADMIN = (function () {
     $("admTitle").textContent = NAV.filter(function (n) { return n[0] === r; })[0][1];
     document.title = $("admTitle").textContent + " — Admin";
     $("admView").onclick = null;
-    $("admView").innerHTML = '<div class="adm-loading"><span class="spinner"></span> Loading…</div>';
+    $("admView").innerHTML = skeleton();
     ({ dashboard: viewDashboard, orders: viewOrders, products: viewProducts, categories: viewCategories,
-       vendors: viewVendors, admins: viewAdmins })[r]().catch(function (e) {
+       banners: viewBanners, vendors: viewVendors, admins: viewAdmins })[r]().catch(function (e) {
       if (session) $("admView").innerHTML = '<div class="msg err">'+esc(e.message || e)+'</div>';
     });
   }
@@ -185,7 +188,7 @@ window.ADMIN = (function () {
     if (catalog && !force) return catalog;
     var res = await api("listCatalog");
     if (!res.ok) throw new Error(res.error);
-    catalog = { categories: res.categories || [], vendors: res.vendors || [], products: res.products || [] };
+    catalog = { categories: res.categories || [], vendors: res.vendors || [], products: res.products || [], banners: res.banners || [] };
     return catalog;
   }
   // After catalog edits, make sure this browser's shop shows them straight away.
@@ -194,6 +197,22 @@ window.ADMIN = (function () {
   function pill(text, kind) { return '<span class="adm-pill '+esc(kind || text)+'">'+esc(cap(text))+'</span>'; }
   function empty(title, sub, action) {
     return '<div class="adm-empty"><h3>'+esc(title)+'</h3><p>'+esc(sub)+'</p>'+(action || "")+'</div>';
+  }
+
+  // Shimmering skeleton shown while a view loads — a toolbar + table silhouette,
+  // which reads as "content is coming" far better than a lone spinner.
+  function skeleton() {
+    var row = '<div class="sk-row"><span class="sk sk-av"></span>'+
+      '<span class="sk sk-line w35"></span><span class="sk sk-line w15"></span>'+
+      '<span class="sk sk-line w15"></span><span class="sk sk-pill"></span></div>';
+    var rows = ""; for (var i = 0; i < 6; i++) rows += row;
+    return '<div class="adm-skel" aria-busy="true" aria-label="Loading">'+
+      '<div class="sk-toolbar"><span class="sk sk-line w15"></span><span class="sk sk-btn"></span></div>'+
+      '<section class="adm-card adm-flush">'+
+        '<div class="sk-head"><span class="sk sk-line w20"></span><span class="sk sk-line w10"></span>'+
+          '<span class="sk sk-line w10"></span><span class="sk sk-line w10"></span><span class="sk sk-pill"></span></div>'+
+        rows+
+      '</section></div>';
   }
 
   /* ------------------------------ dashboard ------------------------------- */
@@ -512,6 +531,85 @@ window.ADMIN = (function () {
     };
     img.onerror = function () { URL.revokeObjectURL(url); cb(""); };
     img.src = url;
+  }
+
+  /* -------------------------------- banners ------------------------------- */
+  // Hero banners shown on the homepage carousel, in display order.
+  async function viewBanners() {
+    var cat = await getCatalog();
+    var banners = (cat.banners || []).slice();
+    $("admView").innerHTML =
+      '<div class="adm-toolbar"><span class="adm-count">'+banners.length+(banners.length===1?' banner':' banners')+'</span>'+
+        '<button class="btn btn-primary adm-btn" type="button" id="addBan">'+svg("plus")+' Add banner</button></div>'+
+      (banners.length ?
+        '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
+          '<thead><tr><th>Banner</th><th>ID</th><th>Order</th><th>Link</th><th class="r">Actions</th></tr></thead><tbody>'+
+          banners.map(function (b) {
+            return '<tr>'+
+              '<td><span class="adm-ban-thumb"><img src="'+esc(DATA.safeImageUrl(b.imageUrl) || b.imageUrl)+'" alt="" loading="lazy"></span></td>'+
+              '<td class="adm-cell-sub">#'+esc(b.id)+'</td>'+
+              '<td>'+esc(b.order || 0)+'</td>'+
+              '<td class="adm-cell-sub">'+esc(b.link || "deals.html")+'</td>'+
+              '<td class="r"><div class="adm-actions">'+
+                '<button type="button" class="adm-icon-btn" data-edit="'+esc(b.id)+'" aria-label="Edit banner">'+svg("edit")+'</button>'+
+                '<button type="button" class="adm-icon-btn danger" data-del="'+esc(b.id)+'" aria-label="Delete banner">'+svg("trash")+'</button>'+
+              '</div></td></tr>';
+          }).join("")+'</tbody></table></div></section>'
+        : '<section class="adm-card">'+empty("No banners yet", "Add a banner image to show it on the homepage carousel.", '<button class="btn btn-primary" type="button" id="addBan2">Add a banner</button>')+'</section>');
+    var add = function () { bannerForm(null); };
+    if ($("addBan")) $("addBan").onclick = add;
+    if ($("addBan2")) $("addBan2").onclick = add;
+    $("admView").onclick = async function (e) {
+      var b = e.target.closest("button[data-edit],button[data-del]"); if (!b) return;
+      var rec = banners.filter(function (x) { return String(x.id) === (b.dataset.edit || b.dataset.del); })[0];
+      if (b.dataset.edit) bannerForm(rec);
+      if (b.dataset.del) {
+        if (!confirm("Delete this banner? It will be removed from the homepage.")) return;
+        var r = await api("deleteBanner", { id: rec.id });
+        if (!r.ok) { toast(r.error, true); return; }
+        catalogChanged(); toast("Banner deleted"); route();
+      }
+    };
+  }
+
+  function bannerForm(b) {
+    var isNew = !b; b = b || { imageUrl: "", order: 0 };
+    var imageData = "";
+    var existing = b.imageUrl ? (DATA.safeImageUrl(b.imageUrl) || b.imageUrl) : "";
+    // The image area IS the preview: it shows the chosen/existing banner at a
+    // true 3:1 ratio, with a drop/browse prompt until one is picked.
+    modal(isNew ? "Add banner" : "Edit banner #" + b.id,
+      f("bImg", "Banner image",
+        '<div class="adm-drop ban-drop'+(existing ? ' has-img' : '')+'" id="bDrop">'+
+          '<input id="bFile" type="file" accept="image/*" hidden>'+
+          '<img id="bPrev" class="ban-prev" alt="Banner preview"'+(existing ? ' src="'+esc(existing)+'"' : '')+'>'+
+          '<div class="ban-empty">'+svg("image", 28)+
+            '<span>Drag &amp; drop a wide banner here, or <b>browse</b></span>'+
+            '<small>Best at 1600 × 530 px (3:1)</small></div>'+
+          '<span class="ban-change">Change image</span>'+
+        '</div>', "full") +
+      f("bOrder", "Display order", '<input id="bOrder" type="number" min="0" step="1" value="'+esc(b.order || 0)+'">'),
+      async function () {
+        if (isNew && !imageData) return "Please choose a banner image.";
+        var r = await api("saveBanner", { id: isNew ? undefined : b.id, order: Number($("bOrder").value) || 0, imageData: imageData });
+        if (!r.ok) return r.error;
+        catalogChanged(); toast(isNew ? "Banner added" : "Banner saved"); route();
+      });
+
+    var drop = $("bDrop"), file = $("bFile"), prev = $("bPrev");
+    function setImg(src) { if (!src) return; prev.src = src; drop.classList.add("has-img"); }
+    function handle(file2) {
+      if (!file2 || !/^image\//.test(file2.type)) { toast("Please choose an image file.", true); return; }
+      toImage(file2, 1600, function (durl) {
+        if (!durl) { toast("Couldn't read that image.", true); return; }
+        imageData = durl; setImg(durl);
+      });
+    }
+    drop.addEventListener("click", function () { file.click(); });
+    file.addEventListener("change", function () { handle(file.files[0]); });
+    ["dragover", "dragenter"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+    ["dragleave", "dragend"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+    drop.addEventListener("drop", function (e) { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]); });
   }
 
   /* -------------------------------- vendors ------------------------------- */

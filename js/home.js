@@ -25,6 +25,7 @@ window.HOME = (function () {
   }
 
   async function paint() {
+    DATA.banners().then(setHeroBanners);   // swap in admin banners when available
     var all = await DATA.all();
     var choice = await DATA.choice();
     var best = await DATA.bestsellers();
@@ -87,49 +88,62 @@ window.HOME = (function () {
   function unique(a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); }
 
   // Auto-scrolling hero banner: 5s advance, pauses on hover/focus/tab-hidden,
-  // swipeable, dots + arrows, and respects "reduce motion".
+  // swipeable, dots + arrows, respects "reduce motion". Re-callable: controls
+  // live on the element so the slides can be swapped (admin banners) and the
+  // carousel re-initialised without stacking duplicate listeners.
   function heroCarousel() {
     var root = document.getElementById("heroCarousel"); if (!root) return;
     var track = document.getElementById("hcTrack"), dotsWrap = document.getElementById("hcDots");
-    var n = track.children.length; if (n < 2) return;
-    var i = 0, timer = null, reduce = matchMedia("(prefers-reduced-motion:reduce)").matches, dots = [];
-
-    for (var k = 0; k < n; k++) {
+    function count() { return track.children.length; }
+    var s = root._hero;
+    if (!s) {
+      s = root._hero = { i: 0, timer: null, dots: [], reduce: matchMedia("(prefers-reduced-motion:reduce)").matches };
+      s.go = function (to) {
+        var n = count(); if (!n) return;
+        s.i = (to + n) % n;
+        track.style.transform = "translateX(" + (-s.i * 100) + "%)";
+        s.dots.forEach(function (d, k) { d.classList.toggle("active", k === s.i); d.setAttribute("aria-selected", k === s.i ? "true" : "false"); });
+      };
+      s.next = function () { s.go(s.i + 1); };
+      s.prev = function () { s.go(s.i - 1); };
+      s.start = function () { if (s.reduce || s.timer || count() < 2) return; s.timer = setInterval(s.next, 5000); };
+      s.stop = function () { if (s.timer) { clearInterval(s.timer); s.timer = null; } };
+      s.restart = function () { s.stop(); s.start(); };
+      root.querySelector(".hc-next").addEventListener("click", function () { s.next(); s.restart(); });
+      root.querySelector(".hc-prev").addEventListener("click", function () { s.prev(); s.restart(); });
+      root.addEventListener("mouseenter", s.stop);
+      root.addEventListener("mouseleave", s.start);
+      root.addEventListener("focusin", s.stop);
+      root.addEventListener("focusout", s.start);
+      document.addEventListener("visibilitychange", function () { document.hidden ? s.stop() : s.start(); });
+      var x0 = null;
+      track.addEventListener("pointerdown", function (e) { x0 = e.clientX; s.stop(); });
+      window.addEventListener("pointerup", function (e) {
+        if (x0 == null) return; var dx = e.clientX - x0; x0 = null;
+        if (Math.abs(dx) > 40) (dx < 0 ? s.next : s.prev)();
+        s.start();
+      });
+    }
+    // (re)build dots for the current slide count, then restart autoplay.
+    dotsWrap.innerHTML = ""; s.dots = [];
+    for (var k = 0; k < count(); k++) {
       var d = document.createElement("button");
       d.type = "button"; d.setAttribute("role", "tab"); d.setAttribute("aria-label", "Go to banner " + (k + 1));
-      (function (idx) { d.addEventListener("click", function () { go(idx); restart(); }); })(k);
-      dotsWrap.appendChild(d); dots.push(d);
+      (function (idx) { d.addEventListener("click", function () { s.go(idx); s.restart(); }); })(k);
+      dotsWrap.appendChild(d); s.dots.push(d);
     }
-    function go(to) {
-      i = (to + n) % n;
-      track.style.transform = "translateX(" + (-i * 100) + "%)";
-      for (var k = 0; k < n; k++) { dots[k].classList.toggle("active", k === i); dots[k].setAttribute("aria-selected", k === i ? "true" : "false"); }
-    }
-    function next() { go(i + 1); }
-    function prev() { go(i - 1); }
-    function start() { if (reduce || timer) return; timer = setInterval(next, 5000); }
-    function stop() { if (timer) { clearInterval(timer); timer = null; } }
-    function restart() { stop(); start(); }
+    s.stop(); s.go(0); s.start();
+  }
 
-    root.querySelector(".hc-next").addEventListener("click", function () { next(); restart(); });
-    root.querySelector(".hc-prev").addEventListener("click", function () { prev(); restart(); });
-    root.addEventListener("mouseenter", stop);
-    root.addEventListener("mouseleave", start);
-    root.addEventListener("focusin", stop);
-    root.addEventListener("focusout", start);
-    document.addEventListener("visibilitychange", function () { document.hidden ? stop() : start(); });
-
-    // swipe (a short tap still follows the slide's link)
-    var x0 = null;
-    track.addEventListener("pointerdown", function (e) { x0 = e.clientX; stop(); });
-    window.addEventListener("pointerup", function (e) {
-      if (x0 == null) return;
-      var dx = e.clientX - x0; x0 = null;
-      if (Math.abs(dx) > 40) (dx < 0 ? next : prev)();
-      start();
-    });
-
-    go(0); start();
+  // Swap the hero slides for admin-managed banner images (when any exist).
+  function setHeroBanners(banners) {
+    var track = document.getElementById("hcTrack");
+    if (!track || !banners || !banners.length) return;         // none -> keep the built-in hero
+    track.innerHTML = banners.map(function (b) {
+      return '<a class="hc-slide" href="'+UI.esc(b.link || "deals.html")+'">'+
+        '<img src="'+UI.esc(b.imageUrl)+'" alt="Promotion" width="1600" height="533" loading="lazy"></a>';
+    }).join("");
+    heroCarousel();
   }
 
   return { init: init };
