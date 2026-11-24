@@ -52,9 +52,9 @@ var SHEETS = {
                 textCols: ["phone","email","passwordHash"] },
   orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt"],
                 textCols: ["identifier"] },
-  categories: { name: "Categories", headers: ["id","cate_name","cat_img_url","cat_order"] },
-  products:   { name: "Products",   headers: ["id","name","brand","cat_id","vendor_id","price","oldPrice","rating","reviews","badge","choice","options","color","icon","desc","imageUrl","status"] },
-  carts:      { name: "Carts",      headers: ["id","cartId","productId","name","price","qty","createdAt","updatedAt"],
+  categories: { name: "Categories", headers: ["id","cat_name","cat_img_url","cat_order"] },
+  products:   { name: "Products",   headers: ["id","name","brand","cat_id","vendor_id","price","oldPrice","rating","reviews","badge","choice","options","color","icon","desc","imageUrl","status","createdAt","updatedAt"] },
+  carts:      { name: "Carts",      headers: ["cart_id","productId","qty","createdAt","updatedAt"],
                 textCols: ["cartId","productId"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires

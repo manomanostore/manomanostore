@@ -15,7 +15,7 @@ window.CONFIG = {
   // Paste the Apps Script Web App URL here after deploying (see apps-script/README.md).
   // While empty, the site runs fully from /data/products.json and localStorage,
   // so GitHub Pages works immediately. Auth/orders need this URL to persist.
-  API_URL: "https://script.google.com/macros/s/AKfycbwVhsJcZ7g2uDPtugfVbNNbEJp4_nlc9UM8NQwzkaXw_7JFfKZMD1iRo4MgWKZlZ4L28g/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbzdECGUD2SsP2tQm4hP8MOGVW0nK8EPv2mcuFpMGHpbBxBTubcHfOUV1DI7SHf8GWxp/exec",
 
   // --- MISC -----------------------------------------------------------------
   FREE_SHIPPING_LABEL: "Free shipping",
