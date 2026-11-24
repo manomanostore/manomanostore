@@ -19,6 +19,12 @@ window.HOME = (function () {
   async function init() {
     heroCarousel();                 // runs immediately — never waits on the catalog
     watchHeroHeights();
+    await paint();
+    // Re-render when the Sheet catalog arrives/changes (e.g. new categories).
+    document.addEventListener("catalog:change", function () { paint(); });
+  }
+
+  async function paint() {
     var all = await DATA.all();
     var choice = await DATA.choice();
     var best = await DATA.bestsellers();

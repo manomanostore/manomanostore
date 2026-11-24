@@ -231,14 +231,20 @@ function orderObj(r) {
 /* ------------------------------ Products --------------------------------- */
 
 // Each category is one row; each product points at exactly one category via cat_id.
-// Columns: id | cate_name | cat_img_url | cat_order. Returned in cat_order order
-// with a frontend-friendly shape (name / imageUrl / order). `cate_name`/`name`
-// are both accepted so a not-yet-migrated sheet still reads.
+// Columns: id | cat_name | cat_img_url | cat_order. Returned in cat_order order
+// with a frontend-friendly shape (name / imageUrl / order). The name column is
+// read whether it's spelled cat_name, cate_name or name, so a differently-named
+// header still works.
+function catNameOf(c) {
+  return String(c.cat_name !== undefined ? c.cat_name
+              : c.cate_name !== undefined ? c.cate_name
+              : (c.name || ""));
+}
 function readCategories() {
   return readRows("categories").filter(function (c) { return c.id !== ""; })
     .map(function (c) {
       return { id: Number(c.id) || c.id,
-               name: String(c.cate_name !== undefined ? c.cate_name : (c.name || "")),
+               name: catNameOf(c),
                imageUrl: String(c.cat_img_url || ""),
                order: Number(c.cat_order) || 0 };
     })
@@ -442,9 +448,9 @@ function adminCall(b) {
       saveProduct:     function () { return withLock(function () { return saveRecord("products", p, validateProduct); }); },
       deleteProduct:   function () { return withLock(function () { return deleteRecord("products", p.id); }); },
       saveCategory:    function () { return withLock(function () { return saveCategoryRec(p); }); },
-      deleteCategory:  function () { return withLock(function () { return deleteIfUnused("categories", p.id, "cat_id", "category"); }); },
+      deleteCategory:  function () { return withLock(function () { return deleteCategoryRec(p.id); }); },
       saveVendor:      function () { return withLock(function () { return saveRecord("sellers", p, validateVendor); }); },
-      deleteVendor:    function () { return withLock(function () { return deleteIfUnused("sellers", p.id, "vendor_id", "seller"); }); },
+      deleteVendor:    function () { return withLock(function () { return deleteSellerRec(p.id); }); },
       importCatalog:   function () { return withLock(function () {
                            if (readRows("products").length && !p.overwrite) return { ok: false, error: "The Products tab already has data." };
                            var r = importCatalog(p.data || {}); return { ok: true, imported: r }; }); }
@@ -542,6 +548,21 @@ function deleteIfUnused(key, id, fkCol, label) {
   return deleteRecord(key, id);
 }
 
+// Deleting a category also removes its Drive image; deleting a seller removes
+// their certificate files — so nothing is left orphaned in Drive.
+function deleteCategoryRec(id) {
+  var cur = readRows("categories").filter(function (c) { return String(c.id) === String(id); })[0];
+  var res = deleteIfUnused("categories", id, "cat_id", "category");
+  if (res.ok && cur && cur.cat_img_url) deleteDriveFile(cur.cat_img_url);
+  return res;
+}
+function deleteSellerRec(id) {
+  var cur = readRows("sellers").filter(function (v) { return String(v.id) === String(id); })[0];
+  var res = deleteIfUnused("sellers", id, "vendor_id", "seller");
+  if (res.ok && cur) { deleteDriveFile(cur.certFront); deleteDriveFile(cur.certBack); }
+  return res;
+}
+
 function validateProduct(p) {
   p.name = String(p.name || "").trim();
   if (!p.name) return "Product name is required.";
@@ -559,10 +580,12 @@ function validateProduct(p) {
   return "";
 }
 function validateCategory(c) {
-  // Only touch fields that were sent, so a partial update doesn't blank others.
-  if (c.cate_name !== undefined || c.name !== undefined)
-    c.cate_name = String(c.cate_name !== undefined ? c.cate_name : c.name).trim();
-  if (!c.id && !c.cate_name) return "Category name is required.";
+  // Accept the name under any spelling (cat_name / cate_name / name) and write it
+  // back to the actual column key (cat_name), so a form/sheet mismatch can't drop
+  // the name. Only touch the name when one was sent (partial updates stay intact).
+  if (c.cat_name !== undefined || c.cate_name !== undefined || c.name !== undefined)
+    c.cat_name = catNameOf(c).trim();
+  if (!c.id && !c.cat_name) return "Category name is required.";
   if (c.cat_img_url && !/^(https?:\/\/|images\/)/i.test(String(c.cat_img_url)))
     return "Category image must be an uploaded file or an https:// URL.";
   if (c.cat_order !== undefined)
@@ -571,14 +594,39 @@ function validateCategory(c) {
 }
 
 // saveCategory wrapper: if the admin attached an image (base64 data URL), upload
-// it to Drive  categories/images  and store the resulting public URL.
+// it to Drive  categories/images, store the URL, and delete the PREVIOUS image
+// from Drive so replaced files never pile up.
 function saveCategoryRec(p) {
+  var oldUrl = "";
+  if (p.id && p.imageData) {
+    var cur = readRows("categories").filter(function (c) { return String(c.id) === String(p.id); })[0];
+    if (cur) oldUrl = String(cur.cat_img_url || "");
+  }
   if (p.imageData) {
-    var url = saveCategoryImage(p.imageData, p.cate_name || p.name || "category");
+    var url = saveCategoryImage(p.imageData, catNameOf(p) || "category");
     if (url) p.cat_img_url = url;
     delete p.imageData;
   }
-  return saveRecord("categories", p, validateCategory);
+  var res = saveRecord("categories", p, validateCategory);
+  if (res.ok && oldUrl && p.cat_img_url && oldUrl !== p.cat_img_url) deleteDriveFile(oldUrl);
+  return res;
+}
+
+// Delete a file we stored in Drive, given one of our image/cert URLs. Prefers
+// PERMANENT deletion via the advanced Drive service (enable it in the Apps
+// Script project: Services → “Drive API”); falls back to Trash (auto-purged in
+// ~30 days) when that service isn't enabled.
+function driveIdFromUrl(url) {
+  url = String(url || "");
+  var m = /[?&]id=([a-zA-Z0-9_-]+)/.exec(url) || /\/file\/d\/([a-zA-Z0-9_-]+)/.exec(url) || /\/d\/([a-zA-Z0-9_-]+)/.exec(url);
+  return m ? m[1] : "";
+}
+function deleteDriveFile(url) {
+  var id = driveIdFromUrl(url);
+  if (!id) return false;
+  try { if (typeof Drive !== "undefined" && Drive.Files && Drive.Files.remove) { Drive.Files.remove(id); return true; } } catch (e) {}
+  try { DriveApp.getFileById(id).setTrashed(true); return true; } catch (e) {}
+  return false;
 }
 
 // Upload a category image to Drive  categories/images, make it link-viewable,

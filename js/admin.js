@@ -430,12 +430,22 @@ window.ADMIN = (function () {
     $("admView").innerHTML =
       '<div class="adm-toolbar"><span class="adm-count">'+cat.categories.length+' categories</span>'+
         '<button class="btn btn-primary adm-btn" type="button" id="addCat">'+svg("plus")+' Add category</button></div>'+
-      (cat.categories.length ? '<div class="adm-cat-grid">'+cat.categories.map(function (c) {
-        return '<article class="adm-cat"><img src="'+DATA.categoryImage(c)+'" alt="">'+
-          '<div class="adm-cat-body"><div><strong>'+esc(c.name)+'</strong><span>#'+esc(c.id)+' · '+(count[String(c.id)] || 0)+' products</span></div>'+
-          '<div class="adm-actions"><button type="button" class="adm-icon-btn" data-edit="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+svg("edit")+'</button>'+
-          '<button type="button" class="adm-icon-btn danger" data-del="'+esc(c.id)+'" aria-label="Delete '+esc(c.name)+'">'+svg("trash")+'</button></div></div></article>';
-      }).join("")+'</div>' : '<section class="adm-card">'+empty("No categories", "Add a category, or import the sample catalog from Products.")+'</section>');
+      (cat.categories.length ?
+        '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
+          '<thead><tr><th>Category</th><th>ID</th><th>Order</th><th>Products</th><th class="r">Actions</th></tr></thead><tbody>'+
+          cat.categories.map(function (c) {
+            return '<tr>'+
+              '<td><div class="adm-user"><span class="adm-cat-thumb"><img src="'+DATA.categoryImage(c)+'" alt="" loading="lazy"></span>'+
+                '<span class="adm-cell-main">'+esc(c.name)+'</span></div></td>'+
+              '<td class="adm-cell-sub">#'+esc(c.id)+'</td>'+
+              '<td>'+esc(c.order || 0)+'</td>'+
+              '<td>'+(count[String(c.id)] || 0)+'</td>'+
+              '<td class="r"><div class="adm-actions">'+
+                '<button type="button" class="adm-icon-btn" data-edit="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+svg("edit")+'</button>'+
+                '<button type="button" class="adm-icon-btn danger" data-del="'+esc(c.id)+'" aria-label="Delete '+esc(c.name)+'">'+svg("trash")+'</button>'+
+              '</div></td></tr>';
+          }).join("")+'</tbody></table></div></section>'
+        : '<section class="adm-card">'+empty("No categories", "Add a category, or import the sample catalog from Products.")+'</section>');
     $("addCat").onclick = function () { categoryForm(null); };
     $("admView").onclick = async function (e) {
       var b = e.target.closest("button"); if (!b) return;
@@ -464,7 +474,7 @@ window.ADMIN = (function () {
         var name = $("cName").value.trim();
         if (!name) return "Category name is required.";
         var r = await api("saveCategory", { id: isNew ? undefined : c.id,
-          cate_name: name, cat_order: Number($("cOrder").value) || 0, imageData: imageData });
+          cat_name: name, cat_order: Number($("cOrder").value) || 0, imageData: imageData });
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Category added" : "Category saved"); route();
       });
@@ -655,6 +665,7 @@ window.ADMIN = (function () {
       '<div class="adm-modal-head"><h2 id="mTitle">'+esc(title)+'</h2><button type="button" class="adm-icon-btn" data-close aria-label="Close">'+svg("close", 20)+'</button></div>'+
       '<div class="adm-modal-body"><div id="mMsg"></div>'+body+'</div>'+
       '<div class="adm-modal-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary" id="mSave">Save</button></div>'+
+      '<div class="adm-busy" aria-hidden="true"><span class="spinner lg"></span><span class="adm-busy-txt">Saving…</span></div>'+
     '</form>';
     document.body.appendChild(wrap);
     document.documentElement.classList.add("no-scroll");
@@ -664,13 +675,25 @@ window.ADMIN = (function () {
     wrap.addEventListener("mousedown", function (e) { if (e.target === wrap) close(); });
     wrap.querySelectorAll("[data-close]").forEach(function (b) { b.onclick = close; });
     var first = wrap.querySelector("input,select,textarea"); if (first) first.focus();
-    wrap.querySelector("form").addEventListener("submit", async function (e) {
+    var form = wrap.querySelector("form");
+    form.addEventListener("submit", async function (e) {
       e.preventDefault();
-      var save = $("mSave"); save.disabled = true; save.textContent = "Saving…";
+      var save = $("mSave");
+      save.disabled = true;
+      save.innerHTML = '<span class="spinner sm"></span> Saving…';
+      // Lock the dialog and show a processing overlay (the save may upload an
+      // image to Drive, which takes a moment) so it never looks frozen.
+      form.classList.add("busy");
+      wrap.querySelectorAll("[data-close]").forEach(function (b) { b.disabled = true; });
       var err;
       try { err = await onSave(); } catch (x) { err = x.message; }
-      if (err) { save.disabled = false; save.textContent = "Save"; $("mMsg").innerHTML = '<div class="msg err" role="alert">'+esc(err)+'</div>'; wrap.querySelector(".adm-modal-body").scrollTop = 0; }
-      else close();
+      if (err) {
+        save.disabled = false; save.textContent = "Save";
+        form.classList.remove("busy");
+        wrap.querySelectorAll("[data-close]").forEach(function (b) { b.disabled = false; });
+        $("mMsg").innerHTML = '<div class="msg err" role="alert">'+esc(err)+'</div>';
+        wrap.querySelector(".adm-modal-body").scrollTop = 0;
+      } else close();
     });
   }
 

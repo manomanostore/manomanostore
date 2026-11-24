@@ -1,3 +1,65 @@
+/* ============================ i18n (EN / HI) ============================ */
+/* Lightweight two-language layer. Mark any element with data-i18n="key"
+   (textContent), data-i18n-ph="key" (placeholder) or data-i18n-al="key"
+   (aria-label); I18N.apply() fills them for the current language, and a
+   MutationObserver auto-translates anything added later (dynamic cards, other
+   pages). Product data from the sheet stays in its original language. */
+window.I18N = (function () {
+  var KEY = "mm_lang";
+  var LANGS = { en: { name: "English", flag: "🇬🇧", code: "EN" }, hi: { name: "हिन्दी", flag: "🇮🇳", code: "HI" } };
+  var DICT = {
+    en: {
+      "nav.home": "Home", "nav.flash": "Flash Sale", "nav.blogs": "Blogs", "nav.brands": "All Brands", "nav.cats": "All categories",
+      "search.ph": "What are you looking for?", "lang.label": "Language", "a11y.account": "Account", "a11y.basket": "Basket", "a11y.menu": "Menu",
+      "foot.information": "Information", "foot.track": "Track orders", "foot.returns": "Returns", "foot.help": "Need help?", "foot.contact": "Contact us", "foot.seller": "Become a seller",
+      "foot.more": "Find out more", "foot.advice": "Our advice", "foot.popcats": "Popular categories", "foot.best": "Best sellers", "foot.brands": "Our brands", "foot.secure": "Secure payment",
+      "drawer.browse": "Browse", "drawer.catalog": "Catalog", "drawer.account": "Account", "drawer.signin": "Sign in / Register", "drawer.today": "Today's deals",
+      "bn.home": "Home", "bn.cats": "Categories", "bn.deals": "Deals", "bn.basket": "Basket", "bn.account": "Account",
+      "home.today": "Today's Deals", "home.hot": "Hot", "home.seeall": "See all deals ›", "home.topsel": "Our top selection",
+      "home.best": "Our best sellers", "home.seeall2": "See all", "home.shopcat": "Shop by category", "home.finds": "Today's best finds",
+      "home.sponsored": "Sponsored", "home.brands": "Our biggest brands", "cta.add": "Add"
+    },
+    hi: {
+      "nav.home": "होम", "nav.flash": "फ्लैश सेल", "nav.blogs": "ब्लॉग", "nav.brands": "सभी ब्रांड", "nav.cats": "सभी श्रेणियाँ",
+      "search.ph": "आप क्या ढूँढ रहे हैं?", "lang.label": "भाषा", "a11y.account": "खाता", "a11y.basket": "बास्केट", "a11y.menu": "मेन्यू",
+      "foot.information": "जानकारी", "foot.track": "ऑर्डर ट्रैक करें", "foot.returns": "रिटर्न", "foot.help": "मदद चाहिए?", "foot.contact": "संपर्क करें", "foot.seller": "विक्रेता बनें",
+      "foot.more": "और जानें", "foot.advice": "हमारी सलाह", "foot.popcats": "लोकप्रिय श्रेणियाँ", "foot.best": "बेस्ट सेलर", "foot.brands": "हमारे ब्रांड", "foot.secure": "सुरक्षित भुगतान",
+      "drawer.browse": "ब्राउज़ करें", "drawer.catalog": "कैटलॉग", "drawer.account": "खाता", "drawer.signin": "साइन इन / रजिस्टर", "drawer.today": "आज के ऑफ़र",
+      "bn.home": "होम", "bn.cats": "श्रेणियाँ", "bn.deals": "ऑफ़र", "bn.basket": "बास्केट", "bn.account": "खाता",
+      "home.today": "आज के ऑफ़र", "home.hot": "हॉट", "home.seeall": "सभी ऑफ़र देखें ›", "home.topsel": "हमारा शीर्ष चयन",
+      "home.best": "हमारे बेस्ट सेलर", "home.seeall2": "सभी देखें", "home.shopcat": "श्रेणी अनुसार खरीदें", "home.finds": "आज की बेहतरीन खोज",
+      "home.sponsored": "प्रायोजित", "home.brands": "हमारे सबसे बड़े ब्रांड", "cta.add": "जोड़ें"
+    }
+  };
+  var lang = read();
+  function read() { try { var l = localStorage.getItem(KEY); return LANGS[l] ? l : "en"; } catch (e) { return "en"; } }
+  function t(k) { var d = DICT[lang] || {}; return d[k] != null ? d[k] : (DICT.en[k] != null ? DICT.en[k] : k); }
+  function one(el) {
+    var k = el.getAttribute("data-i18n"); if (k != null) el.textContent = t(k);
+    var p = el.getAttribute("data-i18n-ph"); if (p != null) el.setAttribute("placeholder", t(p));
+    var a = el.getAttribute("data-i18n-al"); if (a != null) el.setAttribute("aria-label", t(a));
+  }
+  function apply(root) {
+    root = root || document;
+    if (root.nodeType === 1 && (root.hasAttribute("data-i18n") || root.hasAttribute("data-i18n-ph") || root.hasAttribute("data-i18n-al"))) one(root);
+    if (root.querySelectorAll) root.querySelectorAll("[data-i18n],[data-i18n-ph],[data-i18n-al]").forEach(one);
+  }
+  function setLang(l) {
+    if (!LANGS[l] || l === lang) return;
+    lang = l; try { localStorage.setItem(KEY, l); } catch (e) {}
+    document.documentElement.setAttribute("lang", l);
+    apply(document);
+    document.dispatchEvent(new CustomEvent("i18n:change", { detail: { lang: l } }));
+  }
+  document.documentElement.setAttribute("lang", lang);
+  if ("MutationObserver" in window) {
+    new MutationObserver(function (muts) {
+      muts.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) apply(n); }); });
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  return { t: t, apply: apply, setLang: setLang, get: function () { return lang; }, langs: LANGS };
+})();
+
 /* =============================== UI shell ================================ */
 (function () {
   var C = window.CONFIG;
@@ -25,56 +87,67 @@
     return esc(n.slice(0,cut)) + "<b>" + esc(n.slice(cut)) + "</b>";
   }
 
-  function navLink(label, href, on) {
-    return '<a class="nav-link'+(on ? ' active' : '')+'" href="'+href+'"'+(on ? ' aria-current="page"' : '')+'>'+esc(label)+'</a>';
+  function navLink(key, label, href, on) {
+    return '<a class="nav-link'+(on ? ' active' : '')+'" href="'+href+'" data-i18n="'+key+'"'+(on ? ' aria-current="page"' : '')+'>'+esc(label)+'</a>';
+  }
+
+  // Language dropdown (flags) — sits just before the account icon.
+  function langSwitch() {
+    return '<div class="lang-switch" id="langSwitch">'+
+      '<button class="icon-btn lang-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" data-i18n-al="lang.label">'+
+        '<span class="lang-cur" id="langCur"></span>'+
+      '</button>'+
+      '<div class="lang-menu" id="langMenu" role="menu" hidden></div>'+
+    '</div>';
   }
 
   function header(active) {
     return '' +
     '<header class="app">' +
       '<div class="app-top"><div class="app-bar">' +
-        '<button class="icon-btn" id="menuBtn" aria-label="Menu">'+ic.menu+'</button>'+
+        '<button class="icon-btn" id="menuBtn" data-i18n-al="a11y.menu" aria-label="Menu">'+ic.menu+'</button>'+
         '<a class="brand" href="index.html">'+LOGO+'<span>'+brandMarkup()+'</span></a>'+
         '<form class="search" id="searchForm" role="search">'+ic.search+
-          '<input id="searchInput" type="search" placeholder="What are you looking for?" aria-label="Search products" autocomplete="off">'+
+          '<input id="searchInput" type="search" placeholder="What are you looking for?" data-i18n-ph="search.ph" aria-label="Search products" autocomplete="off">'+
         '</form>'+
-        '<a class="icon-btn" href="login.html" aria-label="Account">'+ic.user+'</a>'+
-        '<a class="icon-btn" href="cart.html" aria-label="Basket">'+ic.cart+'<span class="cart-count" data-cart-count hidden>0</span></a>'+
+        langSwitch()+
+        '<a class="icon-btn" href="login.html" data-i18n-al="a11y.account" aria-label="Account">'+ic.user+'</a>'+
+        '<a class="icon-btn" href="cart.html" data-i18n-al="a11y.basket" aria-label="Basket">'+ic.cart+'<span class="cart-count" data-cart-count hidden>0</span></a>'+
       '</div></div>'+
       '<div class="nav-row"><nav class="scroll-x nav-links" aria-label="Main menu">'+
-        navLink("Home", "index.html", active === "home") +
-        navLink("Flash Sale", "deals.html", active === "deals") +
-        navLink("Blogs", "blog.html", active === "blog") +
-        navLink("All Brands", "brands.html", active === "brands") +
-        navLink("All categories", "category.html", active === "cats") +
+        navLink("nav.home", "Home", "index.html", active === "home") +
+        navLink("nav.flash", "Flash Sale", "deals.html", active === "deals") +
+        navLink("nav.blogs", "Blogs", "blog.html", active === "blog") +
+        navLink("nav.brands", "All Brands", "brands.html", active === "brands") +
+        navLink("nav.cats", "All categories", "category.html", active === "cats") +
       '</nav></div>'+
     '</header>';
   }
 
   function bottomNav(active) {
-    function a(key, href, label, icon, badge) {
+    function a(key, href, i18n, label, icon, badge) {
       return '<a href="'+href+'" class="'+(active===key?'active':'')+'">'+icon+
-        (badge?'<span class="nc" data-cart-count hidden>0</span>':'')+'<span>'+label+'</span></a>';
+        (badge?'<span class="nc" data-cart-count hidden>0</span>':'')+'<span data-i18n="'+i18n+'">'+label+'</span></a>';
     }
     return '<nav class="bottom-nav">'+
-      a('home','index.html','Home',ic.home)+
-      a('cats','category.html','Categories',ic.grid)+
-      a('deals','deals.html','Deals',ic.tag)+
-      a('cart','cart.html','Basket',ic.cart,true)+
-      a('account','login.html','Account',ic.user)+
+      a('home','index.html','bn.home','Home',ic.home)+
+      a('cats','category.html','bn.cats','Categories',ic.grid)+
+      a('deals','deals.html','bn.deals','Deals',ic.tag)+
+      a('cart','cart.html','bn.basket','Basket',ic.cart,true)+
+      a('account','login.html','bn.account','Account',ic.user)+
     '</nav>';
   }
 
   function footer() {
     var cols = [
-      ['Information', [['Track orders','account.html'],['Returns','#'],['Need help?','#'],['Contact us','#'],['Become a seller','sell.html']]],
-      ['Find out more', [['Our advice','blog.html'],['Popular categories','category.html'],['Best sellers','deals.html'],['Our brands','brands.html']]]
+      ['foot.information', 'Information', [['foot.track','Track orders','account.html'],['foot.returns','Returns','#'],['foot.help','Need help?','#'],['foot.contact','Contact us','#'],['foot.seller','Become a seller','sell.html']]],
+      ['foot.more', 'Find out more', [['foot.advice','Our advice','blog.html'],['foot.popcats','Popular categories','category.html'],['foot.best','Best sellers','deals.html'],['foot.brands','Our brands','brands.html']]]
     ];
     var html = '<footer class="app"><div class="cols">';
     cols.forEach(function (c) {
-      html += '<div><h4>'+c[0]+'</h4>'+c[1].map(function (l) { return '<a href="'+l[1]+'">'+l[0]+'</a>'; }).join('')+'</div>';
+      html += '<div><h4 data-i18n="'+c[0]+'">'+c[1]+'</h4>'+c[2].map(function (l) { return '<a href="'+l[2]+'" data-i18n="'+l[0]+'">'+l[1]+'</a>'; }).join('')+'</div>';
     });
-    html += '<div><h4>Secure payment</h4><div class="pay">'+
+    html += '<div><h4 data-i18n="foot.secure">Secure payment</h4><div class="pay">'+
       ['VISA','MC','AMEX','PayPal','G Pay','Pay'].map(function(p){return '<span>'+p+'</span>';}).join('')+
       '</div><p style="margin-top:16px;font-size:13px">'+esc(C.BRAND_TAGLINE)+'</p></div>';
     html += '</div><div class="copy">© '+new Date().getFullYear()+' '+esc(C.BRAND_NAME)+' · Demo store. All products & imagery are original placeholders.</div></footer>';
@@ -86,12 +159,12 @@
   function drawer() {
     return '<div class="drawer-back" id="drawerBack"></div>'+
       '<aside class="drawer" id="drawer">'+
-        '<div class="d-head"><strong style="font-size:18px">Browse '+esc(C.BRAND_NAME)+'</strong>'+
+        '<div class="d-head"><strong style="font-size:18px"><span data-i18n="drawer.browse">Browse</span> '+esc(C.BRAND_NAME)+'</strong>'+
           '<button class="icon-btn" id="drawerClose" style="color:var(--ink)">'+ic.close+'</button></div>'+
-        '<h3>Catalog</h3><div id="drawerCats"></div>'+
-        '<h3>Account</h3>'+
-        '<a class="d-item" href="login.html"><span class="di">'+ic.user+'Sign in / Register</span>'+ic.chev+'</a>'+
-        '<a class="d-item" href="deals.html"><span class="di">'+ic.tag+'Today\'s deals</span>'+ic.chev+'</a>'+
+        '<h3 data-i18n="drawer.catalog">Catalog</h3><div id="drawerCats"></div>'+
+        '<h3 data-i18n="drawer.account">Account</h3>'+
+        '<a class="d-item" href="login.html"><span class="di">'+ic.user+'<span data-i18n="drawer.signin">Sign in / Register</span></span>'+ic.chev+'</a>'+
+        '<a class="d-item" href="deals.html"><span class="di">'+ic.tag+'<span data-i18n="drawer.today">Today\'s deals</span></span>'+ic.chev+'</a>'+
       '</aside>';
   }
 
@@ -138,10 +211,37 @@
     document.getElementById("drawerClose").addEventListener("click",closeD);
     document.getElementById("drawerBack").addEventListener("click",closeD);
 
+    languageSwitcher();
     updateCartBadges();
     document.addEventListener("cart:change", updateCartBadges);
     stickyHeader();
     passwordToggles();
+    I18N.apply(document);   // immediate pass so there's no English flash in Hindi
+  }
+
+  // Wire the header language dropdown (flags). Selecting a language re-applies
+  // translations in place — no reload — via I18N.
+  function languageSwitcher() {
+    var sw = document.getElementById("langSwitch"); if (!sw) return;
+    var btn = document.getElementById("langBtn"), menu = document.getElementById("langMenu"), cur = document.getElementById("langCur");
+    var langs = I18N.langs;
+    menu.innerHTML = Object.keys(langs).map(function (l) {
+      return '<button type="button" class="lang-opt" role="menuitem" data-lang="'+l+'">'+
+        '<span class="lang-flag">'+langs[l].flag+'</span><span>'+esc(langs[l].name)+'</span></button>';
+    }).join("");
+    function paint() {
+      var l = I18N.get();
+      cur.innerHTML = '<span class="lang-flag">'+langs[l].flag+'</span><span class="lang-code">'+esc(langs[l].code)+'</span>';
+      menu.querySelectorAll(".lang-opt").forEach(function (o) { o.classList.toggle("on", o.dataset.lang === l); });
+    }
+    function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+    function open() { menu.hidden = false; btn.setAttribute("aria-expanded", "true"); }
+    btn.addEventListener("click", function (e) { e.stopPropagation(); menu.hidden ? open() : close(); });
+    menu.addEventListener("click", function (e) { var o = e.target.closest(".lang-opt"); if (!o) return; I18N.setLang(o.dataset.lang); close(); });
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    document.addEventListener("i18n:change", paint);
+    paint();
   }
 
   // Show/hide button on every password field on every page — including fields

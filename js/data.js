@@ -24,16 +24,21 @@
     return pending;
   }
 
+  function hasData(d) { return d && ((d.categories && d.categories.length) || (d.products && d.products.length)); }
+
   async function loadFresh() {
     var saved = readSaved();
-    if (saved && saved.products && saved.products.length) {
+    // The Sheet is authoritative once it has ANY data (categories and/or
+    // products) — so admin-added categories show even before any product exists.
+    if (hasData(saved)) {
       if (Date.now() - saved.at > REFRESH_MS) refreshFromSheet();
       return normalize(saved);
     }
     // Embedded catalog (data/catalog.js) — works even from file:// where fetch
-    // of a local JSON file is blocked. The Sheet still refreshes in the background.
+    // of a local JSON file is blocked. Always check the Sheet in the background
+    // on a fresh device, and live-swap to it when it answers.
     if (window.__CATALOG && window.__CATALOG.products && window.__CATALOG.products.length) {
-      if (!saved || Date.now() - saved.at > REFRESH_MS) refreshFromSheet();
+      refreshFromSheet();
       return normalize(window.__CATALOG);
     }
     try {
@@ -49,7 +54,9 @@
     }
   }
 
-  // Fetch the Sheet catalog and remember it. Resolves with the data, or null.
+  // Fetch the Sheet catalog and remember it. When it brings something new, swap
+  // it into the in-memory cache and tell pages to re-render ("catalog:change"),
+  // so Sheet edits (e.g. new categories) appear without a manual reload.
   async function refreshFromSheet() {
     if (!C.API_URL) return null;
     try {
@@ -57,10 +64,20 @@
       var j = await r.json();
       if (!j.ok) return null;
       var data = { at: Date.now(), categories: j.categories || [], products: j.products || [] };
-      // Empty Sheet: remember that too, so we don't keep asking on every page.
       try { localStorage.setItem(SHEET_KEY, JSON.stringify(data)); } catch (e) {}
-      return data.products.length ? data : null;
+      if (!hasData(data)) return null;
+      var fresh = normalize(data);
+      if (!cache || sig(cache) !== sig(fresh)) {
+        cache = fresh;
+        try { document.dispatchEvent(new CustomEvent("catalog:change")); } catch (e) {}
+      }
+      return data;
     } catch (e) { return null; }
+  }
+  // Cheap fingerprint so we only re-render when the catalog actually changed.
+  function sig(c) {
+    return c.categories.map(function (x) { return x.id + ":" + x.name + ":" + x.imageUrl + ":" + x.order; }).join("|") +
+      " / " + c.products.map(function (x) { return x.id; }).join(",");
   }
   function readSaved() { try { return JSON.parse(localStorage.getItem(SHEET_KEY)); } catch (e) { return null; } }
 
@@ -69,7 +86,7 @@
   function normalize(data) {
     var cats = ((data.categories && data.categories.length) ? data.categories : DEFAULT_CATS).map(function (c) {
       return { id: String(c.id),
-               name: c.name || c.cate_name || "",
+               name: c.name || c.cat_name || c.cate_name || "",
                imageUrl: c.imageUrl || c.cat_img_url || "",
                order: Number(c.order != null ? c.order : c.cat_order) || 0,
                icon: c.icon, color: c.color };   // kept for fallback art when no image
