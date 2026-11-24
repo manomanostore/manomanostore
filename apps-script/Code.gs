@@ -748,14 +748,27 @@ function bannerActive(v) {
   var s = String(v == null ? "" : v).trim().toLowerCase();
   return !(s === "0" || s === "hidden" || s === "inactive" || s === "false" || s === "no");
 }
+// Locate the Banners columns tolerantly: match each header name (trimmed, case-
+// insensitive) and fall back to the fixed layout id|image_url|order|status by
+// POSITION. This is why banners — a tab people add by hand — can't be broken by
+// a mistyped header such as "ID", "id " or a stray space in cell A1: the id is
+// still read from column A even when its header text isn't exactly "id".
+function bannerCols() {
+  var rows = sheet("banners").getDataRange().getValues();
+  var hdr = (rows[0] || []).map(function (x) { return String(x == null ? "" : x).trim().toLowerCase(); });
+  function col(name, fallback) { var i = hdr.indexOf(name); return i >= 0 ? i : fallback; }
+  return { rows: rows, id: col("id", 0), url: col("image_url", 1), order: col("order", 2), status: col("status", 3) };
+}
 function readBanners(includeHidden) {
-  return readRows("banners").filter(function (b) { return b.id !== "" && (b.image_url || b.imageUrl); })
-    .map(function (b) {
-      return { id: Number(b.id) || b.id, imageUrl: String(b.image_url || b.imageUrl || ""),
-               order: Number(b.order) || 0, status: bannerActive(b.status) ? "active" : "hidden" };
-    })
-    .filter(function (b) { return includeHidden || b.status === "active"; })
-    .sort(function (a, b) { return (a.order - b.order) || (Number(a.id) - Number(b.id)); });
+  var b = bannerCols(), out = [];
+  for (var i = 1; i < b.rows.length; i++) {
+    var r = b.rows[i], id = r[b.id], url = String(r[b.url] == null ? "" : r[b.url]);
+    if (!url) continue;                     // a banner must have an image
+    out.push({ id: Number(id) || id, imageUrl: url,
+               order: Number(r[b.order]) || 0, status: bannerActive(r[b.status]) ? "active" : "hidden" });
+  }
+  return out.filter(function (x) { return includeHidden || x.status === "active"; })
+    .sort(function (a, c) { return (a.order - c.order) || (Number(a.id) - Number(c.id)); });
 }
 
 function validateBanner(b) {
@@ -773,8 +786,11 @@ function validateBanner(b) {
 function bannerRowIdByUrl(url) {
   url = String(url || "");
   if (!url) return "";
-  var r = readRows("banners").filter(function (b) { return String(b.image_url || b.imageUrl || "") === url; })[0];
-  return r ? r.id : "";
+  var b = bannerCols();
+  for (var i = 1; i < b.rows.length; i++) {
+    if (String(b.rows[i][b.url] == null ? "" : b.rows[i][b.url]) === url) return b.rows[i][b.id];
+  }
+  return "";
 }
 function saveBannerRec(p) {
   if ((p.id === "" || p.id == null) && p.matchUrl) p.id = bannerRowIdByUrl(p.matchUrl);
