@@ -68,7 +68,7 @@ window.HOME = (function () {
     }).join("");
 
     // brands
-    var brands = unique(all.map(function (p) { return p.brand; })).filter(function (b) { return b.indexOf("Choice") < 0; });
+    var brands = unique(all.map(function (p) { return p.brand; })).filter(function (b) { return b && b.indexOf("Choice") < 0; });
     document.getElementById("brands").innerHTML = brands.map(function (b) {
       return '<div class="bchip">'+UI.esc(b)+'</div>';
     }).join("");

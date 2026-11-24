@@ -169,6 +169,12 @@ footer.app .copy{border-top:1px solid rgba(255,255,255,.1);text-align:center;pad
 .bottom-nav a.active{color:var(--navy)}
 :root[data-theme="dark"] .bottom-nav a.active, @media(prefers-color-scheme:dark){.bottom-nav a.active{color:var(--lime)}}
 .bottom-nav a .nc{position:absolute;top:0;right:22%;background:var(--red);color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:grid;place-items:center;padding:0 4px}
+/* Centre basket: a raised circular button that floats above the bar */
+.bottom-nav a.bn-cart{justify-content:flex-end;gap:5px}
+.bn-cart .bn-cart-btn{position:relative;width:56px;height:56px;margin-top:-26px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;box-shadow:0 6px 16px rgba(22,35,63,.35);border:4px solid var(--card)}
+.bn-cart .bn-cart-btn svg{width:26px;height:26px}
+.bn-cart .bn-cart-btn .nc{position:absolute;top:-2px;right:-2px;background:var(--red);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:grid;place-items:center;padding:0 4px;border:2px solid var(--card)}
+.bn-cart.active .bn-cart-btn{background:var(--teal,#1f8f6b)}
 @media(min-width:860px){ .bottom-nav{display:none} }
 
 /* ------------------------------ Drawer ----------------------------------- */
@@ -700,3 +706,9 @@ a.acct-stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .lang-opt:hover{background:rgba(16,35,63,.06)}
 .lang-opt.on{background:rgba(31,143,107,.12);font-weight:700}
 @media(max-width:560px){.lang-code{display:none}.app-bar .icon-btn.lang-btn{padding:0;width:40px;background:transparent}}
+
+/* Product gallery thumbnails (up to 4 images) */
+.gal-thumbs{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.gal-th{width:68px;height:68px;border-radius:10px;overflow:hidden;border:2px solid var(--line);background:#fff;padding:0;cursor:pointer}
+.gal-th.on{border-color:var(--navy)}
+.gal-th img{width:100%;height:100%;object-fit:cover;display:block}

@@ -125,15 +125,19 @@ window.I18N = (function () {
   }
 
   function bottomNav(active) {
-    function a(key, href, i18n, label, icon, badge) {
+    function a(key, href, i18n, label, icon) {
       return '<a href="'+href+'" class="'+(active===key?'active':'')+'">'+icon+
-        (badge?'<span class="nc" data-cart-count hidden>0</span>':'')+'<span data-i18n="'+i18n+'">'+label+'</span></a>';
+        '<span data-i18n="'+i18n+'">'+label+'</span></a>';
     }
+    // The basket is a raised circular button in the centre (like big retail apps).
+    var cart = '<a href="cart.html" class="bn-cart'+(active==="cart"?" active":"")+'" aria-label="Basket">'+
+      '<span class="bn-cart-btn">'+ic.cart+'<span class="nc" data-cart-count hidden>0</span></span>'+
+      '<span data-i18n="bn.basket">Basket</span></a>';
     return '<nav class="bottom-nav">'+
       a('home','index.html','bn.home','Home',ic.home)+
       a('cats','category.html','bn.cats','Categories',ic.grid)+
+      cart+
       a('deals','deals.html','bn.deals','Deals',ic.tag)+
-      a('cart','cart.html','bn.basket','Basket',ic.cart,true)+
       a('account','login.html','bn.account','Account',ic.user)+
     '</nav>';
   }

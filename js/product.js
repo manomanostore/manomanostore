@@ -14,9 +14,18 @@ window.PRODUCT = (function () {
       '<a href="index.html">Home</a> › <a href="category.html?cat='+encodeURIComponent(p.cat_id)+'">'+UI.esc(catName)+'</a> › <span>'+UI.esc(p.name)+'</span>';
 
     var off = DATA.pct(p);
+    // Up to 4 images: a main image plus a thumbnail strip (falls back to the
+    // generated picture when the product has no uploaded images).
+    var srcs = (p.images && p.images.length ? p.images : []).map(function (u) { return DATA.safeImageUrl(u); }).filter(Boolean);
+    if (!srcs.length) srcs = [DATA.productImage(p, 800)];
     document.getElementById("pdp").innerHTML =
       '<div class="pdp">'+
-        '<div class="gallery"><img src="'+DATA.productImage(p, 800)+'" alt="'+UI.esc(p.name)+'"></div>'+
+        '<div class="gal-wrap">'+
+          '<div class="gallery"><img id="galMain" src="'+srcs[0]+'" alt="'+UI.esc(p.name)+'"></div>'+
+          (srcs.length > 1 ? '<div class="gal-thumbs">'+srcs.map(function (s, i) {
+            return '<button type="button" class="gal-th'+(i === 0 ? ' on' : '')+'" data-i="'+i+'"><img src="'+s+'" alt="View '+(i+1)+'"></button>';
+          }).join("")+'</div>' : '')+
+        '</div>'+
         '<div>'+
           '<div class="brandline">'+UI.esc(p.brand)+(p.choice?' · '+UI.esc(CONFIG.BRAND_SHORT)+' Choice':'')+'</div>'+
           '<h1>'+UI.esc(p.name)+'</h1>'+
@@ -37,6 +46,14 @@ window.PRODUCT = (function () {
           '</div>'+
         '</div>'+
       '</div>';
+
+    // Gallery thumbnail switching
+    var gal = document.querySelector(".gal-thumbs");
+    if (gal) gal.addEventListener("click", function (e) {
+      var b = e.target.closest(".gal-th"); if (!b) return;
+      document.getElementById("galMain").src = srcs[Number(b.dataset.i)];
+      gal.querySelectorAll(".gal-th").forEach(function (t) { t.classList.toggle("on", t === b); });
+    });
 
     document.getElementById("inc").onclick = function () { qty++; document.getElementById("qv").textContent = qty; };
     document.getElementById("dec").onclick = function () { if (qty>1) qty--; document.getElementById("qv").textContent = qty; };

@@ -309,10 +309,20 @@ window.ADMIN = (function () {
     cat.vendors.forEach(function (v) { venName[String(v.id)] = v.name; });
 
     if (!cat.products.length) {
-      $("admView").innerHTML = '<section class="adm-card">'+empty("Your catalog is empty",
-        can("importCatalog") ? "Import the 45 sample products and 6 categories from data/products.json into your Google Sheet, then edit them here."
-                             : "No products yet. Ask a manager to import or add the catalog.",
-        can("importCatalog") ? '<button class="btn btn-primary" type="button" id="importBtn">Import sample catalog</button>' : '')+'</section>';
+      $("admView").innerHTML =
+        '<div class="adm-toolbar"><span class="adm-count">0 products</span>'+
+          '<button class="btn btn-primary adm-btn" type="button" id="addProd">'+svg("plus")+' Add product</button></div>'+
+        '<section class="adm-card">'+empty("No products yet",
+          cat.categories.length ? "Add your first product below, or import the sample catalog."
+                                : "Add a category first (Categories), then add products here.",
+          '<button class="btn btn-primary" type="button" id="addProd0">'+svg("plus")+' Add product</button>'+
+          (can("importCatalog") ? ' <button class="btn btn-ghost" type="button" id="importBtn">Import sample catalog</button>' : ''))+'</section>';
+      var openAdd = function () {
+        if (!cat.categories.length) { toast("Add a category first, then add products.", true); return; }
+        productForm(null);
+      };
+      if ($("addProd")) $("addProd").onclick = openAdd;
+      if ($("addProd0")) $("addProd0").onclick = openAdd;
       if ($("importBtn")) $("importBtn").onclick = importSample;
       return;
     }
@@ -320,22 +330,23 @@ window.ADMIN = (function () {
     function draw() {
       var q = pf.q.toLowerCase();
       var list = cat.products.filter(function (p) {
-        return (!q || (p.name + " " + p.brand).toLowerCase().indexOf(q) > -1) &&
-          (!pf.cat || String(p.cat_id) === pf.cat) && (!pf.status || p.status === pf.status);
+        return (!q || p.name.toLowerCase().indexOf(q) > -1) && (!pf.cat || String(p.cat_id) === pf.cat) &&
+          (!pf.status || p.status === pf.status);
       });
       $("prodBox").innerHTML = list.length ?
-        '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Product</th><th>Category</th><th>Vendor</th><th>Price</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+
+        '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+
         list.map(function (p) {
-          return '<tr class="'+(p.status === "hidden" ? "is-hidden" : "")+'">'+
+          var hidden = p.status === "hidden";
+          return '<tr'+(hidden ? ' class="adm-dim"' : '')+'>'+
             '<td><div class="adm-prod"><img src="'+DATA.productImage(p, 96)+'" alt="" loading="lazy"><div><div class="adm-cell-main">'+esc(p.name)+'</div>'+
-              '<div class="adm-cell-sub">#'+esc(p.id)+' · '+esc(p.brand || "No brand")+(p.badge ? ' · '+esc(cap(p.badge)) : '')+(p.choice ? ' · Choice' : '')+'</div></div></div></td>'+
+              '<div class="adm-cell-sub">#'+esc(p.id)+(p.badge ? ' · '+esc(cap(p.badge)) : '')+'</div></div></div></td>'+
             '<td>'+esc(catName[String(p.cat_id)] || "—")+'</td>'+
-            '<td>'+esc(venName[String(p.vendor_id)] || "—")+'</td>'+
             '<td><strong>'+money(p.price)+'</strong>'+(p.oldPrice ? '<div class="adm-cell-sub"><s>'+money(p.oldPrice)+'</s></div>' : '')+'</td>'+
-            '<td>'+pill(p.status === "hidden" ? "hidden" : "active")+'</td>'+
+            '<td>'+(p.quantity === "" || p.quantity == null ? "—" : esc(p.quantity))+'</td>'+
+            '<td>'+pill(hidden ? "hidden" : "active", hidden ? "blocked" : "active")+'</td>'+
             '<td class="r"><div class="adm-actions">'+
+              '<button type="button" class="btn btn-ghost adm-mini" data-toggle="'+esc(p.id)+'">'+(hidden ? "Show" : "Hide")+'</button>'+
               '<button type="button" class="adm-icon-btn" data-edit="'+esc(p.id)+'" title="Edit" aria-label="Edit '+esc(p.name)+'">'+svg("edit")+'</button>'+
-              '<button type="button" class="adm-icon-btn" data-toggle="'+esc(p.id)+'" title="'+(p.status === "hidden" ? "Show in shop" : "Hide from shop")+'" aria-label="'+(p.status === "hidden" ? "Show" : "Hide")+' '+esc(p.name)+'">'+svg(p.status === "hidden" ? "eye" : "eyeOff")+'</button>'+
               (can("deleteProduct") ? '<button type="button" class="adm-icon-btn danger" data-del="'+esc(p.id)+'" title="Delete" aria-label="Delete '+esc(p.name)+'">'+svg("trash")+'</button>' : '')+
             '</div></td></tr>';
         }).join("")+'</tbody></table></div>'
@@ -345,7 +356,7 @@ window.ADMIN = (function () {
 
     $("admView").innerHTML =
       '<div class="adm-toolbar">'+
-        '<label class="adm-search">'+svg("search")+'<input id="pfQ" type="search" placeholder="Search products or brands" value="'+esc(pf.q)+'"></label>'+
+        '<label class="adm-search">'+svg("search")+'<input id="pfQ" type="search" placeholder="Search products" value="'+esc(pf.q)+'"></label>'+
         '<select id="pfCat" aria-label="Category"><option value="">All categories</option>'+cat.categories.map(function (c) {
           return '<option value="'+esc(c.id)+'"'+(pf.cat === String(c.id) ? " selected" : "")+'>'+esc(c.name)+'</option>'; }).join("")+'</select>'+
         '<select id="pfStatus" aria-label="Status"><option value="">Any status</option><option value="active"'+(pf.status === "active" ? " selected" : "")+'>Active</option><option value="hidden"'+(pf.status === "hidden" ? " selected" : "")+'>Hidden</option></select>'+
@@ -363,11 +374,11 @@ window.ADMIN = (function () {
       var find = function (id) { return cat.products.filter(function (p) { return String(p.id) === id; })[0]; };
       if (b.dataset.edit) productForm(find(b.dataset.edit));
       if (b.dataset.toggle) {
-        var p = find(b.dataset.toggle), next = p.status === "hidden" ? "active" : "hidden";
+        var tp = find(b.dataset.toggle), tnext = tp.status === "hidden" ? "active" : "hidden";
         b.disabled = true;
-        var r = await api("saveProduct", Object.assign({}, p, { status: next }));
-        if (!r.ok) { b.disabled = false; toast(r.error, true); return; }
-        catalogChanged(); toast(next === "hidden" ? "Hidden from the shop" : "Visible in the shop"); route();
+        var tr = await api("saveProduct", { id: tp.id, status: tnext });
+        if (!tr.ok) { b.disabled = false; toast(tr.error, true); return; }
+        catalogChanged(); toast(tnext === "hidden" ? "Hidden from the shop" : "Visible in the shop"); route();
       }
       if (b.dataset.del) {
         var d = find(b.dataset.del);
@@ -395,50 +406,83 @@ window.ADMIN = (function () {
 
   function productForm(p) {
     var cat = catalog, isNew = !p;
-    p = p || { name: "", brand: "", cat_id: cat.categories[0] && cat.categories[0].id, vendor_id: "", price: "", oldPrice: "", badge: "", choice: false,
-               options: "", color: "#2b5f8a", icon: "tools", desc: "", imageUrl: "", status: "active" };
-    var opt = function (list, val, blank) {
-      return (blank ? '<option value="">'+blank+'</option>' : '') + list.map(function (x) {
-        return '<option value="'+esc(x.id)+'"'+(String(val) === String(x.id) ? " selected" : "")+'>'+esc(x.name)+(x.status === "inactive" ? " (inactive)" : "")+'</option>'; }).join("");
+    p = p || { name: "", cat_id: cat.categories[0] && cat.categories[0].id, price: "", oldPrice: "",
+               rating: "", quantity: "", badge: "", desc: "", images: [], status: "active" };
+    var opt = function (list, val) {
+      return list.map(function (x) {
+        return '<option value="'+esc(x.id)+'"'+(String(val) === String(x.id) ? " selected" : "")+'>'+esc(x.name)+'</option>'; }).join("");
     };
     modal(isNew ? "Add product" : "Edit product #" + p.id,
       '<div class="adm-form-grid">'+
         '<div class="adm-preview"><img id="pPrev" alt="Preview"><small>Preview</small></div>'+
         '<div class="adm-form-cols">'+
           f("pName", "Product name", '<input id="pName" required maxlength="140" value="'+esc(p.name)+'">', "full") +
-          f("pBrand", "Brand", '<input id="pBrand" maxlength="60" value="'+esc(p.brand)+'">') +
           f("pCat", "Category", '<select id="pCat" required>'+opt(cat.categories, p.cat_id)+'</select>') +
-          f("pVendor", "Vendor", '<select id="pVendor">'+opt(cat.vendors, p.vendor_id, "— No vendor —")+'</select>') +
           f("pStatus", "Status", '<select id="pStatus"><option value="active"'+(p.status !== "hidden" ? " selected" : "")+'>Active (visible)</option><option value="hidden"'+(p.status === "hidden" ? " selected" : "")+'>Hidden</option></select>') +
+          f("pBadge", "Badge", '<select id="pBadge"><option value="">None</option><option value="deal"'+(p.badge === "deal" ? " selected" : "")+'>Deal</option><option value="bestseller"'+(p.badge === "bestseller" ? " selected" : "")+'>#1 in sales</option></select>') +
           f("pPrice", "Price ("+esc(C.CURRENCY_CODE)+")", '<input id="pPrice" type="number" min="0.01" step="0.01" required value="'+esc(p.price)+'">') +
           f("pOld", "Old price <span class=\"opt\">(for a discount)</span>", '<input id="pOld" type="number" min="0" step="0.01" value="'+esc(p.oldPrice)+'">') +
-          f("pBadge", "Badge", '<select id="pBadge"><option value="">None</option><option value="deal"'+(p.badge === "deal" ? " selected" : "")+'>Deal</option><option value="bestseller"'+(p.badge === "bestseller" ? " selected" : "")+'>#1 in sales</option></select>') +
-          f("pOptions", "Options <span class=\"opt\">(variants)</span>", '<input id="pOptions" type="number" min="0" step="1" value="'+esc(p.options)+'">') +
-          f("pImg", "Image URL <span class=\"opt\">(optional)</span>", '<input id="pImg" type="url" placeholder="https://… — leave empty for a generated picture" value="'+esc(p.imageUrl)+'">', "full") +
-          f("pIcon", "Placeholder icon", '<select id="pIcon">'+DATA.iconNames.map(function (n) { return '<option'+(p.icon === n ? " selected" : "")+'>'+n+'</option>'; }).join("")+'</select>') +
-          f("pColor", "Placeholder colour", '<input id="pColor" type="color" value="'+esc(/^#[0-9a-f]{6}$/i.test(p.color) ? p.color : "#2b5f8a")+'">') +
+          f("pRating", "Rating <span class=\"opt\">(0–5)</span>", '<input id="pRating" type="number" min="0" max="5" step="0.1" value="'+esc(p.rating)+'">') +
+          f("pQty", "Quantity <span class=\"opt\">(stock)</span>", '<input id="pQty" type="number" min="0" step="1" value="'+esc(p.quantity)+'">') +
+          f("pImgs", "Product images <span class=\"opt\">(up to 4 — upload or paste a URL)</span>",
+            '<div class="pimg-grid" id="pImgGrid"></div>'+
+            '<input id="pImgFile" type="file" accept="image/*" multiple hidden>'+
+            '<div class="pimg-url"><input id="pImgUrl" type="url" placeholder="…or paste an image URL">'+
+              '<button type="button" class="btn btn-ghost adm-mini" id="pImgUrlAdd">Add URL</button></div>', "full") +
           f("pDesc", "Description", '<textarea id="pDesc" rows="3" maxlength="2000">'+esc(p.desc)+'</textarea>', "full") +
-          '<label class="adm-check full"><input type="checkbox" id="pChoice"'+(p.choice ? " checked" : "")+'> Mark as '+esc(C.BRAND_SHORT)+' Choice</label>'+
         '</div>'+
       '</div>',
       async function () {
+        var keepUrls = pImgs.filter(function (x) { return x.url; }).map(function (x) { return x.url; });
+        var uploads = pImgs.filter(function (x) { return x.data; }).map(function (x) { return x.data; });
         var data = {
-          id: isNew ? undefined : p.id, name: $("pName").value, brand: $("pBrand").value.trim(), cat_id: $("pCat").value,
-          vendor_id: $("pVendor").value, status: $("pStatus").value, price: $("pPrice").value, oldPrice: $("pOld").value,
-          badge: $("pBadge").value, options: $("pOptions").value, imageUrl: $("pImg").value.trim(), icon: $("pIcon").value,
-          color: $("pColor").value, desc: $("pDesc").value.trim(), choice: $("pChoice").checked
+          id: isNew ? undefined : p.id, name: $("pName").value, cat_id: $("pCat").value,
+          price: $("pPrice").value, oldPrice: $("pOld").value, rating: $("pRating").value,
+          quanitiy: $("pQty").value, badge: $("pBadge").value, status: $("pStatus").value,
+          imageUrl_json: JSON.stringify(keepUrls), imageData: uploads, desc: $("pDesc").value.trim()
         };
-        if (!isNew) { data.rating = p.rating; data.reviews = p.reviews; }
         var r = await api("saveProduct", data);
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Product added" : "Product saved"); route();
       });
-    var prev = function () {
-      $("pPrev").src = DATA.productImage({ name: $("pName").value, brand: $("pBrand").value, color: $("pColor").value,
-        icon: $("pIcon").value, imageUrl: $("pImg").value }, 300);
-    };
-    ["pName", "pBrand", "pColor", "pIcon", "pImg"].forEach(function (id) { $(id).addEventListener("input", prev); });
-    prev();
+
+    // --- up-to-4 image picker (existing URLs + new uploads) ---
+    var pImgs = (p.images && p.images.length ? p.images : (p.imageUrl ? [p.imageUrl] : [])).slice(0, 4)
+      .map(function (u) { return { url: u }; });
+    function thumbSrc(x) { return x.url ? (DATA.safeImageUrl(x.url) || x.url) : x.data; }
+    function prev() { $("pPrev").src = DATA.productImage({ name: $("pName").value, imageUrl: pImgs[0] ? thumbSrc(pImgs[0]) : "" }, 300); }
+    function renderImgs() {
+      $("pImgGrid").innerHTML = pImgs.map(function (x, i) {
+        return '<div class="pimg-thumb"><img src="'+esc(thumbSrc(x))+'" alt="">'+
+          '<button type="button" class="pimg-rm" data-rm="'+i+'" aria-label="Remove image">'+svg("close", 16)+'</button></div>';
+      }).join("") + (pImgs.length < 4 ? '<button type="button" class="pimg-add" id="pImgAdd">'+svg("plus", 22)+'<span>Add</span></button>' : "");
+      if ($("pImgAdd")) $("pImgAdd").onclick = function () { $("pImgFile").click(); };
+      prev();
+    }
+    $("pImgGrid").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-rm]"); if (!b) return;
+      pImgs.splice(Number(b.dataset.rm), 1); renderImgs();
+    });
+    $("pImgFile").addEventListener("change", function () {
+      var files = [].slice.call(this.files, 0, 4 - pImgs.length), left = files.length || 0;
+      if (!left) return;
+      files.forEach(function (file) {
+        if (!/^image\//.test(file.type)) { if (--left === 0) renderImgs(); return; }
+        toImage(file, 1200, function (d) { if (d && pImgs.length < 4) pImgs.push({ data: d }); if (--left === 0) renderImgs(); });
+      });
+      this.value = "";
+    });
+    function addUrl() {
+      var u = $("pImgUrl").value.trim();
+      if (!u) return;
+      if (!/^(https?:\/\/|images\/)/i.test(u)) { toast("Enter a valid image URL (https://…).", true); return; }
+      if (pImgs.length >= 4) { toast("Up to 4 images per product.", true); return; }
+      pImgs.push({ url: u }); $("pImgUrl").value = ""; renderImgs();
+    }
+    $("pImgUrlAdd").onclick = addUrl;
+    $("pImgUrl").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); addUrl(); } });
+    $("pName").addEventListener("input", prev);
+    renderImgs();
   }
   function f(id, label, control, cls) { return '<div class="field '+(cls || "")+'"><label for="'+id+'">'+label+'</label>'+control+'</div>'; }
 
@@ -536,23 +580,25 @@ window.ADMIN = (function () {
   /* -------------------------------- banners ------------------------------- */
   // Hero banners shown on the homepage carousel, in display order.
   async function viewBanners() {
-    var cat = await getCatalog();
+    var cat = await getCatalog(true);   // always fresh, so a just-deployed backend shows immediately
     var banners = (cat.banners || []).slice();
     $("admView").innerHTML =
       '<div class="adm-toolbar"><span class="adm-count">'+banners.length+(banners.length===1?' banner':' banners')+'</span>'+
         '<button class="btn btn-primary adm-btn" type="button" id="addBan">'+svg("plus")+' Add banner</button></div>'+
       (banners.length ?
         '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
-          '<thead><tr><th>Banner</th><th>ID</th><th>Order</th><th>Link</th><th class="r">Actions</th></tr></thead><tbody>'+
-          banners.map(function (b) {
-            return '<tr>'+
+          '<thead><tr><th>Banner</th><th>ID</th><th>Order</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+
+          banners.map(function (b, i) {
+            var on = b.status !== "hidden";
+            return '<tr'+(on ? '' : ' class="adm-dim"')+'>'+
               '<td><span class="adm-ban-thumb"><img src="'+esc(DATA.safeImageUrl(b.imageUrl) || b.imageUrl)+'" alt="" loading="lazy"></span></td>'+
-              '<td class="adm-cell-sub">#'+esc(b.id)+'</td>'+
+              '<td class="adm-cell-sub">#'+esc(b.id != null && b.id !== "" ? b.id : "—")+'</td>'+
               '<td>'+esc(b.order || 0)+'</td>'+
-              '<td class="adm-cell-sub">'+esc(b.link || "deals.html")+'</td>'+
+              '<td>'+pill(on ? "active" : "hidden", on ? "active" : "blocked")+'</td>'+
               '<td class="r"><div class="adm-actions">'+
-                '<button type="button" class="adm-icon-btn" data-edit="'+esc(b.id)+'" aria-label="Edit banner">'+svg("edit")+'</button>'+
-                '<button type="button" class="adm-icon-btn danger" data-del="'+esc(b.id)+'" aria-label="Delete banner">'+svg("trash")+'</button>'+
+                '<button type="button" class="btn btn-ghost adm-mini" data-act="toggle" data-i="'+i+'">'+(on ? "Hide" : "Show")+'</button>'+
+                '<button type="button" class="adm-icon-btn" data-act="edit" data-i="'+i+'" aria-label="Edit banner">'+svg("edit")+'</button>'+
+                '<button type="button" class="adm-icon-btn danger" data-act="del" data-i="'+i+'" aria-label="Delete banner">'+svg("trash")+'</button>'+
               '</div></td></tr>';
           }).join("")+'</tbody></table></div></section>'
         : '<section class="adm-card">'+empty("No banners yet", "Add a banner image to show it on the homepage carousel.", '<button class="btn btn-primary" type="button" id="addBan2">Add a banner</button>')+'</section>');
@@ -560,12 +606,19 @@ window.ADMIN = (function () {
     if ($("addBan")) $("addBan").onclick = add;
     if ($("addBan2")) $("addBan2").onclick = add;
     $("admView").onclick = async function (e) {
-      var b = e.target.closest("button[data-edit],button[data-del]"); if (!b) return;
-      var rec = banners.filter(function (x) { return String(x.id) === (b.dataset.edit || b.dataset.del); })[0];
-      if (b.dataset.edit) bannerForm(rec);
-      if (b.dataset.del) {
+      var btn = e.target.closest("button[data-act]"); if (!btn) return;
+      var rec = banners[Number(btn.dataset.i)]; if (!rec) return;
+      if (btn.dataset.act === "edit") { bannerForm(rec); return; }
+      if (btn.dataset.act === "toggle") {
+        btn.disabled = true;
+        var next = rec.status === "hidden" ? "active" : "hidden";
+        var t = await api("saveBanner", { id: rec.id, matchUrl: rec.imageUrl, status: next });
+        if (!t.ok) { btn.disabled = false; toast(t.error, true); return; }
+        catalogChanged(); toast(next === "hidden" ? "Banner hidden" : "Banner shown"); route();
+      }
+      if (btn.dataset.act === "del") {
         if (!confirm("Delete this banner? It will be removed from the homepage.")) return;
-        var r = await api("deleteBanner", { id: rec.id });
+        var r = await api("deleteBanner", { id: rec.id, matchUrl: rec.imageUrl });
         if (!r.ok) { toast(r.error, true); return; }
         catalogChanged(); toast("Banner deleted"); route();
       }
@@ -578,7 +631,7 @@ window.ADMIN = (function () {
     var existing = b.imageUrl ? (DATA.safeImageUrl(b.imageUrl) || b.imageUrl) : "";
     // The image area IS the preview: it shows the chosen/existing banner at a
     // true 3:1 ratio, with a drop/browse prompt until one is picked.
-    modal(isNew ? "Add banner" : "Edit banner #" + b.id,
+    modal(isNew ? "Add banner" : ("Edit banner" + (b.id != null && b.id !== "" ? " #" + b.id : "")),
       f("bImg", "Banner image",
         '<div class="adm-drop ban-drop'+(existing ? ' has-img' : '')+'" id="bDrop">'+
           '<input id="bFile" type="file" accept="image/*" hidden>'+
@@ -588,10 +641,12 @@ window.ADMIN = (function () {
             '<small>Best at 1600 × 530 px (3:1)</small></div>'+
           '<span class="ban-change">Change image</span>'+
         '</div>', "full") +
-      f("bOrder", "Display order", '<input id="bOrder" type="number" min="0" step="1" value="'+esc(b.order || 0)+'">'),
+      f("bOrder", "Display order", '<input id="bOrder" type="number" min="0" step="1" value="'+esc(b.order || 0)+'">') +
+      f("bStatus", "Visibility", '<label class="adm-switch"><input id="bStatus" type="checkbox"'+(b.status === "hidden" ? '' : ' checked')+'><span>Show on homepage</span></label>'),
       async function () {
         if (isNew && !imageData) return "Please choose a banner image.";
-        var r = await api("saveBanner", { id: isNew ? undefined : b.id, order: Number($("bOrder").value) || 0, imageData: imageData });
+        var r = await api("saveBanner", { id: isNew ? undefined : b.id, matchUrl: b.imageUrl || "",
+          order: Number($("bOrder").value) || 0, status: $("bStatus").checked ? "active" : "hidden", imageData: imageData });
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Banner added" : "Banner saved"); route();
       });

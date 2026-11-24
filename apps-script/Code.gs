@@ -53,10 +53,10 @@ var SHEETS = {
   orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt"],
                 textCols: ["identifier"] },
   categories: { name: "Categories", headers: ["id","cat_name","cat_img_url","cat_order"] },
-  products:   { name: "Products",   headers: ["id","name","brand","cat_id","vendor_id","price","oldPrice","rating","reviews","badge","choice","options","color","icon","desc","imageUrl","status","createdAt","updatedAt"] },
+  products:   { name: "Products",   headers: ["id","name","cat_id","price","oldPrice","rating","quanitiy","badge","desc","imageUrl_json","status","createdAt","updatedAt"] },
   carts:      { name: "Carts",      headers: ["cart_id","productId","qty","createdAt","updatedAt"],
                 textCols: ["cartId","productId"] },
-  banners:    { name: "Banners",    headers: ["id","image_url","order"] }
+  banners:    { name: "Banners",    headers: ["id","image_url","order","status"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
 var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10 };
@@ -79,7 +79,7 @@ var PERMS = {
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || "health";
   try {
-    if (action === "getProducts") return json({ ok: true, categories: readCategories(), products: readProducts(false), banners: readBanners() });
+    if (action === "getProducts") return json({ ok: true, categories: readCategories(), products: readProducts(false), banners: readBanners(false) });
     if (action === "setupAdmin")  return json(withLock(function () { return setupAdmin(e.parameter || {}); }));
     if (action === "initSheets")  return json(withLock(function () { initSheets(); return { ok: true, message: "Sheets created / updated (columns added)." }; }));
     return json({ ok: true, status: "alive", brand: "ManoMano" });
@@ -264,18 +264,37 @@ function readProducts(includeHidden) {
   return out;
 }
 
+// Products sheet columns: id | name | cat_id | price | oldPrice | rating |
+// quanitiy | badge | desc | imageUrl_json | createdAt | updatedAt.
+// imageUrl_json holds one or more image URLs (a JSON array, or newline/comma
+// separated). The returned object keeps the fields the storefront expects, with
+// safe defaults for ones no longer stored (brand, choice, options, status…).
+function parseImages(v) {
+  if (v == null || v === "") return [];
+  if (Array.isArray(v)) return v.map(String).filter(Boolean);
+  var s = String(v).trim();
+  if (s.charAt(0) === "[") { try { var a = JSON.parse(s); if (Array.isArray(a)) return a.map(String).filter(Boolean); } catch (e) {} }
+  return s.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+}
 function cleanProduct(o) {
-  o.id = Number(o.id) || o.id;
-  o.cat_id = Number(o.cat_id) || o.cat_id;
-  o.vendor_id = o.vendor_id === "" ? "" : (Number(o.vendor_id) || o.vendor_id);
-  o.price = Number(o.price) || 0;
-  o.oldPrice = o.oldPrice === "" ? "" : Number(o.oldPrice);
-  o.rating = Number(o.rating) || 0;
-  o.reviews = Number(o.reviews) || 0;
-  o.options = o.options === "" ? "" : Number(o.options);
-  o.choice = (o.choice === true || o.choice === "TRUE" || o.choice === "true");
-  o.status = String(o.status || "active");
-  return o;
+  var imgs = parseImages(o.imageUrl_json !== undefined ? o.imageUrl_json : o.imageUrl);
+  return {
+    id: Number(o.id) || o.id,
+    name: String(o.name || ""),
+    cat_id: Number(o.cat_id) || o.cat_id,
+    price: Number(o.price) || 0,
+    oldPrice: (o.oldPrice === "" || o.oldPrice == null) ? "" : Number(o.oldPrice),
+    rating: Number(o.rating) || 0,
+    quantity: (o.quanitiy === "" || o.quanitiy == null) ? "" : Math.max(0, Math.floor(Number(o.quanitiy) || 0)),
+    badge: String(o.badge || ""),
+    desc: String(o.desc || ""),
+    images: imgs,
+    imageUrl: imgs[0] || "",
+    status: String(o.status || "active"),
+    createdAt: o.createdAt, updatedAt: o.updatedAt,
+    // compatibility defaults so the existing storefront keeps rendering
+    brand: "", vendor_id: "", reviews: 0, choice: false, options: ""
+  };
 }
 
 function readRows(key) {
@@ -446,11 +465,11 @@ function adminCall(b) {
       changePassword:  function () { return withLock(function () { return adminChangePassword(p, me); }); },
       listOrders:      function () { return { orders: adminOrders() }; },
       updateOrder:     function () { return withLock(function () { return adminUpdateOrder(p); }); },
-      listCatalog:     function () { return { categories: readCategories(), vendors: readSellers(), products: readProducts(true), banners: readBanners() }; },
+      listCatalog:     function () { return { categories: readCategories(), vendors: readSellers(), products: readProducts(true), banners: readBanners(true) }; },
       saveBanner:      function () { return withLock(function () { return saveBannerRec(p); }); },
-      deleteBanner:    function () { return withLock(function () { return deleteBannerRec(p.id); }); },
-      saveProduct:     function () { return withLock(function () { return saveRecord("products", p, validateProduct); }); },
-      deleteProduct:   function () { return withLock(function () { return deleteRecord("products", p.id); }); },
+      deleteBanner:    function () { return withLock(function () { return deleteBannerRec(p.id, p.matchUrl); }); },
+      saveProduct:     function () { return withLock(function () { return saveProductRec(p); }); },
+      deleteProduct:   function () { return withLock(function () { return deleteProductRec(p.id); }); },
       saveCategory:    function () { return withLock(function () { return saveCategoryRec(p); }); },
       deleteCategory:  function () { return withLock(function () { return deleteCategoryRec(p.id); }); },
       saveVendor:      function () { return withLock(function () { return saveRecord("sellers", p, validateVendor); }); },
@@ -566,21 +585,45 @@ function deleteSellerRec(id) {
   if (res.ok && cur) { deleteDriveFile(cur.certFront); deleteDriveFile(cur.certBack); }
   return res;
 }
+// Deleting a product also removes its uploaded images + its products/images/<id> folder.
+function deleteProductRec(id) {
+  var cur = readRows("products").filter(function (x) { return String(x.id) === String(id); })[0];
+  var res = deleteRecord("products", id);
+  if (res.ok) {
+    if (cur) parseImages(cur.imageUrl_json).forEach(function (u) { if (/drive\.google\.com/i.test(u)) deleteDriveFile(u); });
+    try { var it = driveImagesFolder("products").getFoldersByName(String(id)); while (it.hasNext()) it.next().setTrashed(true); } catch (e) {}
+  }
+  return res;
+}
 
+// Validates create (no id) fully, and partial updates (e.g. a status-only
+// toggle) by only checking fields that were actually sent.
 function validateProduct(p) {
-  p.name = String(p.name || "").trim();
-  if (!p.name) return "Product name is required.";
-  if (!(Number(p.price) > 0)) return "Price must be greater than 0.";
-  if (p.oldPrice !== "" && p.oldPrice != null && Number(p.oldPrice) <= Number(p.price)) return "Old price must be higher than the price (or leave it empty).";
-  if (!findRowById(sheet("categories"), p.cat_id)) return "Choose a valid category.";
-  if (p.vendor_id !== "" && p.vendor_id != null && !findRowById(sheet("sellers"), p.vendor_id)) return "Choose a valid seller.";
-  if (p.imageUrl && !/^(https?:\/\/|images\/)/i.test(String(p.imageUrl))) return "Image URL must start with https:// (or images/ for a local file).";
-  if (["", "deal", "bestseller"].indexOf(String(p.badge || "")) < 0) return "Invalid badge.";
-  if (["active", "hidden"].indexOf(String(p.status || "active")) < 0) return "Invalid status.";
-  p.price = Number(p.price); p.oldPrice = p.oldPrice === "" || p.oldPrice == null ? "" : Number(p.oldPrice);
-  p.options = p.options === "" || p.options == null ? "" : Math.max(0, Math.floor(Number(p.options)));
-  p.choice = !!p.choice; p.name = p.name.slice(0, 140); p.desc = String(p.desc || "").slice(0, 2000);
-  if (p.rating === undefined && !p.id) { p.rating = 0; p.reviews = 0; }
+  var creating = !p.id;
+  if (p.name !== undefined) p.name = String(p.name).trim().slice(0, 140);
+  if (creating && !p.name) return "Product name is required.";
+
+  if (p.price !== undefined && p.price !== "" && p.price != null) p.price = Number(p.price);
+  if (creating && !(Number(p.price) > 0)) return "Price must be greater than 0.";
+  if (p.price !== undefined && p.price !== "" && p.price != null && !(Number(p.price) > 0)) return "Price must be greater than 0.";
+
+  if (p.oldPrice !== undefined) p.oldPrice = (p.oldPrice === "" || p.oldPrice == null) ? "" : Number(p.oldPrice);
+  if (p.oldPrice !== undefined && p.oldPrice !== "" && p.price !== undefined && p.price !== "" && p.price != null && Number(p.oldPrice) <= Number(p.price))
+    return "Old price must be higher than the price (or leave it empty).";
+
+  if ((creating || p.cat_id !== undefined) && !findRowById(sheet("categories"), p.cat_id)) return "Choose a valid category.";
+  if (p.badge !== undefined && ["", "deal", "bestseller"].indexOf(String(p.badge)) < 0) return "Invalid badge.";
+  if (p.status !== undefined) { if (["active", "hidden"].indexOf(String(p.status)) < 0) return "Invalid status."; }
+  else if (creating) p.status = "active";
+
+  if (p.rating !== undefined) p.rating = (p.rating === "" || p.rating == null) ? 0 : Math.min(5, Math.max(0, Number(p.rating) || 0));
+  else if (creating) p.rating = 0;
+  if (p.quanitiy !== undefined) p.quanitiy = (p.quanitiy === "" || p.quanitiy == null) ? 0 : Math.max(0, Math.floor(Number(p.quanitiy) || 0));
+  if (p.desc !== undefined) p.desc = String(p.desc).slice(0, 2000);
+  if (p.imageUrl_json !== undefined) {
+    var imgs = parseImages(p.imageUrl_json).filter(function (u) { return /^(https?:\/\/|images\/)/i.test(u); }).slice(0, 8);
+    p.imageUrl_json = JSON.stringify(imgs);
+  }
   return "";
 }
 function validateCategory(c) {
@@ -649,6 +692,46 @@ function uploadImageTo(dataUrl, name, folder, w) {
 }
 function saveCategoryImage(dataUrl, name) { return uploadImageTo(dataUrl, name, driveImagesFolder("categories"), 1000); }
 function saveBannerImage(dataUrl, name)   { return uploadImageTo(dataUrl, name, driveImagesFolder("banners"), 1600); }
+// A product's uploads live in  products/images/<productId>/  so each product's
+// photos are grouped in their own Drive folder.
+function saveProductImage(dataUrl, pid, name) {
+  var folder = driveChild(driveImagesFolder("products"), String(pid));
+  return uploadImageTo(dataUrl, name || ("p" + pid), folder, 1200);
+}
+
+// saveProduct wrapper: a product can have up to 4 images. The form sends kept
+// image URLs in imageUrl_json and NEW uploads (base64) in imageData[]. Because
+// each product's images go in  products/images/<id>/, we save the row FIRST (so
+// a new product gets its id), then upload into that id's folder, write the final
+// list, and delete any of OUR old Drive images that were removed.
+function saveProductRec(p) {
+  var newImages = Array.isArray(p.imageData) ? p.imageData : (p.imageData ? [p.imageData] : []);
+  delete p.imageData;
+  var kept = parseImages(p.imageUrl_json).filter(function (u) { return /^(https?:\/\/|images\/)/i.test(u); }).slice(0, 4);
+
+  // Previous images (for cleanup) must be read before we overwrite the cell.
+  var oldImgs = [];
+  if (p.id) { var cur = readRows("products").filter(function (x) { return String(x.id) === String(p.id); })[0]; if (cur) oldImgs = parseImages(cur.imageUrl_json); }
+
+  // Save the row first (assigns an id for new products), with the kept URLs.
+  p.imageUrl_json = JSON.stringify(kept);
+  var res = saveRecord("products", p, validateProduct);
+  if (!res.ok) return res;
+  var id = res.record.id;
+
+  // Upload new images into products/images/<id>/ and build the final list.
+  var uploads = [];
+  newImages.forEach(function (d) { var u = saveProductImage(d, id, "product-" + id); if (u) uploads.push(u); });
+  var all = kept.concat(uploads).slice(0, 4);
+
+  if (JSON.stringify(all) !== p.imageUrl_json) {
+    var sh = sheet("products"), idx = findRowById(sh, id), col = SHEETS.products.headers.indexOf("imageUrl_json") + 1;
+    if (idx && col) sh.getRange(idx, col).setValue(JSON.stringify(all));
+    res.record.imageUrl_json = JSON.stringify(all);
+  }
+  oldImgs.forEach(function (u) { if (all.indexOf(u) < 0 && /drive\.google\.com/i.test(u)) deleteDriveFile(u); });
+  return res;
+}
 function driveImagesFolder(top) { return driveChild(driveChild(DriveApp.getRootFolder(), top), "images"); }
 function driveChild(parent, name) {
   var it = parent.getFoldersByName(name);
@@ -659,26 +742,43 @@ function driveChild(parent, name) {
 // Homepage hero banners — one row per slide: id | image_url | order | link.
 // Shown on the storefront in `order`; clicking a slide follows `link` (or the
 // deals page when blank).
-function readBanners() {
+// includeHidden=true for the admin panel; the public shop sees active only.
+// status accepts 1/0 or active/hidden; anything not explicitly off counts active.
+function bannerActive(v) {
+  var s = String(v == null ? "" : v).trim().toLowerCase();
+  return !(s === "0" || s === "hidden" || s === "inactive" || s === "false" || s === "no");
+}
+function readBanners(includeHidden) {
   return readRows("banners").filter(function (b) { return b.id !== "" && (b.image_url || b.imageUrl); })
     .map(function (b) {
       return { id: Number(b.id) || b.id, imageUrl: String(b.image_url || b.imageUrl || ""),
-               order: Number(b.order) || 0, link: String(b.link || "") };
+               order: Number(b.order) || 0, status: bannerActive(b.status) ? "active" : "hidden" };
     })
+    .filter(function (b) { return includeHidden || b.status === "active"; })
     .sort(function (a, b) { return (a.order - b.order) || (Number(a.id) - Number(b.id)); });
 }
 
 function validateBanner(b) {
-  if (b.link !== undefined) {
-    b.link = String(b.link || "").trim();
-    if (b.link && !/^(https?:\/\/|[a-z0-9._-]+\.html)/i.test(b.link)) return "Link must be an https:// URL or a page like category.html.";
-  }
+  // Store status as 1 (show) / 0 (hide) to match the Sheet's column. New banners
+  // default to shown; a status-only update just flips visibility.
+  if (b.status !== undefined) b.status = bannerActive(b.status) ? 1 : 0;
+  else if (!b.id) b.status = 1;
   if (b.order !== undefined) b.order = (b.order === "" || b.order == null) ? 0 : Math.max(0, Math.floor(Number(b.order) || 0));
   if (!b.id && !b.image_url && !b.imageData) return "A banner image is required.";
   return "";
 }
 
+// Find a banner's row id by its current image URL — a fallback so edits/toggles
+// still work even if the client couldn't send an id.
+function bannerRowIdByUrl(url) {
+  url = String(url || "");
+  if (!url) return "";
+  var r = readRows("banners").filter(function (b) { return String(b.image_url || b.imageUrl || "") === url; })[0];
+  return r ? r.id : "";
+}
 function saveBannerRec(p) {
+  if ((p.id === "" || p.id == null) && p.matchUrl) p.id = bannerRowIdByUrl(p.matchUrl);
+  delete p.matchUrl;
   var oldUrl = "";
   if (p.id && p.imageData) {
     var cur = readRows("banners").filter(function (b) { return String(b.id) === String(p.id); })[0];
@@ -693,7 +793,8 @@ function saveBannerRec(p) {
   if (res.ok && oldUrl && p.image_url && oldUrl !== p.image_url) deleteDriveFile(oldUrl);
   return res;
 }
-function deleteBannerRec(id) {
+function deleteBannerRec(id, matchUrl) {
+  if ((id === "" || id == null) && matchUrl) id = bannerRowIdByUrl(matchUrl);
   var cur = readRows("banners").filter(function (b) { return String(b.id) === String(id); })[0];
   var res = deleteRecord("banners", id);
   if (res.ok && cur && cur.image_url) deleteDriveFile(cur.image_url);
@@ -775,10 +876,25 @@ function initSheets() {
       if (col > 0) sh.getRange(1, col, sh.getMaxRows(), 1).setNumberFormat("@");
     });
   });
+  // Give every row a numeric id — so rows added by hand in the Sheet (e.g. a
+  // banner pasted straight in) still work with edit/delete, which key off id.
+  Object.keys(SHEETS).forEach(backfillIds);
   fillBlank("users", "role", "superadmin");
   fillBlank("users", "status", "active");
   fillBlank("sellers", "status", "pending");
   fillBlank("products", "status", "active");
+}
+
+// Fill blank ids in a tab (whose first column is "id") with the next numbers,
+// leaving existing ids untouched.
+function backfillIds(key) {
+  if (SHEETS[key].headers[0] !== "id") return;
+  var sh = sheet(key), last = sh.getLastRow();
+  if (last < 2) return;
+  var rng = sh.getRange(2, 1, last - 1, 1), ids = rng.getValues(), max = 0, changed = false;
+  ids.forEach(function (r) { var n = Number(r[0]); if (n > max) max = n; });
+  ids.forEach(function (r) { if (r[0] === "" || r[0] === null) { r[0] = ++max; changed = true; } });
+  if (changed) rng.setValues(ids);
 }
 
 function fillBlank(key, col, value) {

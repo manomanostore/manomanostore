@@ -99,7 +99,7 @@
     });
     var banners = (data.banners || []).map(function (b) {
       return { id: String(b.id), imageUrl: b.imageUrl || b.image_url || "",
-               order: Number(b.order) || 0, link: b.link || "" };
+               order: Number(b.order) || 0, status: b.status || "active" };
     }).filter(function (b) { return b.imageUrl; }).sort(function (a, b) { return a.order - b.order; });
     return { categories: cats, products: prods, banners: banners, byId: index(prods) };
   }
