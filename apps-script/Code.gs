@@ -84,7 +84,7 @@ var PERMS = {
   deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
   deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
-  listWallet: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
+  listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"]
 };
 
@@ -151,10 +151,12 @@ function truthyFlag(v) {
 //    and shop_status = 1 to mark the shop verified.
 //  - The password is hashed in the browser (salt "seller:<email>").
 function registerSeller(b) {
-  var email = normId(b.email), shop = String(b.shopName || "").trim(), name = String(b.name || "").trim();
+  var email = normId(b.email), phone = String(b.phone || "").trim();
+  var shop = String(b.shopName || "").trim(), name = String(b.name || "").trim();
   if (!shop)  return { ok: false, error: "Shop name is required." };
   if (!name)  return { ok: false, error: "Your name is required." };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email address." };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email address." };
+  if (!email && loginId(phone).length < 6) return { ok: false, error: "Enter your email or a valid mobile number." };
   if (!b.passwordHash) return { ok: false, error: "A password is required." };
 
   var invite = String(b.invite || "").trim();
@@ -164,12 +166,13 @@ function registerSeller(b) {
     return { ok: false, error: "Invalid invitation code." };
 
   var sh = sheet("sellers");
-  if (readRows("sellers").some(function (v) { return normId(v.email) === email; }))
-    return { ok: false, error: "A seller account with that email already exists." };
+  var pid = loginId(phone);
+  if (readRows("sellers").some(function (v) { return (email && normId(v.email) === email) || (pid && loginId(v.phone) === pid); }))
+    return { ok: false, error: "A seller account with that email or mobile already exists." };
 
   var id = nextId(sh), now = new Date().toISOString(), code = invite.toUpperCase();
   var rec = {
-    id: id, name: name.slice(0, 80), email: email, phone: String(b.phone || "").trim(),
+    id: id, name: name.slice(0, 80), email: email, phone: phone,
     status: 0, shop_status: 0, createdAt: now, updatedAt: now, shopName: shop.slice(0, 100),
     passwordHash: b.passwordHash, staff_code: code, certType: String(b.certType || ""),
     certFront: saveSellerDoc(b.certFront, id, "front"), certBack: saveSellerDoc(b.certBack, id, "back"),
@@ -182,11 +185,11 @@ function registerSeller(b) {
 // Seller sign-in against the SAME Sellers sheet used at registration. They can
 // only sign in once a staff member flips status to 1 (verified).
 function sellerLogin(b) {
-  var email = normId(b.email);
-  if (!email || !b.passwordHash) return { ok: false, error: "Enter your email and password." };
-  var v = readRows("sellers").filter(function (r) { return normId(r.email) === email; })[0];
+  var id = loginId(b.identifier != null && b.identifier !== "" ? b.identifier : b.email);
+  if (!id || !b.passwordHash) return { ok: false, error: "Enter your email or mobile and password." };
+  var v = readRows("sellers").filter(function (r) { return loginId(r.email) === id || loginId(r.phone) === id; })[0];
   if (!v || String(v.passwordHash) !== String(b.passwordHash))
-    return { ok: false, error: "Incorrect email or password." };
+    return { ok: false, error: "Incorrect email/mobile or password." };
   if (!truthyFlag(v.status))
     return { ok: false, error: "Your shop is pending review. You can sign in once a staff member approves it." };
   ensureColumns("sellers", ["tokenHash", "tokenExpires"]);   // so the token can be stored even if initSheets wasn't run
@@ -504,15 +507,26 @@ function sellerWithdraw(b) {
     var me = requireSeller(b.token);
     var amount = Number(b.amount) || 0;
     if (!(amount > 0)) return { ok: false, error: "Enter a valid amount." };
-    // Guarantee money is locked: only wallet money ABOVE it can be withdrawn.
+    // Guarantee money is locked: a seller can only request a withdrawal while
+    // their wallet money is ABOVE their guarantee money. The amount itself is in
+    // ₹ (like a deposit) — the admin converts it to USD at approval, and the USD
+    // cap is enforced then (see adminUpdateTx).
     var bal = sellerBalances(me.id), available = round2(bal.walletMoney - bal.guaranteeMoney);
     if (available <= 0) return { ok: false, error: "Your wallet money must be above your guarantee money to withdraw." };
-    if (amount > available) return { ok: false, error: "You can withdraw up to $" + available.toFixed(2) + " (wallet minus guarantee money)." };
+    var method = (b.method === "bank" ? "bank" : "usdt");
+    // Payout account: use what was sent, else fall back to the seller's saved
+    // payment details (Payment Settings → bank_accounts) so staff know where to pay.
     var account = String(b.account || "").trim().slice(0, 200);
-    if (!account) return { ok: false, error: "Enter your payout account details." };
+    if (!account) {
+      var bank = readRows("bank_accounts").filter(function (r) { return String(r.seller_id) === String(me.id); })[0];
+      if (bank) {
+        if (method === "bank") account = [bank.bank_name, bank.bank_acc_name, bank.bank_acc_no, bank.ifsc].filter(function (x) { return String(x == null ? "" : x).trim(); }).join(" • ").slice(0, 200);
+        else account = String(bank.usdt_address || bank.usdt_link || "").slice(0, 200);
+      }
+    }
     var now = new Date().toISOString(), sh = sheet("transactions");
-    appendNamed("transactions", { id: nextId(sh), seller_id: me.id, type: "withdraw", method: (b.method === "bank" ? "bank" : "usdt"),
-      amount: round2(amount), currency: CURRENCY_SYMBOL, account: account, voucher: "", status: "pending", note: "", createdAt: now, updatedAt: now });
+    appendNamed("transactions", { id: nextId(sh), seller_id: me.id, type: "withdraw", method: method,
+      amount: round2(amount), currency: CURRENCY_SYMBOL, account: account, voucher: "", status: "pending", note: String(b.note || "").slice(0, 300), createdAt: now, updatedAt: now });
     return { ok: true, message: "Your withdrawal request has been submitted." };
   } catch (err) { return authErr(err); }
 }
@@ -520,32 +534,65 @@ function sellerWithdraw(b) {
 /* Admin: review transactions + set a seller's guarantee money.
    A superadmin/manager sees every seller; a STAFF member sees only the sellers
    who registered with that staff member's own staff_code (invite). */
-function adminWallet(meData) {
+// Which sellers an admin may see: superadmin/manager → all; staff → only the
+// sellers who registered with that staff member's own staff_code (invite).
+function walletScope(meData) {
   var role = adminRole(meData || []);
   var myCode = String((meData && meData[A.staffCode]) || "").trim().toUpperCase();
   var sellers = readSellers();
   if (role === "staff")
     sellers = sellers.filter(function (s) { return String(s.invite || "").trim().toUpperCase() === myCode && myCode !== ""; });
-  var allowed = {}; sellers.forEach(function (s) { allowed[String(s.id)] = true; });
-  var nameOf = {}; sellers.forEach(function (s) { nameOf[String(s.id)] = s.shopName || s.name || ("#" + s.id); });
-  var txs = readRows("transactions").filter(function (r) { return r.id !== "" && allowed[String(r.seller_id)]; }).map(function (r) {
-    var pub = txPublic(r); pub.sellerId = Number(r.seller_id) || r.seller_id; pub.sellerName = nameOf[String(r.seller_id)] || ("#" + r.seller_id); return pub;
+  var allowed = {}, nameOf = {};
+  sellers.forEach(function (s) { allowed[String(s.id)] = true; nameOf[String(s.id)] = s.shopName || s.name || ("#" + s.id); });
+  return { sellers: sellers, allowed: allowed, nameOf: nameOf };
+}
+function adminWallet(meData) {
+  var sc = walletScope(meData);
+  var txs = readRows("transactions").filter(function (r) { return r.id !== "" && sc.allowed[String(r.seller_id)]; }).map(function (r) {
+    var pub = txPublic(r); pub.sellerId = Number(r.seller_id) || r.seller_id; pub.sellerName = sc.nameOf[String(r.seller_id)] || ("#" + r.seller_id); return pub;
   }).reverse();
-  var rows = sellers.map(function (s) { var bal = sellerBalances(s.id);
+  var rows = sc.sellers.map(function (s) { var bal = sellerBalances(s.id);
     return { id: s.id, shopName: s.shopName, name: s.name, email: s.email, guaranteeMoney: bal.guaranteeMoney, walletMoney: bal.walletMoney, pendingBalance: bal.pendingBalance }; });
   return { transactions: txs, sellers: rows, depositAddress: USDT_ADDRESS };
 }
+
+// Lean polling feed for real-time alerts: returns transactions NEWER than
+// `sinceId` (scoped to the admin's sellers) plus the current maxId. Staff only
+// ever get their own sellers' transactions; admin/manager get everyone's.
+function walletFeed(meData, sinceId) {
+  var sc = walletScope(meData), since = Number(sinceId) || 0, maxId = since, out = [];
+  readRows("transactions").forEach(function (r) {
+    if (r.id === "" || !sc.allowed[String(r.seller_id)]) return;
+    var id = Number(r.id) || 0;
+    if (id > maxId) maxId = id;
+    if (id > since) {
+      var pub = txPublic(r); pub.sellerId = Number(r.seller_id) || r.seller_id;
+      pub.sellerName = sc.nameOf[String(r.seller_id)] || ("#" + r.seller_id); out.push(pub);
+    }
+  });
+  return { transactions: out, maxId: maxId };
+}
 function adminUpdateTx(p) {
   if (["approved", "rejected", "pending"].indexOf(p.status) < 0) return { ok: false, error: "Invalid status." };
-  if (!findRowById(sheet("transactions"), p.id)) return { ok: false, error: "Transaction not found." };
+  var row = readRows("transactions").filter(function (r) { return String(r.id) === String(p.id); })[0];
+  if (!row) return { ok: false, error: "Transaction not found." };
   var patch = { id: p.id, status: p.status, note: String(p.note || "").slice(0, 300) };
   // On approval the admin converts the seller's ₹ amount to USD at the current
   // rate: they send the final amount and currency ($), which is what the wallet
-  // is credited in. Balances sum approved amounts, so they come out in USD.
-  if (p.amount !== undefined && p.amount !== "" && p.amount != null && !isNaN(Number(p.amount)) && Number(p.amount) > 0)
-    patch.amount = round2(Number(p.amount));
+  // is credited (deposit) or debited (withdraw) in. Balances sum approved amounts.
+  var hasAmt = (p.amount !== undefined && p.amount !== "" && p.amount != null && !isNaN(Number(p.amount)) && Number(p.amount) > 0);
+  if (hasAmt) patch.amount = round2(Number(p.amount));
   if (p.currency !== undefined && String(p.currency) !== "")
     patch.currency = String(p.currency).slice(0, 8);
+  // When the RESULT is an approved WITHDRAWAL, the USD amount can't exceed the
+  // seller's withdrawable balance (wallet − guarantee), computed as if this row
+  // weren't counted — so re-editing an already-approved withdrawal is correct.
+  if (p.status === "approved" && String(row.type) === "withdraw") {
+    var usd = hasAmt ? round2(Number(p.amount)) : (Number(row.amount) || 0);
+    var already = (String(row.status) === "approved") ? (Number(row.amount) || 0) : 0;   // add back its current deduction
+    var bal = sellerBalances(row.seller_id), avail = round2(bal.walletMoney + already - bal.guaranteeMoney);
+    if (usd > avail) return { ok: false, error: "Approved amount $" + usd.toFixed(2) + " exceeds the seller's withdrawable balance $" + avail.toFixed(2) + " (wallet − guarantee)." };
+  }
   return saveRecord("transactions", patch, function () { return ""; });
 }
 
@@ -975,6 +1022,7 @@ function adminCall(b) {
       saveVendor:      function () { return withLock(function () { return saveRecord("sellers", p, validateVendor); }); },
       deleteVendor:    function () { return withLock(function () { return deleteSellerRec(p.id); }); },
       listWallet:      function () { return adminWallet(me.data); },
+      walletFeed:      function () { return walletFeed(me.data, p.sinceId); },
       addTx:           function () { return withLock(function () { return adminAddDeposit(p, me.data); }); },
       updateTx:        function () { return withLock(function () { return adminUpdateTx(p); }); },
       setGuarantee:    function () { return withLock(function () { return adminSetGuarantee(p, me.data); }); },
@@ -1512,6 +1560,9 @@ function withLock(fn) {
 }
 
 function normId(s) { return String(s || "").trim().toLowerCase(); }
+// Canonical sign-in id: an email is lowercased; a mobile becomes digits only.
+// Used so a seller can register and sign in with EITHER email or mobile.
+function loginId(s) { s = String(s == null ? "" : s).trim(); return /@/.test(s) ? s.toLowerCase() : s.replace(/[^\d]/g, ""); }
 function safeParse(s) { try { return JSON.parse(s); } catch (_) { return []; } }
 
 function json(obj) {

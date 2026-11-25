@@ -58,7 +58,11 @@ window.I18N = (function () {
       "sd.available": "Available to withdraw", "sd.nowithdraw": "Your wallet money must be above your guarantee money to withdraw.", "sd.maxwithdraw": "You can withdraw up to {x}.",
       "sd.addproduct": "Add New Product", "sd.paymentsetting": "Payment Settings", "sd.gotosetting": "Go to setting", "sd.configurenow": "Configure Now",
       "sd.cashpay": "Cash Payment", "sd.bankpay": "Bank Payment", "sd.bankname": "Bank Name", "sd.bankaccname": "Bank Account Name", "sd.bankaccno": "Bank Account Number", "sd.ifsc": "IFSC Code",
-      "sd.usdtpay": "USDT Payment", "sd.usdtlink": "USDT Link", "sd.usdtaddr": "USDT Address", "sd.updateprofile": "Update Profile", "sd.savebtn": "Save", "sd.bankadded": "Bank Account added Successfully!", "sd.paymentdesc": "Set how buyers pay you — cash, bank or USDT."
+      "sd.usdtpay": "USDT Payment", "sd.usdtlink": "USDT Link", "sd.usdtaddr": "USDT Address", "sd.updateprofile": "Update Profile", "sd.savebtn": "Save", "sd.bankadded": "Bank Account added Successfully!", "sd.paymentdesc": "Set how buyers pay you — cash, bank or USDT.",
+      "sd.wallet": "Wallet", "sd.more": "More",
+      "sd.withdrawtitle": "Send A Withdraw Request", "sd.walletbalance": "Your wallet balance", "sd.guaranteebalance": "Your guarantee balance",
+      "sd.operatype": "Opera Type", "sd.userbalance": "User Balance", "sd.withdrawtype": "Withdraw Type", "sd.message": "Message",
+      "sd.messageph": "I want to withdraw my money", "sd.send": "Send", "sd.messagereq": "Please enter a message."
     },
     hi: {
       "nav.home": "होम", "nav.flash": "फ्लैश सेल", "nav.blogs": "ब्लॉग", "nav.brands": "सभी ब्रांड", "nav.cats": "सभी श्रेणियाँ",
@@ -110,7 +114,11 @@ window.I18N = (function () {
       "sd.available": "निकासी योग्य राशि", "sd.nowithdraw": "निकासी के लिए आपकी वॉलेट राशि गारंटी राशि से अधिक होनी चाहिए।", "sd.maxwithdraw": "आप अधिकतम {x} निकाल सकते हैं।",
       "sd.addproduct": "नया प्रोडक्ट जोड़ें", "sd.paymentsetting": "भुगतान सेटिंग", "sd.gotosetting": "सेटिंग पर जाएँ", "sd.configurenow": "अभी कॉन्फ़िगर करें",
       "sd.cashpay": "कैश भुगतान", "sd.bankpay": "बैंक भुगतान", "sd.bankname": "बैंक का नाम", "sd.bankaccname": "बैंक खाता नाम", "sd.bankaccno": "बैंक खाता संख्या", "sd.ifsc": "IFSC कोड",
-      "sd.usdtpay": "USDT भुगतान", "sd.usdtlink": "USDT लिंक", "sd.usdtaddr": "USDT पता", "sd.updateprofile": "प्रोफ़ाइल अपडेट करें", "sd.savebtn": "सहेजें", "sd.bankadded": "बैंक खाता सफलतापूर्वक जोड़ा गया!", "sd.paymentdesc": "तय करें कि खरीदार आपको कैसे भुगतान करें — कैश, बैंक या USDT।"
+      "sd.usdtpay": "USDT भुगतान", "sd.usdtlink": "USDT लिंक", "sd.usdtaddr": "USDT पता", "sd.updateprofile": "प्रोफ़ाइल अपडेट करें", "sd.savebtn": "सहेजें", "sd.bankadded": "बैंक खाता सफलतापूर्वक जोड़ा गया!", "sd.paymentdesc": "तय करें कि खरीदार आपको कैसे भुगतान करें — कैश, बैंक या USDT।",
+      "sd.wallet": "वॉलेट", "sd.more": "और",
+      "sd.withdrawtitle": "निकासी अनुरोध भेजें", "sd.walletbalance": "आपका वॉलेट बैलेंस", "sd.guaranteebalance": "आपका गारंटी बैलेंस",
+      "sd.operatype": "ऑपरेशन प्रकार", "sd.userbalance": "यूज़र बैलेंस", "sd.withdrawtype": "निकासी प्रकार", "sd.message": "संदेश",
+      "sd.messageph": "मैं अपना पैसा निकालना चाहता/चाहती हूँ", "sd.send": "भेजें", "sd.messagereq": "कृपया एक संदेश दर्ज करें।"
     }
   };
   var lang = read();

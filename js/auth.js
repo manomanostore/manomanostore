@@ -11,6 +11,9 @@
   function normId(s) { return String(s || "").trim().toLowerCase(); }
   function isEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
   function isMobile(s) { return /^[+]?[\d][\d\s-]{6,}$/.test(s); }
+  // Canonical login id: email → lowercased; mobile → digits only. Used as the
+  // password salt and for lookup so a seller can sign in with email OR mobile.
+  function loginId(s) { s = String(s == null ? "" : s).trim(); return /@/.test(s) ? s.toLowerCase() : s.replace(/[^\d]/g, ""); }
 
   async function hash(identifier, password) {
     var data = new TextEncoder().encode(PEPPER + "|" + normId(identifier) + "|" + password);
@@ -130,5 +133,5 @@
     document.dispatchEvent(new CustomEvent("auth:change"));
   }
 
-  window.AUTH = { hash: hash, normId: normId, signup: signup, login: login, updateProfile: updateProfile, current: current, logout: logout, isEmail: isEmail, isMobile: isMobile };
+  window.AUTH = { hash: hash, normId: normId, loginId: loginId, signup: signup, login: login, updateProfile: updateProfile, current: current, logout: logout, isEmail: isEmail, isMobile: isMobile };
 })();

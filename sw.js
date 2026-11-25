@@ -1,5 +1,5 @@
 /* Service worker — app-shell cache for an app-like, offline-capable PWA */
-var CACHE = "manomano-v69";
+var CACHE = "manomano-v78";
 var SHELL = [
   "index.html", "category.html", "product.html", "cart.html", "login.html", "account.html", "blog.html", "brands.html", "sell.html", "seller-dashboard.html",
   "css/styles.css",
@@ -25,13 +25,15 @@ self.addEventListener("fetch", function (e) {
   // Local development: always hit the network so edits show up on reload.
   if (location.hostname === "localhost" || location.hostname === "127.0.0.1") return;
 
-  // network-first for the catalog so product updates show; cache fallback offline
-  if (url.pathname.endsWith("products.json")) {
+  // Network-first for PAGES, CODE and the catalog, so a fresh deploy shows on the
+  // next reload (no cache-version bump needed) while staying offline-capable via
+  // the cache fallback. This prevents "works locally, stale on the live site".
+  if (/\.(?:html|js|css|json)$/.test(url.pathname) || url.pathname === "/" || url.pathname.endsWith("/")) {
     e.respondWith(fetch(req).then(function (r) {
       var copy = r.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); return r;
     }).catch(function () { return caches.match(req); }));
     return;
   }
-  // cache-first for the app shell
+  // cache-first for static assets (images, fonts, manifest)
   e.respondWith(caches.match(req).then(function (hit) { return hit || fetch(req); }));
 });

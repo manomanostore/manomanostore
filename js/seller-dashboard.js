@@ -562,6 +562,52 @@
     return null;
   }
 
+  /* ---- Real-time alerts: when the admin approves/rejects the seller's own
+     deposit or withdrawal, play a loud voice + toast. ---- */
+  var _sAudio = null, _sTxSeen = null, _sTxTimer = null;
+  function _sBeep() {
+    try {
+      _sAudio = _sAudio || new (window.AudioContext || window.webkitAudioContext)();
+      if (_sAudio.state === "suspended") _sAudio.resume();
+      [0, 0.18].forEach(function (t) {
+        var o = _sAudio.createOscillator(), g = _sAudio.createGain();
+        o.type = "sine"; o.frequency.value = 940; g.gain.value = 0.9;
+        o.connect(g); g.connect(_sAudio.destination);
+        o.start(_sAudio.currentTime + t); o.stop(_sAudio.currentTime + t + 0.15);
+      });
+    } catch (e) {}
+  }
+  function sSpeak(text) {
+    _sBeep();
+    try {
+      if (!("speechSynthesis" in window)) return;
+      var u = new SpeechSynthesisUtterance(text); u.volume = 1; u.rate = 1; u.pitch = 1;
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  (function () {
+    function prime() { try { _sBeep(); window.speechSynthesis && window.speechSynthesis.resume && window.speechSynthesis.resume(); } catch (e) {} document.removeEventListener("pointerdown", prime); }
+    document.addEventListener("pointerdown", prime, { once: true });
+  })();
+  function sTxLabel(t) { return t.type === "withdraw" ? "withdrawal" : t.type === "guarantee" ? "guarantee" : "deposit"; }
+  async function pollSellerTx() {
+    if (!session.token) return;
+    var j = await fetchWallet(false);
+    if (!j || !j.transactions) return;
+    var map = {}; j.transactions.forEach(function (t) { map[String(t.id)] = t.status; });
+    if (_sTxSeen === null) { _sTxSeen = map; return; }   // first run: baseline silently
+    j.transactions.forEach(function (t) {
+      var prev = _sTxSeen[String(t.id)];
+      if (prev !== undefined && prev !== t.status && (t.status === "approved" || t.status === "rejected")) {
+        var amt = (t.currency || "") + Number(t.amount).toFixed(2);
+        sSpeak("Your " + sTxLabel(t) + " of " + amt + " was " + t.status + ".");
+        (t.status === "approved" ? ok : toast)("Your " + sTxLabel(t) + " " + amt + " was " + t.status + ".");
+      }
+    });
+    _sTxSeen = map;
+    if (!$("viewWallet").hidden) renderWallet();
+  }
+
   function renderWallet() {
     var d = wallet.data; if (!d) return;
     var shop = session.shopName || session.name || "Shop", initial = (shop.trim()[0] || "S").toUpperCase();
@@ -642,38 +688,44 @@
   // Withdrawal request modal.
   function openWithdraw() {
     var bal = (wallet.data && wallet.data.balances) || {};
-    var available = Math.max(0, Math.round(((Number(bal.walletMoney) || 0) - (Number(bal.guaranteeMoney) || 0)) * 100) / 100);
+    var walletMoney = Number(bal.walletMoney) || 0, guarantee = Number(bal.guaranteeMoney) || 0;
+    var available = Math.max(0, Math.round((walletMoney - guarantee) * 100) / 100);
     var root = document.createElement("div"); root.className = "sd-modal";
-    root.innerHTML = '<div class="sd-dialog" style="width:420px" role="dialog" aria-modal="true">' +
-      '<div class="sd-dhead"><h3>' + esc(T("sd.sendwithdraw")) + '</h3><button class="sd-dclose" id="wdX">×</button></div>' +
+    root.innerHTML = '<div class="sd-dialog" style="width:430px" role="dialog" aria-modal="true">' +
+      '<div class="sd-dhead"><h3>' + esc(T("sd.withdrawtitle")) + '</h3><button type="button" class="sd-dclose" id="wdX" aria-label="Close">&times;</button></div>' +
       '<div class="sd-dbody">' +
         '<p class="sd-msg" id="wdMsg" hidden></p>' +
-        '<div class="sd-available">' + esc(T("sd.available")) + ': <b>$' + available.toFixed(2) + '</b> <span>(' + esc(T("sd.walletmoney")) + ' − ' + esc(T("sd.guarantee")) + ')</span></div>' +
-        '<div class="sd-field"><label>' + esc(T("sd.amount")) + '</label><input id="wdAmt" type="number" min="1" step="0.01" max="' + available + '" placeholder="0.00"></div>' +
-        '<div class="sd-field"><label>' + esc(T("sd.method")) + '</label><select id="wdMethod" class="sd-select" style="width:100%"><option value="bank">' + esc(T("sd.bank")) + '</option><option value="usdt">' + esc(T("sd.usdt")) + '</option></select></div>' +
-        '<div class="sd-field"><label>' + esc(T("sd.account")) + '</label><input id="wdAcc" type="text" placeholder="' + esc(T("sd.accountph")) + '"></div>' +
+        '<div class="sd-wbalrow"><span>' + esc(T("sd.walletbalance")) + ' :</span> <b>$' + walletMoney.toFixed(2) + '</b></div>' +
+        '<div class="sd-wbalrow last"><span>' + esc(T("sd.guaranteebalance")) + ' :</span> <b>$' + guarantee.toFixed(2) + '</b></div>' +
+        '<div class="sd-field"><label>' + esc(T("sd.amount")) + ' <span class="sd-req">*</span></label><input id="wdAmt" type="number" min="1" step="0.01" placeholder="0.00"></div>' +
+        '<div class="sd-field"><label>' + esc(T("sd.operatype")) + '</label><select id="wdOpera" class="sd-select" style="width:100%"><option value="user_balance">' + esc(T("sd.userbalance")) + '</option></select></div>' +
+        '<div class="sd-field"><label>' + esc(T("sd.withdrawtype")) + '</label><select id="wdMethod" class="sd-select" style="width:100%"><option value="bank">' + esc(T("sd.bank")) + '</option><option value="usdt">' + esc(T("sd.usdt")) + '</option></select></div>' +
+        '<div class="sd-field"><label>' + esc(T("sd.message")) + ' <span class="sd-req">*</span></label><textarea id="wdNote" rows="4" placeholder="' + esc(T("sd.messageph")) + '"></textarea></div>' +
       '</div>' +
-      '<div class="sd-dfoot"><button class="sd-btn sd-btn-grey" id="wdCancel">' + esc(T("sd.cancel")) + '</button><button class="sd-btn" id="wdSave">' + esc(T("sd.confirm")) + '</button></div></div>';
+      '<div class="sd-dfoot" style="padding-top:4px"><button type="button" class="sd-btn" id="wdSave" style="width:100%">' + esc(T("sd.send")) + '</button></div></div>';
     document.body.appendChild(root);
-    function close() { root.remove(); }
-    $("wdX").onclick = close; $("wdCancel").onclick = close;
+    function close() { document.removeEventListener("keydown", onKey); root.remove(); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    $("wdX").onclick = close;
+    root.addEventListener("click", function (e) { if (e.target === root) close(); });
+    document.addEventListener("keydown", onKey);
+
     $("wdSave").addEventListener("click", async function () {
       var msg = $("wdMsg"); msg.hidden = true;
-      var amt = Number($("wdAmt").value) || 0, acc = $("wdAcc").value.trim(), method = $("wdMethod").value;
+      var amt = Number($("wdAmt").value) || 0, method = $("wdMethod").value, note = $("wdNote").value.trim(), opera = $("wdOpera").value;
       function fail(t) { msg.hidden = false; msg.textContent = t; }
       if (!(amt > 0)) return fail(T("sd.amountreq"));
       if (available <= 0) return fail(T("sd.nowithdraw"));
-      if (amt > available) return fail(T("sd.maxwithdraw").replace("{x}", "$" + available.toFixed(2)));
-      if (!acc) return fail(T("sd.account"));
+      if (!note) return fail(T("sd.messagereq"));
       if (!session.token) { reloginSoon(); return; }
       var btn = this; btn.disabled = true; btn.textContent = T("sd.saving");
       try {
         var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "sellerWithdraw", token: session.token, amount: amt, method: method, account: acc }) });
+          body: JSON.stringify({ action: "sellerWithdraw", token: session.token, amount: amt, method: method, note: note, operaType: opera }) });
         var j = await r.json();
-        if (!j.ok) { btn.disabled = false; btn.textContent = T("sd.confirm"); if (j.auth) reloginSoon(); else fail(j.error || "Couldn't submit."); return; }
+        if (!j.ok) { btn.disabled = false; btn.textContent = T("sd.send"); if (j.auth) reloginSoon(); else fail(j.error || "Couldn't submit."); return; }
         close(); ok(T("sd.reqsent")); await ensureWallet();
-      } catch (x) { btn.disabled = false; btn.textContent = T("sd.confirm"); fail("Can't reach the server right now."); }
+      } catch (x) { btn.disabled = false; btn.textContent = T("sd.send"); fail("Can't reach the server right now."); }
     });
   }
 
@@ -687,6 +739,7 @@
   function switchView(name, fromHash) {
     if (VIEWS.indexOf(name) < 0) name = "dashboard";
     document.querySelectorAll('.sd-nav a[data-view]').forEach(function (a) { a.classList.toggle("active", a.getAttribute("data-view") === name); });
+    document.querySelectorAll('.sd-tab[data-tab]').forEach(function (t) { t.classList.toggle("active", t.getAttribute("data-tab") === name); });
     $("viewDashboard").hidden = name !== "dashboard";
     $("viewStorehouse").hidden = name !== "storehouse";
     $("viewProducts").hidden = name !== "products";
@@ -775,6 +828,8 @@
     if ($("wlRecharge")) $("wlRecharge").addEventListener("click", function () { openRecharge("deposit"); });
     // Guarantee Recharge: kept for layout only (guarantee money is set by staff) — no action.
     fetchWallet();   // populate Guarantee Money, Total Products and Wallet Balance cards
+    pollSellerTx();  // baseline, then poll for admin approvals/rejections
+    _sTxTimer = setInterval(pollSellerTx, 20000);
 
     // Lock page scroll whenever a modal is open (background stays non-interactive).
     if ("MutationObserver" in window) new MutationObserver(function () {
@@ -842,6 +897,12 @@
     function closeDrawer() { shell.classList.remove("sd-open"); }
     if (burger) burger.addEventListener("click", function () { shell.classList.toggle("sd-open"); });
     if (backdrop) backdrop.addEventListener("click", closeDrawer);
+
+    // Bottom tab bar (mobile) → same views as the sidebar; "More" opens the drawer.
+    document.querySelectorAll('.sd-tab[data-tab]').forEach(function (t) {
+      t.addEventListener("click", function () { switchView(t.getAttribute("data-tab")); closeDrawer(); });
+    });
+    if ($("sdTabMore")) $("sdTabMore").addEventListener("click", function () { shell.classList.add("sd-open"); });
     document.querySelectorAll(".sd-nav a").forEach(function (a) { a.addEventListener("click", closeDrawer); });
 
     buildLang();

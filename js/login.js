@@ -17,18 +17,19 @@ window.SELLERLOGIN = (function () {
     document.getElementById("authForm").addEventListener("submit", async function (e) {
       e.preventDefault();
       msg("");
-      var email = AUTH.normId(document.getElementById("identifier").value);
+      var raw = document.getElementById("identifier").value;
+      var ident = AUTH.loginId(raw);   // email (lowercased) or mobile (digits only)
       var password = document.getElementById("password").value;
-      if (!AUTH.isEmail(email)) return msg("Please enter a valid email address.", "err");
+      if (!AUTH.isEmail(raw.trim()) && !AUTH.isMobile(raw.trim())) return msg("Please enter a valid email or mobile number.", "err");
       if (!password) return msg("Please enter your password.", "err");
       if (!CONFIG.API_URL) return msg("Sign-in needs the online backend. Please try again later.", "err");
 
       var btn = document.getElementById("submitBtn");
       btn.disabled = true; btn.textContent = "Signing in…";
       try {
-        var passwordHash = await AUTH.hash("seller:" + email, password);
+        var passwordHash = await AUTH.hash("seller:" + ident, password);
         var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "sellerLogin", email: email, passwordHash: passwordHash }) });
+          body: JSON.stringify({ action: "sellerLogin", identifier: ident, email: ident, passwordHash: passwordHash }) });
         var j = await r.json();
         btn.disabled = false; btn.textContent = "Sign in";
         if (!j.ok) return msg(j.error || "Couldn't sign you in.", "err");

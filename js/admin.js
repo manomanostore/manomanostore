@@ -62,7 +62,7 @@ window.ADMIN = (function () {
     } catch (e) {}
     sessionStorage.removeItem(SKEY); return null;
   }
-  function logout(msg) { sessionStorage.removeItem(SKEY); session = null; catalog = null; renderLogin(msg); }
+  function logout(msg) { sessionStorage.removeItem(SKEY); session = null; catalog = null; if (_txTimer) { clearInterval(_txTimer); _txTimer = null; } renderLogin(msg); }
 
   async function post(body) {
     try {
@@ -154,15 +154,83 @@ window.ADMIN = (function () {
           '</header>'+
           '<main class="adm-content" id="admView"></main>'+
         '</div>'+
+        '<nav class="adm-tabbar" id="admTabbar">'+
+          NAV.filter(function (n) { return canRoute(n[0]); }).slice(0, 4).map(function (n) {
+            return '<a href="#'+n[0]+'" data-route="'+n[0]+'" class="adm-tab">'+svg(n[2], 22)+'<span>'+esc(n[1])+'</span></a>';
+          }).join("")+
+          '<button type="button" class="adm-tab" id="admTabMore">'+svg("menu", 22)+'<span>More</span></button>'+
+        '</nav>'+
       '</div>'+
       '<div class="adm-toast" id="admToast" role="status"></div>';
 
     $("admLogout").onclick = function () { logout(); };
     $("admRefresh").onclick = function () { location.reload(); };
     $("admMenu").onclick = function () { document.body.classList.add("adm-nav-open"); };
+    $("admTabMore").onclick = function () { document.body.classList.add("adm-nav-open"); };
     $("admScrim").onclick = function () { document.body.classList.remove("adm-nav-open"); };
     window.onhashchange = route;
     route();
+    startTxAlerts();
+  }
+
+  /* ---- Real-time transaction alerts (role-scoped polling + loud voice) ---- */
+  // Staff hear only their own sellers' requests; admin/manager hear everyone's.
+  var _audioCtx = null, _txTimer = null;
+  function _beep() {
+    try {
+      _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === "suspended") _audioCtx.resume();
+      [0, 0.18].forEach(function (t) {
+        var o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
+        o.type = "sine"; o.frequency.value = 940; g.gain.value = 0.9;   // loud
+        o.connect(g); g.connect(_audioCtx.destination);
+        o.start(_audioCtx.currentTime + t); o.stop(_audioCtx.currentTime + t + 0.15);
+      });
+    } catch (e) {}
+  }
+  function speakLoud(text) {
+    _beep();
+    try {
+      if (!("speechSynthesis" in window)) return;
+      var u = new SpeechSynthesisUtterance(text);
+      u.volume = 1; u.rate = 1; u.pitch = 1;      // max volume
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  // Browsers block audio until the user interacts — warm it up on first gesture.
+  (function () {
+    function prime() { try { _beep(); window.speechSynthesis && window.speechSynthesis.resume && window.speechSynthesis.resume(); } catch (e) {} document.removeEventListener("pointerdown", prime); }
+    document.addEventListener("pointerdown", prime, { once: true });
+  })();
+
+  function announceTx(t) {
+    var kind = t.type === "withdraw" ? "withdrawal" : t.type === "guarantee" ? "guarantee" : "deposit";
+    var amt = (t.currency || "") + Number(t.amount).toFixed(2);
+    var text = "New " + kind + " request from " + (t.sellerName || "a seller") + ", " + amt;
+    speakLoud(text);
+    toast(text);
+  }
+  function startTxAlerts() {
+    if (!session || _txTimer) return;
+    var KEY = "mm_adm_tx_seen_" + ((session.admin && session.admin.username) || "");
+    var seen = Number(localStorage.getItem(KEY) || 0);
+    var baselined = seen > 0;
+    async function poll() {
+      if (!session) return;
+      try {
+        var r = await api("walletFeed", { sinceId: seen });
+        if (!r || !r.ok) return;
+        if (!baselined) { seen = r.maxId || 0; try { localStorage.setItem(KEY, seen); } catch (e) {} baselined = true; return; }
+        if (r.transactions && r.transactions.length) {
+          r.transactions.forEach(announceTx);
+          seen = r.maxId || seen; try { localStorage.setItem(KEY, seen); } catch (e) {}
+          if ((location.hash || "").indexOf("wallet") > -1) route();   // refresh the open wallet view
+        }
+      } catch (e) {}
+    }
+    poll();
+    _txTimer = setInterval(poll, 15000);
   }
 
   function route() {
@@ -174,6 +242,7 @@ window.ADMIN = (function () {
     document.querySelectorAll(".adm-modal-back").forEach(function (m) { m.remove(); });
     document.documentElement.classList.remove("no-scroll");
     document.querySelectorAll(".adm-nav a").forEach(function (a) { a.classList.toggle("active", a.dataset.route === r); });
+    document.querySelectorAll(".adm-tab[data-route]").forEach(function (a) { a.classList.toggle("active", a.dataset.route === r); });
     $("admTitle").textContent = NAV.filter(function (n) { return n[0] === r; })[0][1];
     document.title = $("admTitle").textContent + " — Admin";
     $("admView").onclick = null;
@@ -789,9 +858,8 @@ window.ADMIN = (function () {
     function dt(iso) { try { return new Date(iso).toLocaleDateString(); } catch (e) { return ""; } }
     function kindOf(s) { return s === "approved" ? "verified" : s === "rejected" ? "blocked" : "pending"; }
     function txRow(t) {
-      var actions = (t.status === "pending" && can("updateTx"))
-        ? '<button type="button" class="btn btn-primary adm-mini" data-approve="'+esc(t.id)+'" data-amt="'+esc(t.amount)+'" data-cur="'+esc(t.currency || '')+'" data-type="'+esc(t.type || '')+'">Approve</button>'+
-          '<button type="button" class="btn btn-ghost adm-mini" data-reject="'+esc(t.id)+'">Reject</button>'
+      var actions = can("updateTx")
+        ? '<button type="button" class="adm-icon-btn" data-editamt="'+esc(t.id)+'" data-amt="'+esc(t.amount)+'" data-cur="'+esc(t.currency || '')+'" data-type="'+esc(t.type || '')+'" data-status="'+esc(t.status || 'pending')+'" title="Edit transaction" aria-label="Edit transaction">'+svg("edit")+'</button>'
         : '<span class="adm-cell-sub">'+(t.note ? esc(t.note) : (t.status === "pending" ? "Pending review" : "—"))+'</span>';
       return '<tr>'+
         '<td><div class="adm-cell-main">'+esc(t.sellerName)+'</div><div class="adm-cell-sub">#'+esc(t.id)+' · '+esc(dt(t.createdAt))+'</div></td>'+
@@ -857,6 +925,8 @@ window.ADMIN = (function () {
         var r = await api("updateTx", { id: b.dataset.reject, status: "rejected" });
         if (!r.ok) { b.disabled = false; return toast(r.error, true); }
         toast("Rejected"); route();
+      } else if (b.dataset.editamt) {
+        editTxForm(b.dataset.editamt, b.dataset.amt, b.dataset.cur, b.dataset.type, b.dataset.status);
       } else if (b.dataset.guar) {
         guaranteeForm(b.dataset.guar, b.dataset.name, b.dataset.amt);
       } else if (b.dataset.dep) {
@@ -865,16 +935,48 @@ window.ADMIN = (function () {
     };
   }
 
+  // Edit a pending transaction's amount + currency (e.g. convert ₹ → $) WITHOUT
+  // approving it. It stays pending; approve later to credit/debit the wallet.
+  function editTxForm(id, amt, cur, type, status) {
+    var title = type === "withdraw" ? "Edit Withdrawal Transactions"
+              : type === "deposit"  ? "Edit Deposit Transactions"
+              : "Edit Transaction";
+    var c = cur || '₹', st = status || 'pending';
+    var curOpts = [['₹', '₹ (INR)'], ['$', '$ (USD)']].map(function (o) {
+      return '<option value="'+o[0]+'"'+(o[0] === c ? ' selected' : '')+'>'+o[1]+'</option>';
+    }).join('');
+    var stOpts = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected']].map(function (o) {
+      return '<option value="'+o[0]+'"'+(o[0] === st ? ' selected' : '')+'>'+o[1]+'</option>';
+    }).join('');
+    modal(title,
+      '<p class="adm-hint" style="margin:0 0 16px">Update the amount and currency (e.g. convert ₹ to $ at the current rate) and set the status. An <b>Approved</b> amount is what credits (deposit) or debits (withdraw) the wallet.</p>'+
+      '<div class="adm-form-cols">'+
+        f("eAmt", "Amount", '<input id="eAmt" type="number" min="0.01" step="0.01" required value="'+esc(Number(amt).toFixed(2))+'">')+
+        f("eCur", "Currency", '<select id="eCur">'+curOpts+'</select>')+
+        f("eStatus", "Status", '<select id="eStatus">'+stOpts+'</select>')+
+      '</div>',
+      async function () {
+        var a = Number($("eAmt").value) || 0;
+        if (!(a > 0)) return "Enter a valid amount.";
+        var r = await api("updateTx", { id: id, status: $("eStatus").value, amount: a, currency: ($("eCur").value || '').trim() });
+        if (!r.ok) return r.error;
+        toast("Transaction updated"); route();
+      });
+  }
+
   // Approving a transaction: the seller's amount is in ₹ (INR). The admin enters
   // the amount converted to USD at the current rate and the currency becomes $,
   // which is what the wallet is credited in.
   function approveForm(id, amt, cur, type) {
     var usd = C.CURRENCY_SYMBOL || "$";
+    var curOpts = [['$', '$ (USD)'], ['₹', '₹ (INR)']].map(function (o) {
+      return '<option value="'+o[0]+'"'+(o[0] === '$' ? ' selected' : '')+'>'+o[1]+'</option>';
+    }).join('');
     modal("Approve — convert to USD",
-      '<p class="adm-hint" style="background:#eef4ff;color:#1d4ed8;margin:0 0 16px">Seller requested <b>'+esc(cur || '₹')+esc(Number(amt).toFixed(2))+'</b>. Enter the amount converted to USD at the current rate — the wallet is credited in this amount.</p>'+
+      '<p class="adm-hint" style="background:#eef4ff;color:#1d4ed8;margin:0 0 16px">Seller requested <b>'+esc(cur || '₹')+esc(Number(amt).toFixed(2))+'</b>. Enter the amount converted to USD at the current rate — the wallet is '+(type === 'withdraw' ? 'debited' : 'credited')+' by this amount.</p>'+
       '<div class="adm-form-cols">'+
         f("aAmt", "Amount in USD ($)", '<input id="aAmt" type="number" min="0.01" step="0.01" required value="'+esc(Number(amt).toFixed(2))+'">')+
-        f("aCur", "Currency symbol", '<input id="aCur" type="text" maxlength="8" value="'+esc(usd)+'">')+
+        f("aCur", "Currency", '<select id="aCur">'+curOpts+'</select>')+
       '</div>',
       async function () {
         var a = Number($("aAmt").value) || 0;

@@ -173,6 +173,7 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 
 /* responsive */
 @media (max-width:1100px){ .adm-kpis{grid-template-columns:repeat(3,1fr)} .adm-grid2{grid-template-columns:1fr} }
+.adm-tabbar{display:none}
 @media (max-width:900px){
   .adm{grid-template-columns:1fr}
   .adm-side{position:fixed;left:0;top:0;bottom:0;width:260px;transform:translateX(-100%);transition:transform .25s ease;box-shadow:var(--shadow-lg)}
@@ -180,8 +181,19 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
   body.adm-nav-open .adm-scrim{display:block;position:fixed;inset:0;z-index:35;background:rgba(10,16,32,.45)}
   .adm-menu{display:grid}
   .adm-top{padding:12px 16px}
-  .adm-content{padding:16px 16px 32px}
+  .adm-content{padding:16px 16px 92px}
   .adm-me-txt{display:none}
+  /* android-app style bottom navigation */
+  .adm-tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--card,#fff);border-top:1px solid var(--line);
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom)) 4px;box-shadow:0 -6px 20px rgba(16,24,48,.1)}
+  .adm-tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:none;cursor:pointer;
+    padding:6px 2px;color:var(--muted);font-size:11px;font-weight:700;border-radius:12px;text-decoration:none}
+  .adm-tab svg{width:22px;height:22px}
+  .adm-tab.active{color:var(--navy)}
+  .adm-tab:active{background:#eef1f7}
+  /* hide the bottom bar while the menu drawer is open, so its Log out footer shows */
+  body.adm-nav-open .adm-tabbar{display:none}
+  .adm-side{overflow-y:auto}
 }
 @media (max-width:640px){
   .adm-kpis{grid-template-columns:repeat(2,1fr);gap:10px}

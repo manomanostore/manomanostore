@@ -28,8 +28,8 @@
       <h2>Personal info</h2>
       <div class="sell-grid">
         <div class="field"><label for="sName">Your name <i>*</i></label><input id="sName" type="text" autocomplete="name" maxlength="80" placeholder="Full name" required></div>
-        <div class="field"><label for="sEmail">Your email <i>*</i></label><input id="sEmail" type="email" autocomplete="email" placeholder="you@example.com" required><small>You'll use this to sign in once approved.</small></div>
-        <div class="field"><label for="sPhone">Phone <span class="opt">(optional)</span></label><input id="sPhone" type="tel" autocomplete="tel" placeholder="+1 555 123 4567"></div>
+        <div class="field"><label for="sEmail">Your email</label><input id="sEmail" type="email" autocomplete="email" placeholder="you@example.com"><small>Email <b>or</b> mobile is required — you'll sign in with it.</small></div>
+        <div class="field"><label for="sPhone">Mobile number</label><input id="sPhone" type="tel" autocomplete="tel" placeholder="+1 555 123 4567"><small>Use this to sign in if you don't have an email.</small></div>
         <div class="field"><label for="sPw">Password <i>*</i></label><input id="sPw" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required>
           <ul class="pw-rules" id="pwRules">
             <li data-rule="len">At least 8 characters</li>
@@ -90,7 +90,8 @@
     var frontFile = $("sCertFront").files[0], backFile = $("sCertBack").files[0];
 
     if (!name) return fail("Please enter your name.");
-    if (!AUTH.isEmail(email)) return fail("Please enter a valid email address.");
+    if (email && !AUTH.isEmail(email)) return fail("Please enter a valid email address.");
+    if (!email && !AUTH.isMobile(phone)) return fail("Enter your email or a valid mobile number.");
     if (!pwStrong(pw)) return fail("Password must be at least 8 characters and include an uppercase letter, a lowercase letter and a number.");
     if (pw !== pw2) return fail("The passwords don't match.");
     if (!shop) return fail("Please enter your shop name.");
@@ -102,7 +103,9 @@
 
     var btn = $("sellSubmit"); btn.disabled = true; btn.textContent = "Submitting…";
     try {
-      var passwordHash = await AUTH.hash("seller:" + email, pw);
+      // Sign-in identity = email if given, else the mobile number (digits only).
+      var loginIdent = email ? AUTH.loginId(email) : AUTH.loginId(phone);
+      var passwordHash = await AUTH.hash("seller:" + loginIdent, pw);
       var certFront = await fileToData(frontFile), certBack = await fileToData(backFile);
       var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "registerSeller", name: name, email: email, phone: phone,
