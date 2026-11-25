@@ -48,6 +48,9 @@ var SELLER_TOKEN_HOURS = 24 * 14;   // how long a seller stays signed in
 // TRC20 USDT address sellers send offline wallet deposits to (shown on the
 // recharge screen). Change this to your own address.
 var USDT_ADDRESS = "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+
+// Currency symbol stored with every wallet transaction (change once here).
+var CURRENCY_SYMBOL = "₹";
 var ORDER_STATUSES = ["received", "processing", "shipped", "delivered", "cancelled"];
 
 var SHEETS = {
@@ -64,7 +67,7 @@ var SHEETS = {
   banners:    { name: "Banners",    headers: ["id","image_url","order","status"] },
   sellerproducts: { name: "SellerProducts", headers: ["id","seller_id","product_id","name","price","profit","qty","status","createdAt","updatedAt"] },
   wallet:       { name: "Wallet",       headers: ["id","seller_id","guarantee","updatedAt"] },
-  transactions: { name: "Transactions", headers: ["id","seller_id","type","method","amount","account","voucher","status","note","createdAt","updatedAt"] }
+  transactions: { name: "Transactions", headers: ["id","seller_id","type","method","amount","currency","account","voucher","status","note","createdAt","updatedAt"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
 var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10, staffCode:11 };
@@ -79,7 +82,7 @@ var PERMS = {
   deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
   deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
-  listWallet: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ["superadmin", "manager"],
+  listWallet: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"]
 };
 
@@ -400,8 +403,8 @@ function sellerProductsValue(sellerId) {
 
 function txPublic(r) {
   return { id: Number(r.id) || r.id, type: String(r.type || ""), method: String(r.method || ""), amount: Number(r.amount) || 0,
-           account: String(r.account || ""), voucher: String(r.voucher || ""), status: String(r.status || "pending"),
-           note: String(r.note || ""), createdAt: r.createdAt };
+           currency: String(r.currency || CURRENCY_SYMBOL), account: String(r.account || ""), voucher: String(r.voucher || ""),
+           status: String(r.status || "pending"), note: String(r.note || ""), createdAt: r.createdAt };
 }
 function authErr(err) { var m = String(err && err.message || err); return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") }; }
 
@@ -422,10 +425,14 @@ function sellerDeposit(b) {
     var amount = Number(b.amount) || 0;
     if (!(amount > 0)) return { ok: false, error: "Enter a valid amount." };
     var type = (b.purpose === "guarantee") ? "guarantee" : "deposit", voucher = "";
-    if (b.voucher) voucher = uploadImageTo(b.voucher, type + "-" + me.id, driveChild(driveImagesFolder("seller"), String(me.id)), 1200);
+    // Vouchers live in  seller/images/<sellerId>/transaction/
+    if (b.voucher) {
+      var folder = driveChild(driveChild(driveImagesFolder("seller"), String(me.id)), "transaction");
+      voucher = uploadImageTo(b.voucher, type + "-" + me.id, folder, 1200);
+    }
     var now = new Date().toISOString(), sh = sheet("transactions");
     appendNamed("transactions", { id: nextId(sh), seller_id: me.id, type: type, method: "usdt", amount: round2(amount),
-      account: "", voucher: voucher, status: "pending", note: "", createdAt: now, updatedAt: now });
+      currency: CURRENCY_SYMBOL, account: "", voucher: voucher, status: "pending", note: "", createdAt: now, updatedAt: now });
     return { ok: true, message: "Your recharge request has been submitted for review." };
   } catch (err) { return authErr(err); }
 }
@@ -437,21 +444,31 @@ function sellerWithdraw(b) {
     var me = requireSeller(b.token);
     var amount = Number(b.amount) || 0;
     if (!(amount > 0)) return { ok: false, error: "Enter a valid amount." };
-    if (amount > sellerBalances(me.id).walletMoney) return { ok: false, error: "Amount exceeds your wallet balance." };
+    // Guarantee money is locked: only wallet money ABOVE it can be withdrawn.
+    var bal = sellerBalances(me.id), available = round2(bal.walletMoney - bal.guaranteeMoney);
+    if (available <= 0) return { ok: false, error: "Your wallet money must be above your guarantee money to withdraw." };
+    if (amount > available) return { ok: false, error: "You can withdraw up to $" + available.toFixed(2) + " (wallet minus guarantee money)." };
     var account = String(b.account || "").trim().slice(0, 200);
     if (!account) return { ok: false, error: "Enter your payout account details." };
     var now = new Date().toISOString(), sh = sheet("transactions");
     appendNamed("transactions", { id: nextId(sh), seller_id: me.id, type: "withdraw", method: (b.method === "bank" ? "bank" : "usdt"),
-      amount: round2(amount), account: account, voucher: "", status: "pending", note: "", createdAt: now, updatedAt: now });
+      amount: round2(amount), currency: CURRENCY_SYMBOL, account: account, voucher: "", status: "pending", note: "", createdAt: now, updatedAt: now });
     return { ok: true, message: "Your withdrawal request has been submitted." };
   } catch (err) { return authErr(err); }
 }
 
-/* Admin: review transactions + set a seller's guarantee money. */
-function adminWallet() {
+/* Admin: review transactions + set a seller's guarantee money.
+   A superadmin/manager sees every seller; a STAFF member sees only the sellers
+   who registered with that staff member's own staff_code (invite). */
+function adminWallet(meData) {
+  var role = adminRole(meData || []);
+  var myCode = String((meData && meData[A.staffCode]) || "").trim().toUpperCase();
   var sellers = readSellers();
+  if (role === "staff")
+    sellers = sellers.filter(function (s) { return String(s.invite || "").trim().toUpperCase() === myCode && myCode !== ""; });
+  var allowed = {}; sellers.forEach(function (s) { allowed[String(s.id)] = true; });
   var nameOf = {}; sellers.forEach(function (s) { nameOf[String(s.id)] = s.shopName || s.name || ("#" + s.id); });
-  var txs = readRows("transactions").filter(function (r) { return r.id !== ""; }).map(function (r) {
+  var txs = readRows("transactions").filter(function (r) { return r.id !== "" && allowed[String(r.seller_id)]; }).map(function (r) {
     var pub = txPublic(r); pub.sellerId = Number(r.seller_id) || r.seller_id; pub.sellerName = nameOf[String(r.seller_id)] || ("#" + r.seller_id); return pub;
   }).reverse();
   var rows = sellers.map(function (s) { var bal = sellerBalances(s.id);
@@ -461,10 +478,50 @@ function adminWallet() {
 function adminUpdateTx(p) {
   if (["approved", "rejected", "pending"].indexOf(p.status) < 0) return { ok: false, error: "Invalid status." };
   if (!findRowById(sheet("transactions"), p.id)) return { ok: false, error: "Transaction not found." };
-  return saveRecord("transactions", { id: p.id, status: p.status, note: String(p.note || "").slice(0, 300) }, function () { return ""; });
+  var patch = { id: p.id, status: p.status, note: String(p.note || "").slice(0, 300) };
+  // On approval the admin converts the seller's ₹ amount to USD at the current
+  // rate: they send the final amount and currency ($), which is what the wallet
+  // is credited in. Balances sum approved amounts, so they come out in USD.
+  if (p.amount !== undefined && p.amount !== "" && p.amount != null && !isNaN(Number(p.amount)) && Number(p.amount) > 0)
+    patch.amount = round2(Number(p.amount));
+  if (p.currency !== undefined && String(p.currency) !== "")
+    patch.currency = String(p.currency).slice(0, 8);
+  return saveRecord("transactions", patch, function () { return ""; });
 }
-function adminSetGuarantee(p) {
-  var amount = Math.max(0, Number(p.amount) || 0), sid = p.seller_id || p.id, now = new Date().toISOString();
+
+// A staff/manager/admin records a deposit (or guarantee top-up) on a seller's
+// behalf. It's created PENDING — a superadmin/manager still has to approve it to
+// credit the wallet. Staff may only do this for their OWN sellers.
+function adminAddDeposit(p, meData) {
+  var sid = p.seller_id || p.id;
+  if (ownsSellerCheck(sid, meData)) return ownsSellerCheck(sid, meData);
+  var amount = Number(p.amount) || 0;
+  if (!(amount > 0)) return { ok: false, error: "Enter a valid amount." };
+  var s = readRows("sellers").filter(function (r) { return String(r.id) === String(sid); })[0];
+  if (!s) return { ok: false, error: "Seller not found." };
+  var type = (p.purpose === "guarantee") ? "guarantee" : (p.type === "withdraw" ? "withdraw" : "deposit");
+  var now = new Date().toISOString(), sh = sheet("transactions");
+  appendNamed("transactions", { id: nextId(sh), seller_id: sid, type: type, method: (p.method === "bank" ? "bank" : "usdt"),
+    amount: round2(amount), currency: CURRENCY_SYMBOL, account: String(p.account || "").slice(0, 200), voucher: "",
+    status: "pending", note: String(p.note || "").slice(0, 300), createdAt: now, updatedAt: now });
+  return { ok: true };
+}
+
+// Returns an error object when `meData` is a staff member who does NOT own the
+// seller `sid` (seller registered with their staff_code); "" otherwise.
+function ownsSellerCheck(sid, meData) {
+  if (adminRole(meData || []) !== "staff") return "";
+  var myCode = String((meData && meData[A.staffCode]) || "").trim().toUpperCase();
+  var s = readRows("sellers").filter(function (r) { return String(r.id) === String(sid); })[0];
+  if (!s || myCode === "" || String(s.invite || "").trim().toUpperCase() !== myCode)
+    return { ok: false, error: "You can only manage your own sellers." };
+  return "";
+}
+function adminSetGuarantee(p, meData) {
+  var sid = p.seller_id || p.id;
+  // Staff may only manage guarantee for the sellers who registered with their code.
+  if (ownsSellerCheck(sid, meData)) return ownsSellerCheck(sid, meData);
+  var amount = Math.max(0, Number(p.amount) || 0), now = new Date().toISOString();
   var cur = readRows("wallet").filter(function (r) { return String(r.seller_id) === String(sid); })[0];
   if (cur) saveRecord("wallet", { id: cur.id, guarantee: round2(amount), updatedAt: now }, function () { return ""; });
   else appendNamed("wallet", { id: nextId(sheet("wallet")), seller_id: sid, guarantee: round2(amount), updatedAt: now });
@@ -857,9 +914,10 @@ function adminCall(b) {
       deleteCategory:  function () { return withLock(function () { return deleteCategoryRec(p.id); }); },
       saveVendor:      function () { return withLock(function () { return saveRecord("sellers", p, validateVendor); }); },
       deleteVendor:    function () { return withLock(function () { return deleteSellerRec(p.id); }); },
-      listWallet:      function () { return adminWallet(); },
+      listWallet:      function () { return adminWallet(me.data); },
+      addTx:           function () { return withLock(function () { return adminAddDeposit(p, me.data); }); },
       updateTx:        function () { return withLock(function () { return adminUpdateTx(p); }); },
-      setGuarantee:    function () { return withLock(function () { return adminSetGuarantee(p); }); },
+      setGuarantee:    function () { return withLock(function () { return adminSetGuarantee(p, me.data); }); },
       importCatalog:   function () { return withLock(function () {
                            if (readRows("products").length && !p.overwrite) return { ok: false, error: "The Products tab already has data." };
                            var r = importCatalog(p.data || {}); return { ok: true, imported: r }; }); }

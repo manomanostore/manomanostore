@@ -14,6 +14,7 @@ window.I18N = (function () {
       "foot.information": "Information", "foot.track": "Track orders", "foot.returns": "Returns", "foot.help": "Need help?", "foot.contact": "Contact us", "foot.seller": "Become a seller",
       "foot.more": "Find out more", "foot.advice": "Our advice", "foot.popcats": "Popular categories", "foot.best": "Best sellers", "foot.brands": "Our brands", "foot.secure": "Secure payment",
       "drawer.browse": "Browse", "drawer.catalog": "Catalog", "drawer.account": "Account", "drawer.signin": "Sign in / Register", "drawer.today": "Today's deals",
+      "drawer.dash": "Seller Dashboard", "drawer.myproducts": "My Products", "drawer.wallet": "My Wallet", "drawer.logout": "Log out",
       "bn.home": "Home", "bn.cats": "Categories", "bn.deals": "Deals", "bn.basket": "Basket", "bn.account": "Account",
       "home.today": "Today's Deals", "home.hot": "Hot", "home.seeall": "See all deals ›", "home.topsel": "Our top selection",
       "home.best": "Our best sellers", "home.seeall2": "See all", "home.shopcat": "Shop by category", "home.finds": "Today's best finds",
@@ -52,7 +53,9 @@ window.I18N = (function () {
       "sd.uploadvoucher": "After payment, please upload the transaction voucher.", "sd.method": "Method", "sd.bank": "Bank", "sd.usdt": "USDT-TRC20",
       "sd.account": "Payout account details", "sd.accountph": "Bank account / USDT address", "sd.date": "Date", "sd.type": "Type",
       "sd.deposit": "Deposit", "sd.withdraw2": "Withdraw", "sd.guaranteet": "Guarantee", "sd.pending": "Pending", "sd.approved": "Approved", "sd.rejected": "Rejected",
-      "sd.notx": "No transactions yet.", "sd.reqsent": "Request submitted for review.", "sd.view": "View", "sd.amountreq": "Enter a valid amount."
+      "sd.notx": "No transactions yet.", "sd.reqsent": "Request submitted for review.", "sd.view": "View", "sd.amountreq": "Enter a valid amount.",
+      "sd.guarbystaff": "Guarantee money is managed by our team.", "sd.browse": "Browse", "sd.chooseimg": "Choose image",
+      "sd.available": "Available to withdraw", "sd.nowithdraw": "Your wallet money must be above your guarantee money to withdraw.", "sd.maxwithdraw": "You can withdraw up to {x}."
     },
     hi: {
       "nav.home": "होम", "nav.flash": "फ्लैश सेल", "nav.blogs": "ब्लॉग", "nav.brands": "सभी ब्रांड", "nav.cats": "सभी श्रेणियाँ",
@@ -60,6 +63,7 @@ window.I18N = (function () {
       "foot.information": "जानकारी", "foot.track": "ऑर्डर ट्रैक करें", "foot.returns": "रिटर्न", "foot.help": "मदद चाहिए?", "foot.contact": "संपर्क करें", "foot.seller": "विक्रेता बनें",
       "foot.more": "और जानें", "foot.advice": "हमारी सलाह", "foot.popcats": "लोकप्रिय श्रेणियाँ", "foot.best": "बेस्ट सेलर", "foot.brands": "हमारे ब्रांड", "foot.secure": "सुरक्षित भुगतान",
       "drawer.browse": "ब्राउज़ करें", "drawer.catalog": "कैटलॉग", "drawer.account": "खाता", "drawer.signin": "साइन इन / रजिस्टर", "drawer.today": "आज के ऑफ़र",
+      "drawer.dash": "सेलर डैशबोर्ड", "drawer.myproducts": "मेरे प्रोडक्ट", "drawer.wallet": "मेरा वॉलेट", "drawer.logout": "लॉग आउट",
       "bn.home": "होम", "bn.cats": "श्रेणियाँ", "bn.deals": "ऑफ़र", "bn.basket": "बास्केट", "bn.account": "खाता",
       "home.today": "आज के ऑफ़र", "home.hot": "हॉट", "home.seeall": "सभी ऑफ़र देखें ›", "home.topsel": "हमारा शीर्ष चयन",
       "home.best": "हमारे बेस्ट सेलर", "home.seeall2": "सभी देखें", "home.shopcat": "श्रेणी अनुसार खरीदें", "home.finds": "आज की बेहतरीन खोज",
@@ -98,7 +102,9 @@ window.I18N = (function () {
       "sd.uploadvoucher": "भुगतान के बाद, कृपया लेन-देन रसीद अपलोड करें।", "sd.method": "माध्यम", "sd.bank": "बैंक", "sd.usdt": "USDT-TRC20",
       "sd.account": "भुगतान खाता विवरण", "sd.accountph": "बैंक खाता / USDT पता", "sd.date": "तारीख", "sd.type": "प्रकार",
       "sd.deposit": "जमा", "sd.withdraw2": "निकासी", "sd.guaranteet": "गारंटी", "sd.pending": "लंबित", "sd.approved": "स्वीकृत", "sd.rejected": "अस्वीकृत",
-      "sd.notx": "अभी कोई लेन-देन नहीं।", "sd.reqsent": "अनुरोध समीक्षा हेतु भेजा गया।", "sd.view": "देखें", "sd.amountreq": "मान्य राशि दर्ज करें।"
+      "sd.notx": "अभी कोई लेन-देन नहीं।", "sd.reqsent": "अनुरोध समीक्षा हेतु भेजा गया।", "sd.view": "देखें", "sd.amountreq": "मान्य राशि दर्ज करें।",
+      "sd.guarbystaff": "गारंटी राशि हमारी टीम द्वारा प्रबंधित की जाती है।", "sd.browse": "ब्राउज़ करें", "sd.chooseimg": "इमेज चुनें",
+      "sd.available": "निकासी योग्य राशि", "sd.nowithdraw": "निकासी के लिए आपकी वॉलेट राशि गारंटी राशि से अधिक होनी चाहिए।", "sd.maxwithdraw": "आप अधिकतम {x} निकाल सकते हैं।"
     }
   };
   var lang = read();
@@ -181,7 +187,7 @@ window.I18N = (function () {
           '<input id="searchInput" type="search" placeholder="What are you looking for?" data-i18n-ph="search.ph" aria-label="Search products" autocomplete="off">'+
         '</form>'+
         langSwitch()+
-        '<a class="icon-btn" href="login.html" data-i18n-al="a11y.account" aria-label="Account">'+ic.user+'</a>'+
+        '<a class="icon-btn" href="'+(sellerSess() ? "seller-dashboard.html" : "login.html")+'" data-i18n-al="a11y.account" aria-label="Account">'+ic.user+'</a>'+
         '<a class="icon-btn" href="cart.html" data-i18n-al="a11y.basket" aria-label="Basket">'+ic.cart+'<span class="cart-count" data-cart-count hidden>0</span></a>'+
       '</div></div>'+
       '<div class="nav-row"><nav class="scroll-x nav-links" aria-label="Main menu">'+
@@ -230,14 +236,24 @@ window.I18N = (function () {
 
   // The drawer renders immediately; its category list fills in when the catalog
   // arrives, so a slow or failed catalog load never delays the page.
+  // Signed-in seller (shared with the dashboard via the "mm_seller" key).
+  function sellerSess() { try { return JSON.parse(localStorage.getItem("mm_seller") || "null"); } catch (e) { return null; } }
+
   function drawer() {
+    var s = sellerSess();
+    var account = s
+      ? '<a class="d-item" href="seller-dashboard.html"><span class="di">'+ic.user+'<span data-i18n="drawer.dash">Seller Dashboard</span></span>'+ic.chev+'</a>'+
+        '<a class="d-item" href="seller-dashboard.html#products"><span class="di">'+ic.tag+'<span data-i18n="drawer.myproducts">My Products</span></span>'+ic.chev+'</a>'+
+        '<a class="d-item" href="seller-dashboard.html#wallet"><span class="di">'+ic.tag+'<span data-i18n="drawer.wallet">My Wallet</span></span>'+ic.chev+'</a>'+
+        '<a class="d-item" href="#" id="drawerLogout"><span class="di">'+ic.user+'<span data-i18n="drawer.logout">Log out</span></span>'+ic.chev+'</a>'
+      : '<a class="d-item" href="login.html"><span class="di">'+ic.user+'<span data-i18n="drawer.signin">Sign in / Register</span></span>'+ic.chev+'</a>';
     return '<div class="drawer-back" id="drawerBack"></div>'+
       '<aside class="drawer" id="drawer">'+
         '<div class="d-head"><strong style="font-size:18px"><span data-i18n="drawer.browse">Browse</span> '+esc(C.BRAND_NAME)+'</strong>'+
           '<button class="icon-btn" id="drawerClose" style="color:var(--ink)">'+ic.close+'</button></div>'+
         '<h3 data-i18n="drawer.catalog">Catalog</h3><div id="drawerCats"></div>'+
         '<h3 data-i18n="drawer.account">Account</h3>'+
-        '<a class="d-item" href="login.html"><span class="di">'+ic.user+'<span data-i18n="drawer.signin">Sign in / Register</span></span>'+ic.chev+'</a>'+
+        account +
         '<a class="d-item" href="deals.html"><span class="di">'+ic.tag+'<span data-i18n="drawer.today">Today\'s deals</span></span>'+ic.chev+'</a>'+
       '</aside>';
   }
@@ -284,6 +300,8 @@ window.I18N = (function () {
     ["menuBtn","menuBtn2"].forEach(function(id){var b=document.getElementById(id);if(b)b.addEventListener("click",openD);});
     document.getElementById("drawerClose").addEventListener("click",closeD);
     document.getElementById("drawerBack").addEventListener("click",closeD);
+    var dLogout = document.getElementById("drawerLogout");
+    if (dLogout) dLogout.addEventListener("click", function (e) { e.preventDefault(); try { localStorage.removeItem("mm_seller"); } catch (x) {} location.href = "index.html"; });
 
     languageSwitcher();
     updateCartBadges();

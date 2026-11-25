@@ -71,7 +71,7 @@
   function setAvatars(shopImage, initial) {
     ["sdAva", "sdAvatar", "sdAvatar2"].forEach(function (id) {
       var el = $(id); if (!el) return;
-      if (shopImage) { el.textContent = ""; el.style.backgroundImage = "url('" + shopImage + "')"; }
+      if (shopImage) { el.textContent = ""; el.style.backgroundImage = "url('" + shopImage + "')"; el.style.backgroundSize = "cover"; el.style.backgroundPosition = "center"; }
       else { el.style.backgroundImage = ""; el.textContent = initial; }
     });
   }
@@ -467,13 +467,16 @@
     if ($("wlGuarantee")) $("wlGuarantee").textContent = money(bal.guaranteeMoney);
   }
 
-  async function fetchWallet() {
-    if (!session.token) return null;
+  // interactive=true → if the session is stale, bounce to re-login (so a seller
+  // who hasn't signed in since the token change sees fresh balances).
+  async function fetchWallet(interactive) {
+    if (!session.token) { if (interactive) reloginSoon(); return null; }
     try {
       var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "sellerWallet", token: session.token }) });
       var j = await r.json();
       if (j.ok) { wallet.data = j; paintWalletStats(j.balances); return j; }
+      if (j.auth && interactive) reloginSoon();
     } catch (e) {}
     return null;
   }
@@ -490,23 +493,22 @@
     if (!txs.length) { $("wlHist").innerHTML = ""; var e = $("wlEmpty"); e.hidden = false; e.textContent = T("sd.notx"); return; }
     $("wlEmpty").hidden = true;
     $("wlHist").innerHTML = '<div class="sd-tablewrap"><table class="sd-table"><thead><tr>' +
-      '<th>' + esc(T("sd.date")) + '</th><th>' + esc(T("sd.amount")) + '</th><th>' + esc(T("sd.type")) + '</th><th>' + esc(T("sd.method")) + '</th><th>' + esc(T("sd.status")) + '</th><th></th>' +
+      '<th>' + esc(T("sd.date")) + '</th><th>' + esc(T("sd.amount")) + '</th><th>' + esc(T("sd.type")) + '</th><th>' + esc(T("sd.method")) + '</th><th>' + esc(T("sd.status")) + '</th>' +
       '</tr></thead><tbody>' + txs.map(function (t) {
         var wd = t.type === "withdraw";
         return '<tr>' +
           '<td>' + esc(fmtDate(t.createdAt)) + '</td>' +
-          '<td style="font-weight:800" class="sd-txamt ' + (wd ? 'wd' : 'dep') + '">' + (wd ? '−' : '+') + '$' + Number(t.amount).toFixed(2) + '</td>' +
+          '<td style="font-weight:800" class="sd-txamt ' + (wd ? 'wd' : 'dep') + '">' + (wd ? '−' : '+') + esc(t.currency || '$') + Number(t.amount).toFixed(2) + '</td>' +
           '<td>' + esc(txTypeLabel(t.type)) + '</td>' +
           '<td>' + esc(t.method ? t.method.toUpperCase() : '—') + '</td>' +
           '<td><span class="sd-txpill ' + esc(t.status) + '">' + esc(T("sd." + t.status)) + '</span></td>' +
-          '<td class="sd-tright">' + (t.voucher ? '<a target="_blank" rel="noopener" href="' + esc(t.voucher) + '" style="color:var(--blue);font-weight:700;font-size:12px">' + esc(T("sd.view")) + '</a>' : '') + '</td>' +
           '</tr>';
       }).join("") + '</tbody></table></div>';
   }
 
   async function ensureWallet() {
     $("wlEmpty").hidden = true;
-    var d = await fetchWallet();
+    var d = await fetchWallet(true);   // re-login if the session is stale
     if (d) renderWallet();
     else { var e = $("wlEmpty"); e.hidden = false; e.textContent = "Can't load wallet."; }
   }
@@ -523,14 +525,22 @@
         '<div class="sd-addr"><code id="rcAddr">' + esc(addr) + '</code><button type="button" id="rcCopy">' + esc(T("sd.copy")) + '</button></div>' +
         '<p class="sd-txnote">' + esc(T("sd.uploadvoucher")) + '</p>' +
         '<div class="sd-field"><label>' + esc(T("sd.amount")) + '</label><input id="rcAmt" type="number" min="1" step="0.01" placeholder="0.00"></div>' +
-        '<div class="sd-field"><label>' + esc(T("sd.photo")) + '</label><label class="sd-imgbtn">' + esc(T("sd.changephoto")) + '<input type="file" id="rcFile" accept="image/*"></label> <span id="rcFn" style="font-size:12px;color:#8792a6"></span></div>' +
+        '<div class="sd-field"><label>' + esc(T("sd.photo")) + ' <i style="color:var(--no)">*</i></label>' +
+          '<div class="sd-filepick"><label class="sd-browse">' + esc(T("sd.browse")) + '<input type="file" id="rcFile" accept="image/*"></label>' +
+            '<span class="sd-filename" id="rcFn">' + esc(T("sd.chooseimg")) + '</span></div>' +
+          '<img class="sd-vprev" id="rcPrev" alt="" hidden></div>' +
       '</div>' +
       '<div class="sd-dfoot"><button class="sd-btn sd-btn-grey" id="rcCancel">' + esc(T("sd.cancel")) + '</button><button class="sd-btn" id="rcSave">' + esc(T("sd.confirm")) + '</button></div></div>';
     document.body.appendChild(root);
     function close() { root.remove(); }
     $("rcX").onclick = close; $("rcCancel").onclick = close;
     $("rcCopy").onclick = function () { try { navigator.clipboard.writeText(addr); } catch (e) {} ok(T("sd.copied")); };
-    $("rcFile").addEventListener("change", async function () { var f = this.files[0]; if (!f) return; $("rcFn").textContent = f.name; newImage = await fileToImage(f, 1200); });
+    $("rcFile").addEventListener("change", async function () {
+      var f = this.files[0]; if (!f) return;
+      $("rcFn").textContent = f.name;
+      newImage = await fileToImage(f, 1200);
+      if (newImage) { var pv = $("rcPrev"); pv.src = newImage; pv.hidden = false; }
+    });
     $("rcSave").addEventListener("click", async function () {
       var msg = $("rcMsg"); msg.hidden = true;
       var amt = Number($("rcAmt").value) || 0;
@@ -550,12 +560,15 @@
 
   // Withdrawal request modal.
   function openWithdraw() {
+    var bal = (wallet.data && wallet.data.balances) || {};
+    var available = Math.max(0, Math.round(((Number(bal.walletMoney) || 0) - (Number(bal.guaranteeMoney) || 0)) * 100) / 100);
     var root = document.createElement("div"); root.className = "sd-modal";
     root.innerHTML = '<div class="sd-dialog" style="width:420px" role="dialog" aria-modal="true">' +
       '<div class="sd-dhead"><h3>' + esc(T("sd.sendwithdraw")) + '</h3><button class="sd-dclose" id="wdX">×</button></div>' +
       '<div class="sd-dbody">' +
         '<p class="sd-msg" id="wdMsg" hidden></p>' +
-        '<div class="sd-field"><label>' + esc(T("sd.amount")) + '</label><input id="wdAmt" type="number" min="1" step="0.01" placeholder="0.00"></div>' +
+        '<div class="sd-available">' + esc(T("sd.available")) + ': <b>$' + available.toFixed(2) + '</b> <span>(' + esc(T("sd.walletmoney")) + ' − ' + esc(T("sd.guarantee")) + ')</span></div>' +
+        '<div class="sd-field"><label>' + esc(T("sd.amount")) + '</label><input id="wdAmt" type="number" min="1" step="0.01" max="' + available + '" placeholder="0.00"></div>' +
         '<div class="sd-field"><label>' + esc(T("sd.method")) + '</label><select id="wdMethod" class="sd-select" style="width:100%"><option value="bank">' + esc(T("sd.bank")) + '</option><option value="usdt">' + esc(T("sd.usdt")) + '</option></select></div>' +
         '<div class="sd-field"><label>' + esc(T("sd.account")) + '</label><input id="wdAcc" type="text" placeholder="' + esc(T("sd.accountph")) + '"></div>' +
       '</div>' +
@@ -568,6 +581,8 @@
       var amt = Number($("wdAmt").value) || 0, acc = $("wdAcc").value.trim(), method = $("wdMethod").value;
       function fail(t) { msg.hidden = false; msg.textContent = t; }
       if (!(amt > 0)) return fail(T("sd.amountreq"));
+      if (available <= 0) return fail(T("sd.nowithdraw"));
+      if (amt > available) return fail(T("sd.maxwithdraw").replace("{x}", "$" + available.toFixed(2)));
       if (!acc) return fail(T("sd.account"));
       if (!session.token) { reloginSoon(); return; }
       var btn = this; btn.disabled = true; btn.textContent = T("sd.saving");
@@ -673,6 +688,7 @@
     // Wallet action buttons + live balances on the dashboard
     if ($("wlWithdraw")) $("wlWithdraw").addEventListener("click", openWithdraw);
     if ($("wlRecharge")) $("wlRecharge").addEventListener("click", function () { openRecharge("deposit"); });
+    // Guarantee Recharge: kept for layout only (guarantee money is set by staff) — no action.
     fetchWallet();   // populate Guarantee Money, Total Products and Wallet Balance cards
 
     // Lock page scroll whenever a modal is open (background stays non-interactive).
@@ -736,6 +752,12 @@
     document.querySelectorAll(".sd-nav a").forEach(function (a) { a.addEventListener("click", closeDrawer); });
 
     buildLang();
+
+    // Deep-link support: open the view named in the URL hash (e.g. the storefront
+    // links to seller-dashboard.html#wallet), and follow hash changes.
+    function fromHash() { switchView((location.hash || "").replace("#", "") || "dashboard", true); }
+    window.addEventListener("hashchange", fromHash);
+    if (location.hash) fromHash();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

@@ -15,6 +15,7 @@ window.ADMIN = (function () {
     deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
     deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
     saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
+    addTx: ["superadmin", "manager", "staff"], updateTx: ["superadmin", "manager"], setGuarantee: ["superadmin", "manager", "staff"],
     listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"]
   };
   function role() { return (session && session.admin && session.admin.role) || "superadmin"; }
@@ -87,8 +88,9 @@ window.ADMIN = (function () {
   }
 
   function brand() {
-    var n = esc(C.BRAND_NAME);
-    return '<a class="adm-brand" href="index.html"><img src="images/logo-64.png" alt="" width="30" height="30"><span>'+n+'</span><em>Admin</em></a>';
+    var n = esc(C.BRAND_NAME), r = role();
+    var badge = r === "staff" ? "Staff" : r === "manager" ? "Manager" : "Admin";
+    return '<a class="adm-brand" href="index.html"><img src="images/logo-64.png" alt="" width="30" height="30"><span>'+n+'</span><em>'+esc(badge)+'</em></a>';
   }
 
   /* -------------------------------- login --------------------------------- */
@@ -124,7 +126,7 @@ window.ADMIN = (function () {
     ["dashboard", "Dashboard", "dash", ADMIN_ROLES], ["orders", "Orders", "orders", ADMIN_ROLES], ["products", "Products", "box", ADMIN_ROLES],
     ["categories", "Categories", "tag", ["superadmin", "manager"]], ["banners", "Banners", "image", ["superadmin", "manager"]],
     ["vendors", "Sellers", "store", ["superadmin", "manager"]],
-    ["wallet", "Wallet", "wallet", ["superadmin", "manager"]],
+    ["wallet", "Wallet Transaction", "wallet", ["superadmin", "manager", "staff"]],
     ["admins", "Admins", "shield", ["superadmin"]]
   ];
   function canRoute(r) { var n = NAV.filter(function (x) { return x[0] === r; })[0]; return n && n[3].indexOf(role()) > -1; }
@@ -781,55 +783,122 @@ window.ADMIN = (function () {
   async function viewWallet() {
     var res = await api("listWallet");
     if (!res.ok) throw new Error(res.error);
-    var txs = res.transactions || [], sellers = res.sellers || [];
-    var pending = txs.filter(function (t) { return t.status === "pending"; }).length;
+    var allTxs = res.transactions || [], allSellers = res.sellers || [];
     function dt(iso) { try { return new Date(iso).toLocaleDateString(); } catch (e) { return ""; } }
     function kindOf(s) { return s === "approved" ? "verified" : s === "rejected" ? "blocked" : "pending"; }
     function txRow(t) {
+      var actions = (t.status === "pending" && can("updateTx"))
+        ? '<button type="button" class="btn btn-primary adm-mini" data-approve="'+esc(t.id)+'" data-amt="'+esc(t.amount)+'" data-cur="'+esc(t.currency || '')+'" data-type="'+esc(t.type || '')+'">Approve</button>'+
+          '<button type="button" class="btn btn-ghost adm-mini" data-reject="'+esc(t.id)+'">Reject</button>'
+        : '<span class="adm-cell-sub">'+(t.note ? esc(t.note) : (t.status === "pending" ? "Pending review" : "—"))+'</span>';
       return '<tr>'+
         '<td><div class="adm-cell-main">'+esc(t.sellerName)+'</div><div class="adm-cell-sub">#'+esc(t.id)+' · '+esc(dt(t.createdAt))+'</div></td>'+
         '<td>'+esc(cap(t.type))+'</td>'+
-        '<td><strong>'+money(t.amount)+'</strong>'+(t.account ? '<div class="adm-cell-sub">'+esc(t.account)+'</div>' : '')+'</td>'+
+        '<td><strong>'+esc(t.currency || '$')+Number(t.amount).toFixed(2)+'</strong>'+(t.account ? '<div class="adm-cell-sub">'+esc(t.account)+'</div>' : '')+'</td>'+
         '<td>'+esc((t.method || '—').toUpperCase())+'</td>'+
         '<td>'+pill(t.status, kindOf(t.status))+'</td>'+
         '<td>'+(t.voucher ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(t.voucher)+'">View</a>' : '<span class="adm-cell-sub">—</span>')+'</td>'+
-        '<td class="r"><div class="adm-actions">'+
-          (t.status === "pending"
-            ? '<button type="button" class="btn btn-primary adm-mini" data-approve="'+esc(t.id)+'">Approve</button>'+
-              '<button type="button" class="btn btn-ghost adm-mini" data-reject="'+esc(t.id)+'">Reject</button>'
-            : '<span class="adm-cell-sub">'+(t.note ? esc(t.note) : '—')+'</span>')+
-        '</div></td></tr>';
+        '<td class="r"><div class="adm-actions">'+actions+'</div></td></tr>';
     }
     function selRow(s) {
+      var nm = esc(s.shopName || s.name || '');
+      var btns = [];
+      if (can("addTx")) btns.push('<button type="button" class="btn btn-primary adm-mini" data-dep="'+esc(s.id)+'" data-name="'+nm+'">Add deposit</button>');
+      if (can("setGuarantee")) btns.push('<button type="button" class="btn btn-ghost adm-mini" data-guar="'+esc(s.id)+'" data-name="'+nm+'" data-amt="'+esc(s.guaranteeMoney)+'">Set guarantee</button>');
+      var act = btns.length ? '<div class="adm-actions">'+btns.join("")+'</div>' : '<span class="adm-cell-sub">—</span>';
       return '<tr>'+
         '<td><div class="adm-cell-main">'+esc(s.shopName || s.name || '—')+'</div><div class="adm-cell-sub">'+esc(s.email || '')+'</div></td>'+
         '<td><strong>'+money(s.walletMoney)+'</strong></td>'+
         '<td>'+money(s.pendingBalance)+'</td>'+
         '<td><span class="adm-profit">'+money(s.guaranteeMoney)+'</span></td>'+
-        '<td class="r"><button type="button" class="btn btn-ghost adm-mini" data-guar="'+esc(s.id)+'" data-name="'+esc(s.shopName || s.name || '')+'" data-amt="'+esc(s.guaranteeMoney)+'">Set guarantee</button></td></tr>';
+        '<td class="r">'+act+'</td></tr>';
     }
+    var options = '<option value="">All sellers</option>'+allSellers.map(function (s) {
+      return '<option value="'+esc(s.id)+'">'+esc(s.shopName || s.name || ("#"+s.id))+'</option>'; }).join("");
+
     $("admView").innerHTML =
-      '<div class="adm-toolbar"><span class="adm-count">'+txs.length+' transaction'+(txs.length === 1 ? '' : 's')+(pending ? ' · '+pending+' pending' : '')+'</span></div>'+
-      '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
-        '<thead><tr><th>Seller</th><th>Type</th><th>Amount</th><th>Method</th><th>Status</th><th>Voucher</th><th class="r">Actions</th></tr></thead>'+
-        '<tbody>'+(txs.length ? txs.map(txRow).join("") : '<tr><td colspan="7">'+empty("No transactions", "Deposits and withdrawal requests will appear here.")+'</td></tr>')+'</tbody></table></div></section>'+
-      '<div class="adm-toolbar" style="margin-top:20px"><span class="adm-count">Sellers &amp; guarantee money</span></div>'+
-      '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
-        '<thead><tr><th>Seller</th><th>Wallet</th><th>Pending</th><th>Guarantee</th><th class="r">Actions</th></tr></thead>'+
-        '<tbody>'+(sellers.length ? sellers.map(selRow).join("") : '<tr><td colspan="5">'+empty("No sellers yet", "")+'</td></tr>')+'</tbody></table></div></section>';
+      '<div class="adm-toolbar"><select id="wlSeller" aria-label="Seller">'+options+'</select><span class="adm-count" id="wlCount"></span></div>'+
+      '<div id="wlBody"></div>';
+
+    function render(sid) {
+      var sellers = sid ? allSellers.filter(function (s) { return String(s.id) === String(sid); }) : allSellers;
+      var txs = sid ? allTxs.filter(function (t) { return String(t.sellerId) === String(sid); }) : allTxs;
+      var pending = txs.filter(function (t) { return t.status === "pending"; }).length;
+      $("wlCount").textContent = txs.length+' transaction'+(txs.length === 1 ? '' : 's')+(pending ? ' · '+pending+' pending' : '');
+      $("wlBody").innerHTML =
+        '<div class="adm-toolbar"><span class="adm-count">Sellers &amp; guarantee money</span></div>'+
+        '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
+          '<thead><tr><th>Seller</th><th>Wallet</th><th>Pending</th><th>Guarantee</th><th class="r">Actions</th></tr></thead>'+
+          '<tbody>'+(sellers.length ? sellers.map(selRow).join("") : '<tr><td colspan="5">'+empty("No sellers", "")+'</td></tr>')+'</tbody></table></div></section>'+
+        '<div class="adm-toolbar" style="margin-top:20px"><span class="adm-count">Wallet transactions</span></div>'+
+        '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
+          '<thead><tr><th>Seller</th><th>Type</th><th>Amount</th><th>Method</th><th>Status</th><th>Voucher</th><th class="r">Actions</th></tr></thead>'+
+          '<tbody>'+(txs.length ? txs.map(txRow).join("") : '<tr><td colspan="7">'+empty("No transactions", "Deposits and withdrawal requests will appear here.")+'</td></tr>')+'</tbody></table></div></section>';
+    }
+    // Remember the chosen seller so a page refresh keeps them selected.
+    var SELKEY = "mm_wallet_seller", saved = "";
+    try { saved = localStorage.getItem(SELKEY) || ""; } catch (e) {}
+    if (saved && !allSellers.some(function (s) { return String(s.id) === String(saved); })) saved = "";
+    $("wlSeller").value = saved;
+    render(saved);
+    $("wlSeller").addEventListener("change", function () {
+      try { localStorage.setItem(SELKEY, this.value); } catch (e) {}
+      render(this.value);
+    });
 
     $("admView").onclick = async function (e) {
       var b = e.target.closest("button"); if (!b) return;
-      if (b.dataset.approve || b.dataset.reject) {
-        var id = b.dataset.approve || b.dataset.reject, status = b.dataset.approve ? "approved" : "rejected";
+      if (b.dataset.approve) {
+        approveForm(b.dataset.approve, b.dataset.amt, b.dataset.cur, b.dataset.type);
+      } else if (b.dataset.reject) {
         b.disabled = true;
-        var r = await api("updateTx", { id: id, status: status });
+        var r = await api("updateTx", { id: b.dataset.reject, status: "rejected" });
         if (!r.ok) { b.disabled = false; return toast(r.error, true); }
-        toast(status === "approved" ? "Approved" : "Rejected"); route();
+        toast("Rejected"); route();
       } else if (b.dataset.guar) {
         guaranteeForm(b.dataset.guar, b.dataset.name, b.dataset.amt);
+      } else if (b.dataset.dep) {
+        depositForm(b.dataset.dep, b.dataset.name);
       }
     };
+  }
+
+  // Approving a transaction: the seller's amount is in ₹ (INR). The admin enters
+  // the amount converted to USD at the current rate and the currency becomes $,
+  // which is what the wallet is credited in.
+  function approveForm(id, amt, cur, type) {
+    var usd = C.CURRENCY_SYMBOL || "$";
+    modal("Approve — convert to USD",
+      '<p class="adm-hint" style="background:#eef4ff;color:#1d4ed8;margin:0 0 16px">Seller requested <b>'+esc(cur || '₹')+esc(Number(amt).toFixed(2))+'</b>. Enter the amount converted to USD at the current rate — the wallet is credited in this amount.</p>'+
+      '<div class="adm-form-cols">'+
+        f("aAmt", "Amount in USD ($)", '<input id="aAmt" type="number" min="0.01" step="0.01" required value="'+esc(Number(amt).toFixed(2))+'">')+
+        f("aCur", "Currency symbol", '<input id="aCur" type="text" maxlength="8" value="'+esc(usd)+'">')+
+      '</div>',
+      async function () {
+        var a = Number($("aAmt").value) || 0;
+        if (!(a > 0)) return "Enter the converted USD amount.";
+        var r = await api("updateTx", { id: id, status: "approved", amount: a, currency: ($("aCur").value || usd).trim() });
+        if (!r.ok) return r.error;
+        toast("Approved"); route();
+      });
+  }
+
+  // Staff/manager/admin records a deposit for a seller. It's created PENDING and
+  // a superadmin/manager still has to approve it on the Wallet Transaction page.
+  function depositForm(id, name) {
+    modal("Add deposit — " + name,
+      '<div class="adm-form-cols">'+
+        f("dAmt", "Amount", '<input id="dAmt" type="number" min="0.01" step="0.01" required value="">')+
+        f("dMethod", "Method", '<select id="dMethod"><option value="usdt">USDT</option><option value="bank">Bank</option></select>')+
+        f("dNote", "Note (optional)", '<input id="dNote" type="text" maxlength="300" value="" placeholder="Reference / remark">')+
+      '</div><p class="adm-hint">This deposit is created as <b>Pending</b>. A manager or admin must approve it before it credits the wallet.</p>',
+      async function () {
+        var amt = Math.max(0, Number($("dAmt").value) || 0);
+        if (!(amt > 0)) return "Enter a valid amount.";
+        var r = await api("addTx", { seller_id: id, type: "deposit", amount: amt, method: $("dMethod").value, note: $("dNote").value });
+        if (!r.ok) return r.error;
+        toast("Deposit added — pending approval"); route();
+      });
   }
 
   function guaranteeForm(id, name, amt) {

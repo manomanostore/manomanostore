@@ -257,6 +257,9 @@
   .sd-usdtcard .sd-tether{width:58px;height:58px}
   .sd-usdtcard b{font-size:15px;font-weight:800;color:var(--ink)}
   .sd-txnote{font-size:12px;color:var(--no);background:#fdecee;border-radius:8px;padding:8px 10px;margin:0 0 14px}
+  .sd-available{font-size:13px;color:#43506b;background:#eef3ff;border:1px solid #dbe6ff;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-weight:600}
+  .sd-available b{color:var(--blue);font-size:15px}
+  .sd-available span{color:var(--muted);font-weight:500;font-size:11px}
   .sd-txpill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:700}
   .sd-txpill.pending{background:#fff4e3;color:#b7791f}
   .sd-txpill.approved{background:#e9faf0;color:var(--ok)}
@@ -319,6 +322,13 @@
   .sd-imgprev{width:78px;height:78px;border-radius:16px;background:var(--blue) center/cover no-repeat;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;flex:0 0 auto}
   .sd-imgbtn{display:inline-block;border:1px dashed #b9c3d6;color:var(--blue);background:#f6f9ff;border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer}
   .sd-imgbtn input{display:none}
+  /* Browse + Choose image file picker */
+  .sd-filepick{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fbfcfe}
+  .sd-browse{background:#eef1f6;color:#43506b;font-weight:700;font-size:13px;padding:11px 16px;cursor:pointer;display:flex;align-items:center;flex:0 0 auto;border-right:1px solid var(--line)}
+  .sd-browse:hover{background:#e3e8ef}
+  .sd-browse input{display:none}
+  .sd-filename{flex:1;min-width:0;display:flex;align-items:center;padding:0 14px;color:#8792a6;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sd-vprev{margin-top:12px;max-width:100%;max-height:180px;border-radius:10px;border:1px solid var(--line);display:block;object-fit:contain}
   .sd-field{margin-bottom:14px}
   .sd-field label{display:block;font-size:12px;font-weight:700;color:#56617a;margin-bottom:6px}
   .sd-field input{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;font-family:inherit;background:#fbfcfe}
@@ -596,10 +606,6 @@
       <!-- ============ Money Withdraw / Wallet view ============ -->
       <section id="viewWallet" hidden>
         <div class="sd-whhero">
-          <div class="sd-whtop">
-            <span class="sd-whlogo" id="wlLogo">S</span>
-            <div><b id="wlShop">My Shop</b><small id="wlEmail">—</small></div>
-          </div>
           <div class="sd-whbals">
             <div class="sd-whbal"><span class="sd-whic p"><svg viewBox="0 0 24 24"><path d="M3 7h18v10H3z"/><path d="M3 11h18"/><circle cx="8" cy="14" r="1.2"/></svg></span>
               <div><b id="wlPending">$0.00</b><small data-i18n="sd.pendingbal">Pending Balance</small></div></div>
@@ -611,6 +617,7 @@
           <div class="sd-whbtns">
             <button type="button" class="sd-btn" id="wlWithdraw" data-i18n="sd.sendwithdraw">Send Withdraw Request</button>
             <button type="button" class="sd-btn sd-btn-ghost" id="wlRecharge" data-i18n="sd.offlinerecharge">Offline Recharge Wallet</button>
+            <button type="button" class="sd-btn sd-btn-ghost" id="wlGuar" data-i18n="sd.guaranteerecharge">Guarantee Recharge</button>
           </div>
         </div>
         <div class="sd-panel" style="margin-top:16px">
