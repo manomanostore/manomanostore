@@ -55,7 +55,10 @@ window.I18N = (function () {
       "sd.deposit": "Deposit", "sd.withdraw2": "Withdraw", "sd.guaranteet": "Guarantee", "sd.pending": "Pending", "sd.approved": "Approved", "sd.rejected": "Rejected",
       "sd.notx": "No transactions yet.", "sd.reqsent": "Request submitted for review.", "sd.view": "View", "sd.amountreq": "Enter a valid amount.",
       "sd.guarbystaff": "Guarantee money is managed by our team.", "sd.browse": "Browse", "sd.chooseimg": "Choose image",
-      "sd.available": "Available to withdraw", "sd.nowithdraw": "Your wallet money must be above your guarantee money to withdraw.", "sd.maxwithdraw": "You can withdraw up to {x}."
+      "sd.available": "Available to withdraw", "sd.nowithdraw": "Your wallet money must be above your guarantee money to withdraw.", "sd.maxwithdraw": "You can withdraw up to {x}.",
+      "sd.addproduct": "Add New Product", "sd.paymentsetting": "Payment Settings", "sd.gotosetting": "Go to setting", "sd.configurenow": "Configure Now",
+      "sd.cashpay": "Cash Payment", "sd.bankpay": "Bank Payment", "sd.bankname": "Bank Name", "sd.bankaccname": "Bank Account Name", "sd.bankaccno": "Bank Account Number", "sd.ifsc": "IFSC Code",
+      "sd.usdtpay": "USDT Payment", "sd.usdtlink": "USDT Link", "sd.usdtaddr": "USDT Address", "sd.updateprofile": "Update Profile", "sd.savebtn": "Save", "sd.bankadded": "Bank Account added Successfully!", "sd.paymentdesc": "Set how buyers pay you — cash, bank or USDT."
     },
     hi: {
       "nav.home": "होम", "nav.flash": "फ्लैश सेल", "nav.blogs": "ब्लॉग", "nav.brands": "सभी ब्रांड", "nav.cats": "सभी श्रेणियाँ",
@@ -104,7 +107,10 @@ window.I18N = (function () {
       "sd.deposit": "जमा", "sd.withdraw2": "निकासी", "sd.guaranteet": "गारंटी", "sd.pending": "लंबित", "sd.approved": "स्वीकृत", "sd.rejected": "अस्वीकृत",
       "sd.notx": "अभी कोई लेन-देन नहीं।", "sd.reqsent": "अनुरोध समीक्षा हेतु भेजा गया।", "sd.view": "देखें", "sd.amountreq": "मान्य राशि दर्ज करें।",
       "sd.guarbystaff": "गारंटी राशि हमारी टीम द्वारा प्रबंधित की जाती है।", "sd.browse": "ब्राउज़ करें", "sd.chooseimg": "इमेज चुनें",
-      "sd.available": "निकासी योग्य राशि", "sd.nowithdraw": "निकासी के लिए आपकी वॉलेट राशि गारंटी राशि से अधिक होनी चाहिए।", "sd.maxwithdraw": "आप अधिकतम {x} निकाल सकते हैं।"
+      "sd.available": "निकासी योग्य राशि", "sd.nowithdraw": "निकासी के लिए आपकी वॉलेट राशि गारंटी राशि से अधिक होनी चाहिए।", "sd.maxwithdraw": "आप अधिकतम {x} निकाल सकते हैं।",
+      "sd.addproduct": "नया प्रोडक्ट जोड़ें", "sd.paymentsetting": "भुगतान सेटिंग", "sd.gotosetting": "सेटिंग पर जाएँ", "sd.configurenow": "अभी कॉन्फ़िगर करें",
+      "sd.cashpay": "कैश भुगतान", "sd.bankpay": "बैंक भुगतान", "sd.bankname": "बैंक का नाम", "sd.bankaccname": "बैंक खाता नाम", "sd.bankaccno": "बैंक खाता संख्या", "sd.ifsc": "IFSC कोड",
+      "sd.usdtpay": "USDT भुगतान", "sd.usdtlink": "USDT लिंक", "sd.usdtaddr": "USDT पता", "sd.updateprofile": "प्रोफ़ाइल अपडेट करें", "sd.savebtn": "सहेजें", "sd.bankadded": "बैंक खाता सफलतापूर्वक जोड़ा गया!", "sd.paymentdesc": "तय करें कि खरीदार आपको कैसे भुगतान करें — कैश, बैंक या USDT।"
     }
   };
   var lang = read();

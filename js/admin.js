@@ -148,6 +148,7 @@ window.ADMIN = (function () {
           '<header class="adm-top">'+
             '<button type="button" class="adm-menu" id="admMenu" aria-label="Open menu">'+svg("menu", 22)+'</button>'+
             '<h1 id="admTitle">Dashboard</h1>'+
+            '<button type="button" class="adm-menu adm-refresh" id="admRefresh" aria-label="Refresh" title="Refresh">'+svg("refresh", 20)+'</button>'+
             '<div class="adm-me"><span class="adm-avatar">'+esc((u.name || u.username || "A").charAt(0).toUpperCase())+'</span>'+
               '<span class="adm-me-txt"><strong>'+esc(u.name || "Admin")+'</strong><small>@'+esc(u.username || "")+' · '+esc(roleLabel(u.role))+'</small></span></div>'+
           '</header>'+
@@ -157,6 +158,7 @@ window.ADMIN = (function () {
       '<div class="adm-toast" id="admToast" role="status"></div>';
 
     $("admLogout").onclick = function () { logout(); };
+    $("admRefresh").onclick = function () { location.reload(); };
     $("admMenu").onclick = function () { document.body.classList.add("adm-nav-open"); };
     $("admScrim").onclick = function () { document.body.classList.remove("adm-nav-open"); };
     window.onhashchange = route;

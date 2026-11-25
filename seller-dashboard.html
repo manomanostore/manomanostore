@@ -22,11 +22,11 @@
   /* -------- sidebar -------- */
   .sd-side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;overflow-x:hidden}
   .sd-side::-webkit-scrollbar{width:7px}.sd-side::-webkit-scrollbar-thumb{background:#dfe4ee;border-radius:6px}
-  .sd-brand{display:flex;align-items:center;gap:11px;padding:18px 16px 14px}
-  .sd-brand img{width:38px;height:38px;border-radius:10px;box-shadow:0 4px 10px rgba(47,109,246,.25);flex:0 0 auto}
-  .sd-brand .sd-bname{font-weight:800;font-size:17px;letter-spacing:-.2px;line-height:1}
-  .sd-brand .sd-bname span{color:var(--blue)}
-  .sd-brand .sd-bsub{font-family:"Brush Script MT","Segoe Script","Snell Roundhand",cursive;font-style:italic;font-size:19px;line-height:1;color:var(--amber);margin-top:1px;text-shadow:0 1px 0 rgba(246,167,35,.18)}
+  .sd-brand{display:flex;align-items:center;gap:11px;margin:14px 14px 12px;padding:14px 16px;border-radius:16px;background:linear-gradient(135deg,#ffc53d,#ffac33);box-shadow:0 8px 18px rgba(246,167,35,.28)}
+  .sd-brand img{width:38px;height:38px;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,.18);flex:0 0 auto;background:#fff;padding:3px}
+  .sd-brand .sd-bname{font-weight:800;font-size:17px;letter-spacing:-.2px;line-height:1;color:#17203a}
+  .sd-brand .sd-bname span{color:#2f6df6}
+  .sd-brand .sd-bsub{font-family:"Brush Script MT","Segoe Script","Snell Roundhand",cursive;font-style:italic;font-size:19px;line-height:1;color:#fff;margin-top:2px;text-shadow:0 1px 2px rgba(120,70,0,.3)}
 
   .sd-store{display:flex;align-items:center;gap:11px;margin:0 14px 6px;padding:12px;background:linear-gradient(135deg,#f7f9ff,#eef3ff);border:1px solid #e6ecfb;border-radius:12px}
   .sd-store .sd-ava{width:40px;height:40px;border-radius:10px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
@@ -174,6 +174,17 @@
   .sd-pkg .sd-pkg-line b{color:var(--ink)}
   .sd-pkg .sd-btn{width:100%;margin-top:12px}
 
+  /* quick action cards (bottom of dashboard) */
+  .sd-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:16px}
+  .sd-action{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;box-shadow:var(--shadow);cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s}
+  .sd-action.sd-action-tint{background:#eef2fb}
+  button.sd-action:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(31,45,90,.12);border-color:#c7d4f2}
+  .sd-action-ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;color:var(--blue);background:#fff}
+  .sd-action.sd-action-tint .sd-action-ic{background:rgba(255,255,255,.7)}
+  .sd-action-t{font-weight:800;font-size:16px;color:var(--blue)}
+  .sd-action-wide .sd-btn{width:100%;max-width:280px;margin-top:4px}
+  @media (max-width:560px){ .sd-actions{grid-template-columns:1fr} }
+
   /* avatars can show the uploaded shop image */
   .sd-ava,.sd-avatar{background-size:cover;background-position:center}
 
@@ -238,17 +249,17 @@
   .sd-whtop{display:flex;align-items:center;gap:12px;margin-bottom:18px}
   .sd-whlogo{width:52px;height:52px;border-radius:14px;background:var(--blue) center/cover no-repeat;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;flex:0 0 auto}
   .sd-whtop b{font-size:18px;display:block}.sd-whtop small{color:var(--muted);font-size:12px}
-  .sd-whbals{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
-  .sd-whbal{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow)}
-  .sd-whic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
-  .sd-whic svg{width:22px;height:22px;stroke-width:1.8;fill:none}
+  .sd-whbals{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+  .sd-whbal{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 10px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:9px;box-shadow:var(--shadow)}
+  .sd-whic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .sd-whic svg{width:23px;height:23px;stroke-width:1.8;fill:none}
   .sd-whic.p{background:#eaf1ff}.sd-whic.p svg{stroke:var(--blue)}
   .sd-whic.w{background:#fff1e6}.sd-whic.w svg{stroke:#f6893a}
   .sd-whic.g{background:#f0ecff}.sd-whic.g svg{stroke:#7a5cf0}
-  .sd-whbal b{font-size:21px;font-weight:800;display:block;line-height:1.1}
-  .sd-whbal small{color:var(--muted);font-size:12px;font-weight:600}
-  .sd-whbtns{display:flex;gap:10px;flex-wrap:wrap}
-  .sd-whbtns .sd-btn{flex:1;min-width:180px}
+  .sd-whbal b{font-size:clamp(15px,4.2vw,22px);font-weight:800;display:block;line-height:1.1;word-break:break-word}
+  .sd-whbal small{color:var(--muted);font-size:11.5px;font-weight:600}
+  .sd-whbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .sd-whbtns .sd-btn{min-width:0;padding:11px 8px;font-size:13px;line-height:1.25}
 
   .sd-addr{display:flex;align-items:center;gap:10px;background:#f4f7fc;border:1px dashed #b9c3d6;border-radius:10px;padding:10px 12px;margin-bottom:6px}
   .sd-addr code{font-size:13px;word-break:break-all;flex:1;font-family:ui-monospace,Menlo,monospace}
@@ -265,7 +276,7 @@
   .sd-txpill.approved{background:#e9faf0;color:var(--ok)}
   .sd-txpill.rejected{background:#fdecee;color:var(--no)}
   .sd-txamt.dep{color:var(--ok)}.sd-txamt.wd{color:var(--no)}
-  @media (max-width:700px){ .sd-whbals{grid-template-columns:1fr} }
+  @media (max-width:560px){ .sd-whhero{padding:16px} .sd-whbals{gap:8px} .sd-whbal{padding:14px 6px} }
 
   /* card select + quantity */
   .sd-pcard.sel{border-color:var(--blue);box-shadow:0 0 0 2px rgba(47,109,246,.25),var(--shadow)}
@@ -334,6 +345,15 @@
   .sd-field input{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;font-family:inherit;background:#fbfcfe}
   .sd-field input:focus{outline:none;border-color:var(--blue);background:#fff}
   .sd-field input[readonly]{background:#f1f4f9;color:#8792a6}
+  /* payment-settings toggle switch */
+  .sd-swrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .sd-swrow>span:first-child{font-size:13px;font-weight:700;color:#43506b}
+  .sd-switch{position:relative;display:inline-block;width:44px;height:24px;flex:0 0 auto}
+  .sd-switch input{opacity:0;width:0;height:0;position:absolute}
+  .sd-slider{position:absolute;inset:0;background:#cfd6e4;border-radius:999px;transition:.2s;cursor:pointer}
+  .sd-slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  .sd-switch input:checked+.sd-slider{background:#1f9d5b}
+  .sd-switch input:checked+.sd-slider::before{transform:translateX(20px)}
   .sd-dfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid var(--line)}
   .sd-msg{font-size:13px;color:var(--no);margin:0 0 12px}
   .sd-btn-grey{background:#eef1f6;color:#43506b}
@@ -401,7 +421,7 @@
       <li><a href="#" data-soon="sd.conversations">
         <svg viewBox="0 0 24 24"><path d="M4 5h16v10H9l-5 4z"/></svg> <span data-i18n="sd.conversations">Conversations</span>
         <span class="sd-dot"></span></a></li>
-      <li><a href="#" data-soon="sd.shopsetting">
+      <li><a href="#" id="sdShopSetting">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1l-.3-2.6h-4l-.3 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.3 2.6h4l.3-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5a7 7 0 0 0 .1-1z"/></svg> <span data-i18n="sd.shopsetting">Shop Setting</span></a></li>
       <li><a href="#" data-soon="sd.refund">
         <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> <span data-i18n="sd.refund">Received Refund Request</span></a></li>
@@ -423,6 +443,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h16"/></svg></button>
       <div class="sd-top-title" id="sdTopTitle" data-i18n="sd.dashboard">Dashboard</div>
       <div class="sd-top-right">
+        <button class="sd-icbtn sd-refresh" id="sdRefresh" type="button" aria-label="Refresh" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+        </button>
         <button class="sd-icbtn sd-bell" id="sdBell" type="button" aria-label="Notifications">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
           <span class="sd-bell-dot"></span>
@@ -446,9 +469,6 @@
               <span class="sd-avatar" id="sdAvatar2">S</span>
               <div class="sd-who-tx"><b id="sdShop3">My Shop</b><small id="sdEmail2">—</small></div>
             </div>
-            <button type="button" id="sdProfileBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>
-              <span data-i18n="sd.profile">Show Profile</span></button>
             <button type="button" id="sdPwBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
               <span data-i18n="sd.changepw">Change Password</span></button>
@@ -550,6 +570,28 @@
           <button class="sd-btn sd-btn-ghost" data-soon="sd.upgrade" data-i18n="sd.upgrade">Upgrade Plan</button>
         </div>
       </div>
+
+      <!-- quick action cards -->
+      <div class="sd-actions">
+        <button type="button" class="sd-action sd-action-tint" data-view="wallet">
+          <span class="sd-action-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="7" width="16" height="4" rx="1"/><path d="M12 11v7M9 15l3 3 3-3"/></svg></span>
+          <span class="sd-action-t" data-i18n="sd.withdraw">Money Withdraw</span>
+        </button>
+        <button type="button" class="sd-action" data-view="storehouse">
+          <span class="sd-action-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span class="sd-action-t" data-i18n="sd.addproduct">Add New Product</span>
+        </button>
+        <div class="sd-action sd-action-tint sd-action-wide">
+          <span class="sd-action-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><circle cx="12" cy="11" r="2.4"/></svg></span>
+          <span class="sd-action-t" data-i18n="sd.shopsetting">Shop Setting</span>
+          <button type="button" class="sd-btn" id="sdGoSetting" data-i18n="sd.gotosetting">Go to setting</button>
+        </div>
+        <div class="sd-action sd-action-tint sd-action-wide">
+          <span class="sd-action-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg></span>
+          <span class="sd-action-t" data-i18n="sd.paymentsetting">Payment Settings</span>
+          <button type="button" class="sd-btn" id="sdConfigPay" data-i18n="sd.configurenow">Configure Now</button>
+        </div>
+      </div>
       </section>
 
       <!-- ============ Product Storehouse view ============ -->
@@ -606,6 +648,10 @@
       <!-- ============ Money Withdraw / Wallet view ============ -->
       <section id="viewWallet" hidden>
         <div class="sd-whhero">
+          <div class="sd-whtop">
+            <span class="sd-whlogo" id="wlLogo">S</span>
+            <b id="wlShop">My Shop</b>
+          </div>
           <div class="sd-whbals">
             <div class="sd-whbal"><span class="sd-whic p"><svg viewBox="0 0 24 24"><path d="M3 7h18v10H3z"/><path d="M3 11h18"/><circle cx="8" cy="14" r="1.2"/></svg></span>
               <div><b id="wlPending">$0.00</b><small data-i18n="sd.pendingbal">Pending Balance</small></div></div>

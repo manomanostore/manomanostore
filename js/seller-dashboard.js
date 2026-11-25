@@ -220,6 +220,87 @@
     });
   }
 
+  /* ------------------------------ Payment settings ----------------------- */
+  // Seller's payout details (cash / bank / USDT), saved to the bank_accounts
+  // sheet. Opens prefilled with what's stored, so it's editable any time.
+  function openPayment() {
+    if (!session.token || !CONFIG.API_URL) { toast(T("sd.relogin"), "err"); return; }
+
+    function sw(id, label) {
+      return '<label class="sd-swrow"><span>' + esc(label) + '</span>' +
+        '<span class="sd-switch"><input type="checkbox" id="' + id + '"><span class="sd-slider"></span></span></label>';
+    }
+    function fld(id, label, ph) {
+      return '<div class="sd-field"><label>' + esc(label) + '</label><input id="' + id + '" value="" placeholder="' + esc(ph || "") + '"></div>';
+    }
+
+    // Render the modal FIRST so the close/save buttons always work, even if the
+    // network is slow or the backend hasn't been redeployed yet.
+    var root = document.createElement("div");
+    root.className = "sd-modal"; root.id = "sdPayModal";
+    root.innerHTML =
+      '<div class="sd-dialog" role="dialog" aria-modal="true">' +
+        '<div class="sd-dhead"><h3>' + esc(T("sd.paymentsetting")) + '</h3><button type="button" class="sd-dclose" id="payX" aria-label="Close">&times;</button></div>' +
+        '<div class="sd-dbody">' +
+          '<p class="sd-msg" id="payMsg" hidden></p>' +
+          sw("payCash", T("sd.cashpay")) +
+          sw("payBank", T("sd.bankpay")) +
+          fld("payBankName", T("sd.bankname")) +
+          fld("payBankAccName", T("sd.bankaccname"), session.email) +
+          fld("payBankAccNo", T("sd.bankaccno")) +
+          fld("payIfsc", T("sd.ifsc")) +
+          sw("payUsdt", T("sd.usdtpay")) +
+          fld("payUsdtLink", T("sd.usdtlink")) +
+          fld("payUsdtAddr", T("sd.usdtaddr")) +
+        '</div>' +
+        '<div class="sd-dfoot"><button type="button" class="sd-btn sd-btn-grey" id="payCancel">' + esc(T("sd.cancel")) + '</button>' +
+          '<button type="button" class="sd-btn" id="paySave">' + esc(T("sd.savebtn")) + '</button></div>' +
+      '</div>';
+    document.body.appendChild(root);
+
+    function close() { document.removeEventListener("keydown", onKey); root.remove(); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    $("payX").onclick = close;
+    $("payCancel").onclick = close;
+    root.addEventListener("click", function (e) { if (e.target === root) close(); });   // backdrop click
+    document.addEventListener("keydown", onKey);
+
+    // Prefill with whatever is already saved (editable any time).
+    fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "sellerBank", token: session.token }) })
+      .then(function (r) { return r.json(); })
+      .then(function (gj) {
+        if (!gj || !gj.ok) return;
+        var b = gj.bank || {};
+        if ($("payCash")) $("payCash").checked = !!b.cashOn;
+        if ($("payBank")) $("payBank").checked = !!b.bankOn;
+        if ($("payUsdt")) $("payUsdt").checked = !!b.usdtOn;
+        if ($("payBankName")) $("payBankName").value = b.bankName || "";
+        if ($("payBankAccName")) $("payBankAccName").value = b.bankAccName || "";
+        if ($("payBankAccNo")) $("payBankAccNo").value = b.bankAccNo || "";
+        if ($("payIfsc")) $("payIfsc").value = b.ifsc || "";
+        if ($("payUsdtLink")) $("payUsdtLink").value = b.usdtLink || "";
+        if ($("payUsdtAddr")) $("payUsdtAddr").value = b.usdtAddress || "";
+      }).catch(function () {});
+
+    $("paySave").addEventListener("click", async function () {
+      var msg = $("payMsg"); msg.hidden = true;
+      if (!session.token) { msg.hidden = false; msg.textContent = T("sd.relogin"); return; }
+      var btn = this; btn.disabled = true; btn.textContent = T("sd.saving");
+      try {
+        var body = { action: "sellerBankSave", token: session.token,
+          cashOn: $("payCash").checked ? 1 : 0, bankOn: $("payBank").checked ? 1 : 0,
+          bankName: $("payBankName").value, bankAccName: $("payBankAccName").value,
+          bankAccNo: $("payBankAccNo").value, ifsc: $("payIfsc").value,
+          usdtOn: $("payUsdt").checked ? 1 : 0, usdtLink: $("payUsdtLink").value, usdtAddress: $("payUsdtAddr").value };
+        var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+        var j = await r.json();
+        if (!j.ok) { btn.disabled = false; btn.textContent = T("sd.savebtn"); msg.hidden = false; msg.textContent = j.auth ? T("sd.relogin") : (j.error || "Couldn't save."); return; }
+        close(); ok(T("sd.bankadded"));
+      } catch (x) { btn.disabled = false; btn.textContent = T("sd.savebtn"); msg.hidden = false; msg.textContent = "Can't reach the server right now."; }
+    });
+  }
+
   /* ------------------------------ Product Storehouse --------------------- */
   // store.products = full catalog; sel = { productId: qty } the seller is picking;
   // myIds = products already in the seller's shop (for an "in your shop" hint).
@@ -676,10 +757,14 @@
     var bars = $("sdBars");
     if (bars) { var h = ""; for (var i = 0; i < 7; i++) h += '<div class="sd-bar" style="height:0"></div>'; bars.innerHTML = h; }
 
-    // "coming soon" placeholders (sidebar items + Upgrade)
+    // Placeholder menu items (no page yet) — just don't navigate; no message.
     document.querySelectorAll("[data-soon]").forEach(function (el) {
-      el.addEventListener("click", function (e) { e.preventDefault(); toast(T(el.getAttribute("data-soon")) + " " + T("sd.soon")); });
+      el.addEventListener("click", function (e) { e.preventDefault(); });
     });
+
+    // Refresh the page
+    var refresh = $("sdRefresh");
+    if (refresh) refresh.addEventListener("click", function () { location.reload(); });
 
     // Notifications
     var bell = $("sdBell");
@@ -699,7 +784,6 @@
 
     // Profile + change-password (account menu)
     function fromMenu(fn) { return function (e) { e.preventDefault(); var m = $("sdWhoMenu"); if (m) m.hidden = true; fn(); }; }
-    var pbtn = $("sdProfileBtn"); if (pbtn) pbtn.addEventListener("click", fromMenu(openProfile));
     var pwbtn = $("sdPwBtn"); if (pwbtn) pwbtn.addEventListener("click", fromMenu(openChangePw));
 
     // View switching (Dashboard / Product Storehouse)
@@ -716,6 +800,15 @@
     if ($("mpSearch")) $("mpSearch").addEventListener("input", renderMy);
     if ($("mpGrid")) $("mpGrid").addEventListener("click", onMyClick);
     if ($("mpAdd")) $("mpAdd").addEventListener("click", function () { switchView("storehouse"); });
+
+    // Dashboard quick-action cards
+    document.querySelectorAll('.sd-action[data-view]').forEach(function (el) {
+      el.addEventListener("click", function () { switchView(el.getAttribute("data-view")); });
+    });
+    if ($("sdGoSetting")) $("sdGoSetting").addEventListener("click", openProfile);
+    if ($("sdConfigPay")) $("sdConfigPay").addEventListener("click", openPayment);
+    // "Shop Setting" sidebar menu opens the same editor as "Show Profile".
+    if ($("sdShopSetting")) $("sdShopSetting").addEventListener("click", function (e) { e.preventDefault(); openProfile(); });
     document.addEventListener("i18n:change", function () {
       if (store.loaded) { fillCatSelect(); renderStore(); }
       if (mine.loaded) renderMy();

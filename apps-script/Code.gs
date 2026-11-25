@@ -67,7 +67,9 @@ var SHEETS = {
   banners:    { name: "Banners",    headers: ["id","image_url","order","status"] },
   sellerproducts: { name: "SellerProducts", headers: ["id","seller_id","product_id","name","price","profit","qty","status","createdAt","updatedAt"] },
   wallet:       { name: "Wallet",       headers: ["id","seller_id","guarantee","updatedAt"] },
-  transactions: { name: "Transactions", headers: ["id","seller_id","type","method","amount","currency","account","voucher","status","note","createdAt","updatedAt"] }
+  transactions: { name: "Transactions", headers: ["id","seller_id","type","method","amount","currency","account","voucher","status","note","createdAt","updatedAt"] },
+  bank_accounts: { name: "bank_accounts", headers: ["id","seller_id","cash_on","bank_on","bank_name","bank_acc_name","bank_acc_no","ifsc","usdt_on","usdt_link","usdt_address","createdAt","updatedAt"],
+                   textCols: ["bank_acc_no","ifsc"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
 var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10, staffCode:11 };
@@ -114,6 +116,8 @@ function doPost(e) {
       case "sellerAddProducts": return json(withLock(function () { return sellerAddProducts(body); }));
       case "sellerRemoveProduct":return json(withLock(function () { return sellerRemoveProduct(body); }));
       case "sellerWallet":   return json(sellerWallet(body));
+      case "sellerBank":     return json(sellerBankGet(body));
+      case "sellerBankSave": return json(withLock(function () { return sellerBankSave(body); }));
       case "sellerDeposit":  return json(withLock(function () { return sellerDeposit(body); }));
       case "sellerWithdraw": return json(withLock(function () { return sellerWithdraw(body); }));
       case "saveCart":      return json(withLock(function () { return saveCart(body); }));
@@ -414,6 +418,62 @@ function sellerWallet(b) {
     var me = requireSeller(b.token);
     var txs = readRows("transactions").filter(function (r) { return r.id !== "" && String(r.seller_id) === String(me.id); }).map(txPublic).reverse();
     return { ok: true, balances: sellerBalances(me.id), depositAddress: USDT_ADDRESS, transactions: txs };
+  } catch (err) { return authErr(err); }
+}
+
+/* ---- A seller's payout / bank account details (one row per seller) ---- */
+
+// The seller's saved payment details, shaped for the form. Empty defaults when
+// they haven't configured one yet.
+function sellerBankPublic(r) {
+  r = r || {};
+  var on = function (v) { return truthyFlag(v) ? 1 : 0; };
+  return {
+    cashOn: on(r.cash_on), bankOn: on(r.bank_on),
+    bankName: String(r.bank_name || ""), bankAccName: String(r.bank_acc_name || ""),
+    bankAccNo: String(r.bank_acc_no || ""), ifsc: String(r.ifsc || ""),
+    usdtOn: on(r.usdt_on), usdtLink: String(r.usdt_link || ""), usdtAddress: String(r.usdt_address || "")
+  };
+}
+
+// GET the seller's bank/payment account (for editing later).
+function sellerBankGet(b) {
+  try {
+    var me = requireSeller(b.token);
+    ensureColumns("bank_accounts", SHEETS.bank_accounts.headers);
+    var row = readRows("bank_accounts").filter(function (r) { return String(r.seller_id) === String(me.id); })[0];
+    return { ok: true, bank: sellerBankPublic(row) };
+  } catch (err) { return authErr(err); }
+}
+
+// Create or UPDATE the seller's bank/payment account (upsert by seller_id, so
+// a seller can edit it any time).
+function sellerBankSave(b) {
+  try {
+    var me = requireSeller(b.token);
+    ensureColumns("bank_accounts", SHEETS.bank_accounts.headers);
+    var flag = function (v) { return truthyFlag(v) ? 1 : 0; };
+    var patch = {
+      seller_id: me.id,
+      cash_on: flag(b.cashOn), bank_on: flag(b.bankOn),
+      bank_name: String(b.bankName || "").trim().slice(0, 120),
+      bank_acc_name: String(b.bankAccName || "").trim().slice(0, 120),
+      bank_acc_no: String(b.bankAccNo || "").trim().slice(0, 60),
+      ifsc: String(b.ifsc || "").trim().slice(0, 40),
+      usdt_on: flag(b.usdtOn), usdt_link: String(b.usdtLink || "").trim().slice(0, 300),
+      usdt_address: String(b.usdtAddress || "").trim().slice(0, 200)
+    };
+    var cur = readRows("bank_accounts").filter(function (r) { return String(r.seller_id) === String(me.id); })[0];
+    if (cur && cur.id !== "" && cur.id != null) {
+      patch.id = cur.id;
+      var res = saveRecord("bank_accounts", patch, function () { return ""; });
+      if (!res.ok) return res;
+    } else {
+      var now = new Date().toISOString();
+      patch.id = nextId(sheet("bank_accounts")); patch.createdAt = now; patch.updatedAt = now;
+      appendNamed("bank_accounts", patch);
+    }
+    return { ok: true, bank: sellerBankPublic(patch) };
   } catch (err) { return authErr(err); }
 }
 
