@@ -41,7 +41,8 @@ window.ADMIN = (function () {
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
     shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
     key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
-    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M4 18l5-5 4 4 3-3 4 4"/>'
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
+    wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/>'
   };
   function svg(name, size) {
     return '<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ic[name]+'</svg>';
@@ -123,6 +124,7 @@ window.ADMIN = (function () {
     ["dashboard", "Dashboard", "dash", ADMIN_ROLES], ["orders", "Orders", "orders", ADMIN_ROLES], ["products", "Products", "box", ADMIN_ROLES],
     ["categories", "Categories", "tag", ["superadmin", "manager"]], ["banners", "Banners", "image", ["superadmin", "manager"]],
     ["vendors", "Sellers", "store", ["superadmin", "manager"]],
+    ["wallet", "Wallet", "wallet", ["superadmin", "manager"]],
     ["admins", "Admins", "shield", ["superadmin"]]
   ];
   function canRoute(r) { var n = NAV.filter(function (x) { return x[0] === r; })[0]; return n && n[3].indexOf(role()) > -1; }
@@ -173,7 +175,7 @@ window.ADMIN = (function () {
     $("admView").onclick = null;
     $("admView").innerHTML = skeleton();
     ({ dashboard: viewDashboard, orders: viewOrders, products: viewProducts, categories: viewCategories,
-       banners: viewBanners, vendors: viewVendors, admins: viewAdmins })[r]().catch(function (e) {
+       banners: viewBanners, vendors: viewVendors, wallet: viewWallet, admins: viewAdmins })[r]().catch(function (e) {
       if (session) $("admView").innerHTML = '<div class="msg err">'+esc(e.message || e)+'</div>';
     });
   }
@@ -334,7 +336,7 @@ window.ADMIN = (function () {
           (!pf.status || p.status === pf.status);
       });
       $("prodBox").innerHTML = list.length ?
-        '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+
+        '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Profit</th><th>Stock</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+
         list.map(function (p) {
           var hidden = p.status === "hidden";
           return '<tr'+(hidden ? ' class="adm-dim"' : '')+'>'+
@@ -342,6 +344,7 @@ window.ADMIN = (function () {
               '<div class="adm-cell-sub">#'+esc(p.id)+(p.badge ? ' · '+esc(cap(p.badge)) : '')+'</div></div></div></td>'+
             '<td>'+esc(catName[String(p.cat_id)] || "—")+'</td>'+
             '<td><strong>'+money(p.price)+'</strong>'+(p.oldPrice ? '<div class="adm-cell-sub"><s>'+money(p.oldPrice)+'</s></div>' : '')+'</td>'+
+            '<td><span class="adm-profit">'+money(p.sellerProfit || 0)+'</span></td>'+
             '<td>'+(p.quantity === "" || p.quantity == null ? "—" : esc(p.quantity))+'</td>'+
             '<td>'+pill(hidden ? "hidden" : "active", hidden ? "blocked" : "active")+'</td>'+
             '<td class="r"><div class="adm-actions">'+
@@ -408,6 +411,18 @@ window.ADMIN = (function () {
     var cat = catalog, isNew = !p;
     p = p || { name: "", cat_id: cat.categories[0] && cat.categories[0].id, price: "", oldPrice: "",
                rating: "", quantity: "", badge: "", desc: "", images: [], status: "active" };
+    // Legacy self-heal: an older bug wrote the image array into the desc column.
+    // If this product has no images but its desc is a JSON array of image URLs,
+    // move them back to images and clear the description (fixed on next save).
+    if (!isNew && (!p.images || !p.images.length) && /^\s*\[/.test(p.desc || "")) {
+      try {
+        var arr = JSON.parse(p.desc);
+        if (Array.isArray(arr) && arr.length && /^https?:\/\//i.test(String(arr[0]))) {
+          p.images = arr.filter(function (u) { return /^https?:\/\//i.test(String(u)); });
+          p.imageUrl = p.images[0] || ""; p.desc = "";
+        }
+      } catch (e) {}
+    }
     var opt = function (list, val) {
       return list.map(function (x) {
         return '<option value="'+esc(x.id)+'"'+(String(val) === String(x.id) ? " selected" : "")+'>'+esc(x.name)+'</option>'; }).join("");
@@ -421,6 +436,7 @@ window.ADMIN = (function () {
           f("pStatus", "Status", '<select id="pStatus"><option value="active"'+(p.status !== "hidden" ? " selected" : "")+'>Active (visible)</option><option value="hidden"'+(p.status === "hidden" ? " selected" : "")+'>Hidden</option></select>') +
           f("pBadge", "Badge", '<select id="pBadge"><option value="">None</option><option value="deal"'+(p.badge === "deal" ? " selected" : "")+'>Deal</option><option value="bestseller"'+(p.badge === "bestseller" ? " selected" : "")+'>#1 in sales</option></select>') +
           f("pPrice", "Price ("+esc(C.CURRENCY_CODE)+")", '<input id="pPrice" type="number" min="0.01" step="0.01" required value="'+esc(p.price)+'">') +
+          f("pProfit", "Seller profit <span class=\"opt\" id=\"pProfitHint\">(auto from category %)</span>", '<input id="pProfit" type="number" min="0" step="0.01" value="'+esc(p.sellerProfit == null ? '' : p.sellerProfit)+'">') +
           f("pOld", "Old price <span class=\"opt\">(for a discount)</span>", '<input id="pOld" type="number" min="0" step="0.01" value="'+esc(p.oldPrice)+'">') +
           f("pRating", "Rating <span class=\"opt\">(0–5)</span>", '<input id="pRating" type="number" min="0" max="5" step="0.1" value="'+esc(p.rating)+'">') +
           f("pQty", "Quantity <span class=\"opt\">(stock)</span>", '<input id="pQty" type="number" min="0" step="1" value="'+esc(p.quantity)+'">') +
@@ -438,13 +454,33 @@ window.ADMIN = (function () {
         var data = {
           id: isNew ? undefined : p.id, name: $("pName").value, cat_id: $("pCat").value,
           price: $("pPrice").value, oldPrice: $("pOld").value, rating: $("pRating").value,
-          quanitiy: $("pQty").value, badge: $("pBadge").value, status: $("pStatus").value,
+          seller_profit: $("pProfit").value, quanitiy: $("pQty").value, badge: $("pBadge").value, status: $("pStatus").value,
           imageUrl_json: JSON.stringify(keepUrls), imageData: uploads, desc: $("pDesc").value.trim()
         };
         var r = await api("saveProduct", data);
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Product added" : "Product saved"); route();
       });
+
+    // --- seller profit: auto = category% × price, recalculated live until the
+    //     admin types their own value; a hint shows the category's % in use ----
+    var profitTouched = false;
+    function curCat(id) { return cat.categories.filter(function (x) { return String(x.id) === String(id); })[0]; }
+    function catPct(id) { var c = curCat(id); return c ? Number(c.sellerProfit) || 0 : 0; }
+    function autoProfit(catId, price) { var pct = catPct(catId); return (pct > 0 && price > 0) ? +(price * pct / 100).toFixed(2) : 0; }
+    function updateHint() {
+      var h = $("pProfitHint"); if (!h) return;
+      var c = curCat($("pCat").value), pct = catPct($("pCat").value);
+      if (profitTouched) h.textContent = "(manual)";
+      else if (pct > 0) h.textContent = "(" + pct + "% of price)";
+      else h.textContent = "(set a profit % on “" + ((c && c.name) || "this category") + "” first)";
+    }
+    function syncProfit() { if (!profitTouched) $("pProfit").value = autoProfit($("pCat").value, Number($("pPrice").value) || 0) || ""; updateHint(); }
+    $("pProfit").addEventListener("input", function () { profitTouched = true; updateHint(); });
+    $("pCat").addEventListener("change", syncProfit);
+    $("pPrice").addEventListener("input", syncProfit);
+    if (!isNew && Number(p.sellerProfit || 0) !== autoProfit(p.cat_id, Number(p.price) || 0)) profitTouched = true;
+    syncProfit();
 
     // --- up-to-4 image picker (existing URLs + new uploads) ---
     var pImgs = (p.images && p.images.length ? p.images : (p.imageUrl ? [p.imageUrl] : [])).slice(0, 4)
@@ -495,12 +531,13 @@ window.ADMIN = (function () {
         '<button class="btn btn-primary adm-btn" type="button" id="addCat">'+svg("plus")+' Add category</button></div>'+
       (cat.categories.length ?
         '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
-          '<thead><tr><th>Category</th><th>ID</th><th>Order</th><th>Products</th><th class="r">Actions</th></tr></thead><tbody>'+
+          '<thead><tr><th>Category</th><th>ID</th><th>Profit</th><th>Order</th><th>Products</th><th class="r">Actions</th></tr></thead><tbody>'+
           cat.categories.map(function (c) {
             return '<tr>'+
               '<td><div class="adm-user"><span class="adm-cat-thumb"><img src="'+DATA.categoryImage(c)+'" alt="" loading="lazy"></span>'+
                 '<span class="adm-cell-main">'+esc(c.name)+'</span></div></td>'+
               '<td class="adm-cell-sub">#'+esc(c.id)+'</td>'+
+              '<td>'+(Number(c.sellerProfit) > 0 ? '<span class="adm-profit">'+esc(c.sellerProfit)+'%</span>' : '<span class="adm-cell-sub">—</span>')+'</td>'+
               '<td>'+esc(c.order || 0)+'</td>'+
               '<td>'+(count[String(c.id)] || 0)+'</td>'+
               '<td class="r"><div class="adm-actions">'+
@@ -531,13 +568,15 @@ window.ADMIN = (function () {
         f("cImg", "Category image",
           '<div class="adm-drop" id="cDrop"><input id="cFile" type="file" accept="image/*" hidden>'+
           '<span class="adm-drop-txt">Drag &amp; drop an image here, or <b>browse</b></span></div>', "full") +
+        f("cProfit", "Seller profit <span class=\"opt\">(% of price)</span>", '<input id="cProfit" type="number" min="0" max="100" step="0.1" value="'+esc(c.sellerProfit == null ? '' : c.sellerProfit)+'" placeholder="e.g. 10">') +
         f("cOrder", "Display order", '<input id="cOrder" type="number" min="0" step="1" value="'+esc(c.order || 0)+'">') +
       '</div></div>',
       async function () {
         var name = $("cName").value.trim();
         if (!name) return "Category name is required.";
         var r = await api("saveCategory", { id: isNew ? undefined : c.id,
-          cat_name: name, cat_order: Number($("cOrder").value) || 0, imageData: imageData });
+          cat_name: name, cat_order: Number($("cOrder").value) || 0,
+          seller_profit: Math.max(0, Math.min(100, Number($("cProfit").value) || 0)), imageData: imageData });
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Category added" : "Category saved"); route();
       });
@@ -733,6 +772,73 @@ window.ADMIN = (function () {
         var r = await api("saveVendor", { id: isNew ? undefined : v.id, shopName: $("vShop").value.trim(), name: $("vName").value.trim(), email: $("vEmail").value.trim(), phone: $("vPhone").value.trim(), status: $("vStatus").value, shop_status: $("vShopStatus").value, rating: rating });
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Seller added" : "Seller saved"); route();
+      });
+  }
+
+  /* -------------------------------- wallet -------------------------------- */
+  // Approve/reject sellers' deposit & withdrawal requests, and set each seller's
+  // guarantee money. Balances are auto-computed server-side from these.
+  async function viewWallet() {
+    var res = await api("listWallet");
+    if (!res.ok) throw new Error(res.error);
+    var txs = res.transactions || [], sellers = res.sellers || [];
+    var pending = txs.filter(function (t) { return t.status === "pending"; }).length;
+    function dt(iso) { try { return new Date(iso).toLocaleDateString(); } catch (e) { return ""; } }
+    function kindOf(s) { return s === "approved" ? "verified" : s === "rejected" ? "blocked" : "pending"; }
+    function txRow(t) {
+      return '<tr>'+
+        '<td><div class="adm-cell-main">'+esc(t.sellerName)+'</div><div class="adm-cell-sub">#'+esc(t.id)+' · '+esc(dt(t.createdAt))+'</div></td>'+
+        '<td>'+esc(cap(t.type))+'</td>'+
+        '<td><strong>'+money(t.amount)+'</strong>'+(t.account ? '<div class="adm-cell-sub">'+esc(t.account)+'</div>' : '')+'</td>'+
+        '<td>'+esc((t.method || '—').toUpperCase())+'</td>'+
+        '<td>'+pill(t.status, kindOf(t.status))+'</td>'+
+        '<td>'+(t.voucher ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(t.voucher)+'">View</a>' : '<span class="adm-cell-sub">—</span>')+'</td>'+
+        '<td class="r"><div class="adm-actions">'+
+          (t.status === "pending"
+            ? '<button type="button" class="btn btn-primary adm-mini" data-approve="'+esc(t.id)+'">Approve</button>'+
+              '<button type="button" class="btn btn-ghost adm-mini" data-reject="'+esc(t.id)+'">Reject</button>'
+            : '<span class="adm-cell-sub">'+(t.note ? esc(t.note) : '—')+'</span>')+
+        '</div></td></tr>';
+    }
+    function selRow(s) {
+      return '<tr>'+
+        '<td><div class="adm-cell-main">'+esc(s.shopName || s.name || '—')+'</div><div class="adm-cell-sub">'+esc(s.email || '')+'</div></td>'+
+        '<td><strong>'+money(s.walletMoney)+'</strong></td>'+
+        '<td>'+money(s.pendingBalance)+'</td>'+
+        '<td><span class="adm-profit">'+money(s.guaranteeMoney)+'</span></td>'+
+        '<td class="r"><button type="button" class="btn btn-ghost adm-mini" data-guar="'+esc(s.id)+'" data-name="'+esc(s.shopName || s.name || '')+'" data-amt="'+esc(s.guaranteeMoney)+'">Set guarantee</button></td></tr>';
+    }
+    $("admView").innerHTML =
+      '<div class="adm-toolbar"><span class="adm-count">'+txs.length+' transaction'+(txs.length === 1 ? '' : 's')+(pending ? ' · '+pending+' pending' : '')+'</span></div>'+
+      '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
+        '<thead><tr><th>Seller</th><th>Type</th><th>Amount</th><th>Method</th><th>Status</th><th>Voucher</th><th class="r">Actions</th></tr></thead>'+
+        '<tbody>'+(txs.length ? txs.map(txRow).join("") : '<tr><td colspan="7">'+empty("No transactions", "Deposits and withdrawal requests will appear here.")+'</td></tr>')+'</tbody></table></div></section>'+
+      '<div class="adm-toolbar" style="margin-top:20px"><span class="adm-count">Sellers &amp; guarantee money</span></div>'+
+      '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
+        '<thead><tr><th>Seller</th><th>Wallet</th><th>Pending</th><th>Guarantee</th><th class="r">Actions</th></tr></thead>'+
+        '<tbody>'+(sellers.length ? sellers.map(selRow).join("") : '<tr><td colspan="5">'+empty("No sellers yet", "")+'</td></tr>')+'</tbody></table></div></section>';
+
+    $("admView").onclick = async function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.approve || b.dataset.reject) {
+        var id = b.dataset.approve || b.dataset.reject, status = b.dataset.approve ? "approved" : "rejected";
+        b.disabled = true;
+        var r = await api("updateTx", { id: id, status: status });
+        if (!r.ok) { b.disabled = false; return toast(r.error, true); }
+        toast(status === "approved" ? "Approved" : "Rejected"); route();
+      } else if (b.dataset.guar) {
+        guaranteeForm(b.dataset.guar, b.dataset.name, b.dataset.amt);
+      }
+    };
+  }
+
+  function guaranteeForm(id, name, amt) {
+    modal("Set guarantee — " + name,
+      '<div class="adm-form-cols">'+f("gAmt", "Guarantee money ("+esc(C.CURRENCY_CODE)+")", '<input id="gAmt" type="number" min="0" step="0.01" value="'+esc(amt || 0)+'">')+'</div>',
+      async function () {
+        var r = await api("setGuarantee", { seller_id: id, amount: Math.max(0, Number($("gAmt").value) || 0) });
+        if (!r.ok) return r.error;
+        toast("Guarantee updated"); route();
       });
   }
 

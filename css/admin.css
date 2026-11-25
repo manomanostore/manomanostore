@@ -87,6 +87,7 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-card:not(.adm-flush) .adm-table th:first-child,.adm-card:not(.adm-flush) .adm-table td:first-child{padding-left:0}
 .adm-cell-main{font-weight:600}
 .adm-cell-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.adm-profit{font-weight:700;color:#0c7a5b}
 .adm-prod{display:flex;align-items:center;gap:12px;min-width:240px}
 .adm-prod img{width:48px;height:48px;border-radius:10px;object-fit:cover;background:var(--bg);border:1px solid var(--line);flex:0 0 auto}
 .adm-user{display:flex;align-items:center;gap:10px;min-width:200px}

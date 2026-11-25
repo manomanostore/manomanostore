@@ -43,20 +43,28 @@ var ADMIN_PASSWORD = "";
 var PASSWORD_PEPPER = "toolnest.v1";
 
 var ADMIN_TOKEN_HOURS = 12;
+var SELLER_TOKEN_HOURS = 24 * 14;   // how long a seller stays signed in
+
+// TRC20 USDT address sellers send offline wallet deposits to (shown on the
+// recharge screen). Change this to your own address.
+var USDT_ADDRESS = "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 var ORDER_STATUSES = ["received", "processing", "shipped", "delivered", "cancelled"];
 
 var SHEETS = {
   users:      { name: "Users",      headers: ["id","username","name","passwordHash","role","status","createdAt","updatedAt","lastLoginAt","tokenHash","tokenExpires","staff_code"],
                 textCols: ["username","passwordHash","tokenHash","staff_code"] },
-  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","invite","rating","passwordHash","createdAt","updatedAt"],
-                textCols: ["phone","email","passwordHash","staff_code"] },
+  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","shopImageURL","invite","rating","passwordHash","createdAt","updatedAt","tokenHash","tokenExpires"],
+                textCols: ["phone","email","passwordHash","staff_code","tokenHash"] },
   orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt"],
                 textCols: ["identifier"] },
-  categories: { name: "Categories", headers: ["id","cat_name","cat_img_url","cat_order"] },
-  products:   { name: "Products",   headers: ["id","name","cat_id","price","oldPrice","rating","quanitiy","badge","desc","imageUrl_json","status","createdAt","updatedAt"] },
+  categories: { name: "Categories", headers: ["id","cat_name","seller_profit","cat_img_url","cat_order"] },
+  products:   { name: "Products",   headers: ["id","name","cat_id","price","oldPrice","seller_profit","rating","quanitiy","badge","desc","imageUrl_json","status","createdAt","updatedAt"] },
   carts:      { name: "Carts",      headers: ["cart_id","productId","qty","createdAt","updatedAt"],
                 textCols: ["cartId","productId"] },
-  banners:    { name: "Banners",    headers: ["id","image_url","order","status"] }
+  banners:    { name: "Banners",    headers: ["id","image_url","order","status"] },
+  sellerproducts: { name: "SellerProducts", headers: ["id","seller_id","product_id","name","price","profit","qty","status","createdAt","updatedAt"] },
+  wallet:       { name: "Wallet",       headers: ["id","seller_id","guarantee","updatedAt"] },
+  transactions: { name: "Transactions", headers: ["id","seller_id","type","method","amount","account","voucher","status","note","createdAt","updatedAt"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
 var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10, staffCode:11 };
@@ -71,6 +79,7 @@ var PERMS = {
   deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
   deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
+  listWallet: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ["superadmin", "manager"],
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"]
 };
 
@@ -95,7 +104,15 @@ function doPost(e) {
   try {
     switch (action) {
       case "registerSeller":return json(withLock(function () { return registerSeller(body); }));
-      case "sellerLogin":   return json(sellerLogin(body));
+      case "sellerLogin":   return json(withLock(function () { return sellerLogin(body); }));
+      case "sellerProfile": return json(withLock(function () { return sellerUpdateProfile(body); }));
+      case "sellerPassword":return json(withLock(function () { return sellerChangePassword(body); }));
+      case "sellerProducts":    return json(sellerListProducts(body));
+      case "sellerAddProducts": return json(withLock(function () { return sellerAddProducts(body); }));
+      case "sellerRemoveProduct":return json(withLock(function () { return sellerRemoveProduct(body); }));
+      case "sellerWallet":   return json(sellerWallet(body));
+      case "sellerDeposit":  return json(withLock(function () { return sellerDeposit(body); }));
+      case "sellerWithdraw": return json(withLock(function () { return sellerWithdraw(body); }));
       case "saveCart":      return json(withLock(function () { return saveCart(body); }));
       case "getCart":       return json({ ok: true, cart: getCartItems(String(body.cartId || "")) });
       case "createOrder":   return json(withLock(function () { return createOrder(body); }));
@@ -165,9 +182,293 @@ function sellerLogin(b) {
     return { ok: false, error: "Incorrect email or password." };
   if (!truthyFlag(v.status))
     return { ok: false, error: "Your shop is pending review. You can sign in once a staff member approves it." };
-  return { ok: true, seller: { id: v.id, name: v.name, email: v.email, phone: v.phone, shopName: v.shopName,
-                               status: 1, shopStatus: truthyFlag(v.shop_status) ? 1 : 0,
-                               rating: clampRating(v.rating) } };
+  ensureColumns("sellers", ["tokenHash", "tokenExpires"]);   // so the token can be stored even if initSheets wasn't run
+  var token = Utilities.getUuid() + Utilities.getUuid();
+  setSellerToken(v.id, token);
+  return { ok: true, token: token, seller: publicSeller(v, token) };
+}
+
+// Make sure a sheet has these columns (appended at the END if missing) so a
+// feature's columns show up without a manual initSheets run.
+function ensureColumns(key, names) {
+  var sh = sheet(key);
+  var have = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(function (x) { return String(x == null ? "" : x).trim(); });
+  names.forEach(function (h) { if (have.indexOf(h) < 0) { sh.getRange(1, have.length + 1).setValue(h); have.push(h); } });
+}
+
+// The seller object the dashboard keeps in localStorage (never the password).
+function publicSeller(v, token) {
+  return { id: v.id, name: v.name, email: v.email, phone: String(v.phone || ""), shopName: v.shopName,
+           status: 1, shopStatus: truthyFlag(v.shop_status) ? 1 : 0, rating: clampRating(v.rating),
+           shopImage: String(v.shopImageURL || ""), token: token || String(v.token || "") };
+}
+
+// Store a hashed, expiring sign-in token on the seller's row so later requests
+// (e.g. profile updates) can be authenticated without the password.
+function setSellerToken(id, token) {
+  var now = new Date();
+  saveRecord("sellers", {
+    id: id, tokenHash: sha256(token),
+    tokenExpires: new Date(now.getTime() + SELLER_TOKEN_HOURS * 3600 * 1000).toISOString()
+  }, function () { return ""; });
+}
+
+// Resolve a seller from their sign-in token (throws AUTH: … when invalid/expired).
+function requireSeller(token) {
+  if (!token) throw new Error("AUTH: Please sign in again.");
+  var h = sha256(String(token)), rows = readRows("sellers");
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].tokenHash && String(rows[i].tokenHash) === h) {
+      if (!rows[i].tokenExpires || new Date(rows[i].tokenExpires) < new Date())
+        throw new Error("AUTH: Your session expired. Please sign in again.");
+      return rows[i];
+    }
+  }
+  throw new Error("AUTH: Your session is no longer valid. Please sign in again.");
+}
+
+// Seller edits their own profile (name, phone, shop name) and optionally a new
+// shop image. The image goes to Drive under seller/images/<id>/ and its URL is
+// stored in shopImageURL; the old one is cleaned up.
+function sellerUpdateProfile(b) {
+  try {
+    var me = requireSeller(b.token);
+    var patch = { id: me.id };
+    if (b.name !== undefined)     patch.name = String(b.name).trim().slice(0, 80);
+    if (b.phone !== undefined)    patch.phone = String(b.phone).trim().slice(0, 30);
+    if (b.shopName !== undefined) patch.shopName = String(b.shopName).trim().slice(0, 100);
+    if (patch.shopName === "" && b.shopName !== undefined) return { ok: false, error: "Shop name can't be empty." };
+
+    var oldImg = String(me.shopImageURL || "");
+    if (b.shopImage) {
+      var folder = driveChild(driveImagesFolder("seller"), String(me.id));
+      var url = uploadImageTo(b.shopImage, "shop-" + me.id, folder, 600);
+      if (url) patch.shopImageURL = url;
+    }
+    var res = saveRecord("sellers", patch, validateVendor);
+    if (!res.ok) return res;
+    if (patch.shopImageURL && oldImg && oldImg !== patch.shopImageURL) deleteDriveFile(oldImg);
+
+    var v = readRows("sellers").filter(function (r) { return String(r.id) === String(me.id); })[0] || me;
+    return { ok: true, seller: publicSeller(v, b.token) };
+  } catch (err) {
+    var msg = String(err && err.message || err);
+    return { ok: false, auth: msg.indexOf("AUTH: ") === 0, error: msg.replace(/^AUTH: /, "") };
+  }
+}
+
+// Seller changes their own password. Both the current and new passwords arrive
+// already hashed in the browser (salt "seller:<email>"); we verify the current
+// hash against the stored one before writing the new one.
+function sellerChangePassword(b) {
+  try {
+    var me = requireSeller(b.token);
+    if (!b.currentHash || String(me.passwordHash) !== String(b.currentHash))
+      return { ok: false, error: "Your current password is incorrect." };
+    if (!b.newHash) return { ok: false, error: "Enter a new password." };
+    if (String(b.newHash) === String(me.passwordHash))
+      return { ok: false, error: "The new password must be different." };
+    var res = saveRecord("sellers", { id: me.id, passwordHash: b.newHash }, function () { return ""; });
+    if (!res.ok) return res;
+    return { ok: true };
+  } catch (err) {
+    var msg = String(err && err.message || err);
+    return { ok: false, auth: msg.indexOf("AUTH: ") === 0, error: msg.replace(/^AUTH: /, "") };
+  }
+}
+
+/* ---- A seller's own products (picked from the Storehouse catalog) ---- */
+
+// List the products a seller has added to their shop, refreshed with the
+// catalog's current name / price / profit / image.
+function sellerListProducts(b) {
+  try {
+    var me = requireSeller(b.token);
+    var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
+    var list = readRows("sellerproducts").filter(function (r) {
+      return r.id !== "" && String(r.seller_id) === String(me.id);
+    }).map(function (r) {
+      var p = cat[String(r.product_id)] || {};
+      return {
+        id: Number(r.id) || r.id, productId: Number(r.product_id) || r.product_id,
+        name: String(p.name || r.name || ""),
+        price: Number(p.price != null ? p.price : r.price) || 0,
+        profit: Number(p.sellerProfit != null ? p.sellerProfit : r.profit) || 0,
+        qty: Math.max(1, Math.floor(Number(r.qty) || 1)),
+        imageUrl: String(p.imageUrl || ""), status: String(r.status || "active")
+      };
+    });
+    return { ok: true, products: list };
+  } catch (err) {
+    var m = String(err && err.message || err);
+    return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
+  }
+}
+
+// Add (or update the quantity of) catalog products in the seller's shop. Items:
+// [{ productId, qty }]. Existing picks are updated; new ones appended — so a
+// seller can keep adding more products over time.
+function sellerAddProducts(b) {
+  try {
+    var me = requireSeller(b.token);
+    // De-dupe the batch by productId (last quantity wins).
+    var want = {};
+    (b.items || []).forEach(function (i) { if (i && i.productId != null) want[String(i.productId)] = Math.max(1, Math.floor(Number(i.qty) || 1)); });
+    var pids = Object.keys(want);
+    if (!pids.length) return { ok: false, error: "No products selected." };
+
+    var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
+    var mineRows = readRows("sellerproducts").filter(function (r) { return String(r.seller_id) === String(me.id); });
+    var byPid = {}; mineRows.forEach(function (r) { byPid[String(r.product_id)] = r; });
+
+    var sh = sheet("sellerproducts"), now = new Date().toISOString(), added = 0, updated = 0;
+    pids.forEach(function (pid) {
+      var p = cat[pid]; if (!p) return;
+      var qty = want[pid], cur = byPid[pid];
+      if (cur) {
+        saveRecord("sellerproducts", { id: cur.id, qty: qty, name: p.name, price: p.price, profit: p.sellerProfit, status: "active" }, function () { return ""; });
+        updated++;
+      } else {
+        appendNamed("sellerproducts", {
+          id: nextId(sh), seller_id: me.id, product_id: p.id, name: p.name, price: p.price,
+          profit: p.sellerProfit, qty: qty, status: "active", createdAt: now, updatedAt: now
+        });
+        updated = updated; added++;
+      }
+    });
+    return { ok: true, added: added, updated: updated };
+  } catch (err) {
+    var m = String(err && err.message || err);
+    return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
+  }
+}
+
+// Remove one of the seller's own products (by its SellerProducts row id).
+function sellerRemoveProduct(b) {
+  try {
+    var me = requireSeller(b.token);
+    var row = readRows("sellerproducts").filter(function (r) { return String(r.id) === String(b.id) && String(r.seller_id) === String(me.id); })[0];
+    if (!row) return { ok: false, error: "Product not found in your shop." };
+    return deleteRecord("sellerproducts", b.id);
+  } catch (err) {
+    var m = String(err && err.message || err);
+    return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
+  }
+}
+
+/* ------------------------------ Wallet / money --------------------------- */
+// Balances are AUTO-COMPUTED from the Transactions + SellerProducts + Wallet
+// sheets, so nothing drifts:
+//   walletMoney    = Σ approved deposits − Σ approved withdrawals (+ delivered
+//                    earnings, once Orders are wired)
+//   pendingBalance = Σ (price × qty) of the products the seller stocks
+//   guaranteeMoney = staff-set base (Wallet sheet) + approved guarantee recharges
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+function sellerBalances(sellerId) {
+  var deposits = 0, withdraws = 0, guaranteeAdds = 0;
+  readRows("transactions").forEach(function (t) {
+    if (String(t.seller_id) !== String(sellerId) || String(t.status) !== "approved") return;
+    var amt = Number(t.amount) || 0, ty = String(t.type);
+    if (ty === "deposit") deposits += amt;
+    else if (ty === "withdraw") withdraws += amt;
+    else if (ty === "guarantee") guaranteeAdds += amt;
+  });
+  var w = readRows("wallet").filter(function (r) { return String(r.seller_id) === String(sellerId); })[0];
+  var guaranteeBase = w ? Number(w.guarantee) || 0 : 0;
+  var deliveredEarnings = 0, deliveredProfit = 0;   // Orders not wired yet
+  return {
+    walletMoney: round2(deposits - withdraws + deliveredEarnings),
+    pendingBalance: round2(sellerProductsValue(sellerId)),
+    guaranteeMoney: round2(guaranteeBase + guaranteeAdds),
+    totalProfit: round2(deliveredProfit),
+    totalEarnings: round2(deposits - withdraws + deliveredEarnings),
+    productCount: readRows("sellerproducts").filter(function (r) { return r.id !== "" && String(r.seller_id) === String(sellerId); }).length
+  };
+}
+
+// Σ (price × qty) over the catalog products the seller stocks.
+function sellerProductsValue(sellerId) {
+  var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
+  var sum = 0;
+  readRows("sellerproducts").filter(function (r) { return String(r.seller_id) === String(sellerId); }).forEach(function (r) {
+    var p = cat[String(r.product_id)] || {}, price = Number(p.price != null ? p.price : r.price) || 0, qty = Math.max(1, Math.floor(Number(r.qty) || 1));
+    sum += price * qty;
+  });
+  return sum;
+}
+
+function txPublic(r) {
+  return { id: Number(r.id) || r.id, type: String(r.type || ""), method: String(r.method || ""), amount: Number(r.amount) || 0,
+           account: String(r.account || ""), voucher: String(r.voucher || ""), status: String(r.status || "pending"),
+           note: String(r.note || ""), createdAt: r.createdAt };
+}
+function authErr(err) { var m = String(err && err.message || err); return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") }; }
+
+// Seller's wallet screen: balances, the deposit address, and their history.
+function sellerWallet(b) {
+  try {
+    var me = requireSeller(b.token);
+    var txs = readRows("transactions").filter(function (r) { return r.id !== "" && String(r.seller_id) === String(me.id); }).map(txPublic).reverse();
+    return { ok: true, balances: sellerBalances(me.id), depositAddress: USDT_ADDRESS, transactions: txs };
+  } catch (err) { return authErr(err); }
+}
+
+// Offline wallet (or guarantee) recharge: creates a PENDING transaction with a
+// payment-voucher image; a staff member approves it to credit the balance.
+function sellerDeposit(b) {
+  try {
+    var me = requireSeller(b.token);
+    var amount = Number(b.amount) || 0;
+    if (!(amount > 0)) return { ok: false, error: "Enter a valid amount." };
+    var type = (b.purpose === "guarantee") ? "guarantee" : "deposit", voucher = "";
+    if (b.voucher) voucher = uploadImageTo(b.voucher, type + "-" + me.id, driveChild(driveImagesFolder("seller"), String(me.id)), 1200);
+    var now = new Date().toISOString(), sh = sheet("transactions");
+    appendNamed("transactions", { id: nextId(sh), seller_id: me.id, type: type, method: "usdt", amount: round2(amount),
+      account: "", voucher: voucher, status: "pending", note: "", createdAt: now, updatedAt: now });
+    return { ok: true, message: "Your recharge request has been submitted for review." };
+  } catch (err) { return authErr(err); }
+}
+
+// Withdrawal request: only allowed up to the current wallet balance; staff approve
+// it to release the payout.
+function sellerWithdraw(b) {
+  try {
+    var me = requireSeller(b.token);
+    var amount = Number(b.amount) || 0;
+    if (!(amount > 0)) return { ok: false, error: "Enter a valid amount." };
+    if (amount > sellerBalances(me.id).walletMoney) return { ok: false, error: "Amount exceeds your wallet balance." };
+    var account = String(b.account || "").trim().slice(0, 200);
+    if (!account) return { ok: false, error: "Enter your payout account details." };
+    var now = new Date().toISOString(), sh = sheet("transactions");
+    appendNamed("transactions", { id: nextId(sh), seller_id: me.id, type: "withdraw", method: (b.method === "bank" ? "bank" : "usdt"),
+      amount: round2(amount), account: account, voucher: "", status: "pending", note: "", createdAt: now, updatedAt: now });
+    return { ok: true, message: "Your withdrawal request has been submitted." };
+  } catch (err) { return authErr(err); }
+}
+
+/* Admin: review transactions + set a seller's guarantee money. */
+function adminWallet() {
+  var sellers = readSellers();
+  var nameOf = {}; sellers.forEach(function (s) { nameOf[String(s.id)] = s.shopName || s.name || ("#" + s.id); });
+  var txs = readRows("transactions").filter(function (r) { return r.id !== ""; }).map(function (r) {
+    var pub = txPublic(r); pub.sellerId = Number(r.seller_id) || r.seller_id; pub.sellerName = nameOf[String(r.seller_id)] || ("#" + r.seller_id); return pub;
+  }).reverse();
+  var rows = sellers.map(function (s) { var bal = sellerBalances(s.id);
+    return { id: s.id, shopName: s.shopName, name: s.name, email: s.email, guaranteeMoney: bal.guaranteeMoney, walletMoney: bal.walletMoney, pendingBalance: bal.pendingBalance }; });
+  return { transactions: txs, sellers: rows, depositAddress: USDT_ADDRESS };
+}
+function adminUpdateTx(p) {
+  if (["approved", "rejected", "pending"].indexOf(p.status) < 0) return { ok: false, error: "Invalid status." };
+  if (!findRowById(sheet("transactions"), p.id)) return { ok: false, error: "Transaction not found." };
+  return saveRecord("transactions", { id: p.id, status: p.status, note: String(p.note || "").slice(0, 300) }, function () { return ""; });
+}
+function adminSetGuarantee(p) {
+  var amount = Math.max(0, Number(p.amount) || 0), sid = p.seller_id || p.id, now = new Date().toISOString();
+  var cur = readRows("wallet").filter(function (r) { return String(r.seller_id) === String(sid); })[0];
+  if (cur) saveRecord("wallet", { id: cur.id, guarantee: round2(amount), updatedAt: now }, function () { return ""; });
+  else appendNamed("wallet", { id: nextId(sheet("wallet")), seller_id: sid, guarantee: round2(amount), updatedAt: now });
+  return { ok: true };
 }
 
 // A seller's shop rating: a number from 0 to 5 (shown as stars on the seller
@@ -281,20 +582,39 @@ function readCategories() {
       return { id: Number(c.id) || c.id,
                name: catNameOf(c),
                imageUrl: String(c.cat_img_url || ""),
+               sellerProfit: Math.max(0, Math.min(100, Number(c.seller_profit) || 0)),
                order: Number(c.cat_order) || 0 };
     })
     .sort(function (a, b) { return (a.order - b.order) || (Number(a.id) - Number(b.id)); });
 }
 
 // includeHidden=false for the public shop; the admin panel sees everything.
+// Each product carries a sellerProfit ($): the stored value, or — when blank —
+// computed from its category's seller_profit percentage × price.
 function readProducts(includeHidden) {
-  var out = [];
+  var out = [], pmap = categoryProfitMap();
   readRows("products").forEach(function (o) {
     if (o.id === "") return;
     if (!includeHidden && String(o.status) === "hidden") return;
-    out.push(cleanProduct(o));
+    var cp = cleanProduct(o);
+    cp.sellerProfit = productProfit(o, cp, pmap);
+    out.push(cp);
   });
   return out;
+}
+
+// { categoryId: profitPercent } — used to auto-compute a product's profit.
+function categoryProfitMap() {
+  var m = {};
+  readRows("categories").forEach(function (c) { m[String(c.id)] = Math.max(0, Math.min(100, Number(c.seller_profit) || 0)); });
+  return m;
+}
+// A product's profit in $: the stored seller_profit, else price × category%/100.
+function productProfit(o, cp, pmap) {
+  var stored = o.seller_profit;
+  if (stored !== "" && stored != null && !isNaN(Number(stored))) return Math.max(0, +Number(stored).toFixed(2));
+  var pct = (pmap || categoryProfitMap())[String(cp.cat_id)] || 0, price = Number(cp.price) || 0;
+  return (pct > 0 && price > 0) ? +(price * pct / 100).toFixed(2) : 0;
 }
 
 // Products sheet columns: id | name | cat_id | price | oldPrice | rating |
@@ -323,6 +643,7 @@ function cleanProduct(o) {
     desc: String(o.desc || ""),
     images: imgs,
     imageUrl: imgs[0] || "",
+    sellerProfit: (o.seller_profit === "" || o.seller_profit == null) ? 0 : Math.max(0, Number(o.seller_profit) || 0),
     status: String(o.status || "active"),
     createdAt: o.createdAt, updatedAt: o.updatedAt,
     // compatibility defaults so the existing storefront keeps rendering
@@ -536,6 +857,9 @@ function adminCall(b) {
       deleteCategory:  function () { return withLock(function () { return deleteCategoryRec(p.id); }); },
       saveVendor:      function () { return withLock(function () { return saveRecord("sellers", p, validateVendor); }); },
       deleteVendor:    function () { return withLock(function () { return deleteSellerRec(p.id); }); },
+      listWallet:      function () { return adminWallet(); },
+      updateTx:        function () { return withLock(function () { return adminUpdateTx(p); }); },
+      setGuarantee:    function () { return withLock(function () { return adminSetGuarantee(p); }); },
       importCatalog:   function () { return withLock(function () {
                            if (readRows("products").length && !p.overwrite) return { ok: false, error: "The Products tab already has data." };
                            var r = importCatalog(p.data || {}); return { ok: true, imported: r }; }); }
@@ -682,6 +1006,14 @@ function validateProduct(p) {
   if (p.rating !== undefined) p.rating = (p.rating === "" || p.rating == null) ? 0 : Math.min(5, Math.max(0, Number(p.rating) || 0));
   else if (creating) p.rating = 0;
   if (p.quanitiy !== undefined) p.quanitiy = (p.quanitiy === "" || p.quanitiy == null) ? 0 : Math.max(0, Math.floor(Number(p.quanitiy) || 0));
+  // Seller profit ($): if left blank, auto-compute from the category's percentage
+  // × price; a value sent by the admin is kept as a manual override.
+  if (p.seller_profit !== undefined && p.seller_profit !== "" && p.seller_profit != null) {
+    p.seller_profit = Math.max(0, +Number(p.seller_profit).toFixed(2)) || 0;
+  } else if ((p.seller_profit === "" || p.seller_profit === undefined) && p.price !== undefined && p.price !== "" && p.price != null && p.cat_id !== undefined) {
+    var pct = categoryProfitMap()[String(p.cat_id)] || 0, price = Number(p.price) || 0;
+    p.seller_profit = (pct > 0 && price > 0) ? +(price * pct / 100).toFixed(2) : 0;
+  }
   if (p.desc !== undefined) p.desc = String(p.desc).slice(0, 2000);
   if (p.imageUrl_json !== undefined) {
     var imgs = parseImages(p.imageUrl_json).filter(function (u) { return /^(https?:\/\/|images\/)/i.test(u); }).slice(0, 8);
@@ -700,6 +1032,8 @@ function validateCategory(c) {
     return "Category image must be an uploaded file or an https:// URL.";
   if (c.cat_order !== undefined)
     c.cat_order = (c.cat_order === "" || c.cat_order == null) ? 0 : Math.max(0, Math.floor(Number(c.cat_order) || 0));
+  if (c.seller_profit !== undefined)
+    c.seller_profit = (c.seller_profit === "" || c.seller_profit == null) ? 0 : Math.max(0, Math.min(100, Number(c.seller_profit) || 0));
   return "";
 }
 
@@ -788,7 +1122,7 @@ function saveProductRec(p) {
   var all = kept.concat(uploads).slice(0, 4);
 
   if (JSON.stringify(all) !== p.imageUrl_json) {
-    var sh = sheet("products"), idx = findRowById(sh, id), col = SHEETS.products.headers.indexOf("imageUrl_json") + 1;
+    var sh = sheet("products"), idx = findRowById(sh, id), col = sheetHeaders("products").indexOf("imageUrl_json") + 1;
     if (idx && col) sh.getRange(idx, col).setValue(JSON.stringify(all));
     res.record.imageUrl_json = JSON.stringify(all);
   }
