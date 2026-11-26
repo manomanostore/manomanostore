@@ -21,7 +21,14 @@ window.PRODUCT = (function () {
     document.getElementById("pdp").innerHTML =
       '<div class="pdp">'+
         '<div class="gal-wrap">'+
-          '<div class="gallery"><img id="galMain" src="'+srcs[0]+'" alt="'+UI.esc(p.name)+'"></div>'+
+          '<div class="gallery" id="galRoot">'+
+            srcs.map(function (s, i) {
+              return '<div class="gal-slide'+(i === 0 ? ' on' : '')+'"><img src="'+s+'" alt="'+UI.esc(p.name)+'" loading="'+(i === 0 ? 'eager' : 'lazy')+'"></div>';
+            }).join("")+
+            (srcs.length > 1 ? '<div class="gal-dots">'+srcs.map(function (s, i) {
+              return '<button type="button" class="gal-dot'+(i === 0 ? ' on' : '')+'" data-i="'+i+'" aria-label="Image '+(i+1)+'"></button>';
+            }).join("")+'</div>' : '')+
+          '</div>'+
           (srcs.length > 1 ? '<div class="gal-thumbs">'+srcs.map(function (s, i) {
             return '<button type="button" class="gal-th'+(i === 0 ? ' on' : '')+'" data-i="'+i+'"><img src="'+s+'" alt="View '+(i+1)+'"></button>';
           }).join("")+'</div>' : '')+
@@ -47,13 +54,32 @@ window.PRODUCT = (function () {
         '</div>'+
       '</div>';
 
-    // Gallery thumbnail switching
-    var gal = document.querySelector(".gal-thumbs");
-    if (gal) gal.addEventListener("click", function (e) {
-      var b = e.target.closest(".gal-th"); if (!b) return;
-      document.getElementById("galMain").src = srcs[Number(b.dataset.i)];
-      gal.querySelectorAll(".gal-th").forEach(function (t) { t.classList.toggle("on", t === b); });
-    });
+    // Auto-sliding gallery: crossfade + Ken-Burns zoom, pause on hover, thumbnails
+    // and dots jump to a slide. Advances on its own for a polished product page.
+    (function () {
+      var root = document.getElementById("galRoot"); if (!root) return;
+      var slides = [].slice.call(root.querySelectorAll(".gal-slide"));
+      var dots   = [].slice.call(root.querySelectorAll(".gal-dot"));
+      var thumbs = [].slice.call(document.querySelectorAll(".gal-th"));
+      if (slides.length < 2) return;
+      var cur = 0, timer = null;
+      function show(i) {
+        i = (i + slides.length) % slides.length;
+        slides[cur].classList.remove("on"); slides[i].classList.add("on");
+        if (dots[cur])   dots[cur].classList.remove("on");   if (dots[i])   dots[i].classList.add("on");
+        if (thumbs[cur]) thumbs[cur].classList.remove("on"); if (thumbs[i]) thumbs[i].classList.add("on");
+        cur = i;
+      }
+      function start() { stop(); timer = setInterval(function () { show(cur + 1); }, 3500); }
+      function stop() { if (timer) { clearInterval(timer); timer = null; } }
+      function jump(i) { show(i); start(); }   // restart the timer after a manual pick
+      root.addEventListener("click", function (e) { var d = e.target.closest(".gal-dot"); if (d) jump(Number(d.dataset.i)); });
+      thumbs.forEach(function (t) { t.addEventListener("click", function () { jump(Number(t.dataset.i)); }); });
+      root.addEventListener("mouseenter", stop);
+      root.addEventListener("mouseleave", start);
+      document.addEventListener("visibilitychange", function () { document.hidden ? stop() : start(); });
+      start();
+    })();
 
     document.getElementById("inc").onclick = function () { qty++; document.getElementById("qv").textContent = qty; };
     document.getElementById("dec").onclick = function () { if (qty>1) qty--; document.getElementById("qv").textContent = qty; };

@@ -43,7 +43,8 @@ window.ADMIN = (function () {
     shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
     key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
     image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
-    wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/>'
+    wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/>',
+    bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>'
   };
   function svg(name, size) {
     return '<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ic[name]+'</svg>';
@@ -148,6 +149,10 @@ window.ADMIN = (function () {
           '<header class="adm-top">'+
             '<button type="button" class="adm-menu" id="admMenu" aria-label="Open menu">'+svg("menu", 22)+'</button>'+
             '<h1 id="admTitle">Dashboard</h1>'+
+            '<div class="adm-bellwrap">'+
+              '<button type="button" class="adm-menu adm-refresh adm-bell" id="admBell" aria-label="Notifications" title="Notifications">'+svg("bell", 20)+'<span class="adm-bell-dot" id="admBellDot" hidden></span></button>'+
+              '<div class="adm-bell-menu" id="admBellMenu" hidden></div>'+
+            '</div>'+
             '<button type="button" class="adm-menu adm-refresh" id="admRefresh" aria-label="Refresh" title="Refresh">'+svg("refresh", 20)+'</button>'+
             '<div class="adm-me"><span class="adm-avatar">'+esc((u.name || u.username || "A").charAt(0).toUpperCase())+'</span>'+
               '<span class="adm-me-txt"><strong>'+esc(u.name || "Admin")+'</strong><small>@'+esc(u.username || "")+' · '+esc(roleLabel(u.role))+'</small></span></div>'+
@@ -165,6 +170,8 @@ window.ADMIN = (function () {
 
     $("admLogout").onclick = function () { logout(); };
     $("admRefresh").onclick = function () { location.reload(); };
+    $("admBell").onclick = function (e) { e.stopPropagation(); toggleBell(); };
+    document.addEventListener("click", function () { var m = $("admBellMenu"); if (m) m.hidden = true; });
     $("admMenu").onclick = function () { document.body.classList.add("adm-nav-open"); };
     $("admTabMore").onclick = function () { document.body.classList.add("adm-nav-open"); };
     $("admScrim").onclick = function () { document.body.classList.remove("adm-nav-open"); };
@@ -204,10 +211,29 @@ window.ADMIN = (function () {
     document.addEventListener("pointerdown", prime, { once: true });
   })();
 
+  // Notification inbox shown under the header bell.
+  var _notes = [], _unread = 0;
+  function toggleBell() {
+    var m = $("admBellMenu"); if (!m) return;
+    var show = m.hidden; m.hidden = !show;
+    if (show) { _unread = 0; paintBell(); }
+  }
+  function paintBell() {
+    var dot = $("admBellDot"); if (dot) { dot.hidden = _unread <= 0; dot.textContent = _unread > 9 ? "9+" : String(_unread); }
+    var m = $("admBellMenu"); if (!m) return;
+    m.innerHTML = _notes.length
+      ? '<div class="adm-bell-head">Notifications</div>' + _notes.slice(0, 20).map(function (n) {
+          return '<div class="adm-bell-item"><div class="adm-bell-main">'+esc(n.title)+'</div><div class="adm-bell-sub">'+esc(n.sub)+'</div></div>';
+        }).join("")
+      : '<div class="adm-bell-head">Notifications</div><div class="adm-bell-empty">No new notifications.</div>';
+  }
   function announceTx(t) {
     var kind = t.type === "withdraw" ? "withdrawal" : t.type === "guarantee" ? "guarantee" : "deposit";
     var amt = (t.currency || "") + Number(t.amount).toFixed(2);
     var text = "New " + kind + " request from " + (t.sellerName || "a seller") + ", " + amt;
+    _notes.unshift({ title: (t.sellerName || "Seller") + " — " + cap(kind), sub: amt + " · " + (t.method || "").toUpperCase() });
+    _unread++;
+    paintBell();
     speakLoud(text);
     toast(text);
   }

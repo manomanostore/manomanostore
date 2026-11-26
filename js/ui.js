@@ -11,8 +11,10 @@ window.I18N = (function () {
     en: {
       "nav.home": "Home", "nav.flash": "Flash Sale", "nav.blogs": "Blogs", "nav.brands": "All Brands", "nav.cats": "All categories",
       "search.ph": "What are you looking for?", "lang.label": "Language", "a11y.account": "Account", "a11y.basket": "Basket", "a11y.menu": "Menu",
-      "foot.information": "Information", "foot.track": "Track orders", "foot.returns": "Returns", "foot.help": "Need help?", "foot.contact": "Contact us", "foot.seller": "Become a seller",
-      "foot.more": "Find out more", "foot.advice": "Our advice", "foot.popcats": "Popular categories", "foot.best": "Best sellers", "foot.brands": "Our brands", "foot.secure": "Secure payment",
+      "foot.information": "Information & Contact", "foot.track": "Track orders", "foot.returns": "Return or withdrawal", "foot.help": "Need help?", "foot.contact": "Contact us", "foot.seller": "Become a seller",
+      "foot.report": "Report illicit content", "foot.joinus": "Join Us", "foot.affiliate": "Affiliate Program", "foot.coupons": "Terms and conditions of use of coupons",
+      "foot.more": "Find Out More", "foot.advice": "Our advice", "foot.popcats": "The most popular product categories", "foot.compare": "Our comparisons", "foot.best": "Best sellers", "foot.brands": "Our brands",
+      "foot.international": "International", "foot.app": "The application", "foot.secure": "Secure payment", "foot.conversation": "Join the conversation!",
       "drawer.browse": "Browse", "drawer.catalog": "Catalog", "drawer.account": "Account", "drawer.signin": "Sign in / Register", "drawer.today": "Today's deals",
       "drawer.dash": "Seller Dashboard", "drawer.myproducts": "My Products", "drawer.wallet": "My Wallet", "drawer.logout": "Log out",
       "bn.home": "Home", "bn.cats": "Categories", "bn.deals": "Deals", "bn.basket": "Basket", "bn.account": "Account",
@@ -67,8 +69,10 @@ window.I18N = (function () {
     hi: {
       "nav.home": "होम", "nav.flash": "फ्लैश सेल", "nav.blogs": "ब्लॉग", "nav.brands": "सभी ब्रांड", "nav.cats": "सभी श्रेणियाँ",
       "search.ph": "आप क्या ढूँढ रहे हैं?", "lang.label": "भाषा", "a11y.account": "खाता", "a11y.basket": "बास्केट", "a11y.menu": "मेन्यू",
-      "foot.information": "जानकारी", "foot.track": "ऑर्डर ट्रैक करें", "foot.returns": "रिटर्न", "foot.help": "मदद चाहिए?", "foot.contact": "संपर्क करें", "foot.seller": "विक्रेता बनें",
-      "foot.more": "और जानें", "foot.advice": "हमारी सलाह", "foot.popcats": "लोकप्रिय श्रेणियाँ", "foot.best": "बेस्ट सेलर", "foot.brands": "हमारे ब्रांड", "foot.secure": "सुरक्षित भुगतान",
+      "foot.information": "जानकारी और संपर्क", "foot.track": "ऑर्डर ट्रैक करें", "foot.returns": "रिटर्न या वापसी", "foot.help": "मदद चाहिए?", "foot.contact": "संपर्क करें", "foot.seller": "विक्रेता बनें",
+      "foot.report": "अवैध सामग्री की रिपोर्ट करें", "foot.joinus": "हमसे जुड़ें", "foot.affiliate": "एफ़िलिएट प्रोग्राम", "foot.coupons": "कूपन उपयोग के नियम व शर्तें",
+      "foot.more": "और जानें", "foot.advice": "हमारी सलाह", "foot.popcats": "सबसे लोकप्रिय श्रेणियाँ", "foot.compare": "हमारी तुलनाएँ", "foot.best": "बेस्ट सेलर", "foot.brands": "हमारे ब्रांड",
+      "foot.international": "अंतरराष्ट्रीय", "foot.app": "एप्लिकेशन", "foot.secure": "सुरक्षित भुगतान", "foot.conversation": "बातचीत में शामिल हों!",
       "drawer.browse": "ब्राउज़ करें", "drawer.catalog": "कैटलॉग", "drawer.account": "खाता", "drawer.signin": "साइन इन / रजिस्टर", "drawer.today": "आज के ऑफ़र",
       "drawer.dash": "सेलर डैशबोर्ड", "drawer.myproducts": "मेरे प्रोडक्ट", "drawer.wallet": "मेरा वॉलेट", "drawer.logout": "लॉग आउट",
       "bn.home": "होम", "bn.cats": "श्रेणियाँ", "bn.deals": "ऑफ़र", "bn.basket": "बास्केट", "bn.account": "खाता",
@@ -233,18 +237,78 @@ window.I18N = (function () {
   }
 
   function footer() {
-    var cols = [
-      ['foot.information', 'Information', [['foot.track','Track orders','account.html'],['foot.returns','Returns','#'],['foot.help','Need help?','#'],['foot.contact','Contact us','#'],['foot.seller','Become a seller','sell.html']]],
-      ['foot.more', 'Find out more', [['foot.advice','Our advice','blog.html'],['foot.popcats','Popular categories','category.html'],['foot.best','Best sellers','deals.html'],['foot.brands','Our brands','brands.html']]]
-    ];
-    var html = '<footer class="app"><div class="cols">';
-    cols.forEach(function (c) {
-      html += '<div><h4 data-i18n="'+c[0]+'">'+c[1]+'</h4>'+c[2].map(function (l) { return '<a href="'+l[2]+'" data-i18n="'+l[0]+'">'+l[1]+'</a>'; }).join('')+'</div>';
-    });
-    html += '<div><h4 data-i18n="foot.secure">Secure payment</h4><div class="pay">'+
-      ['VISA','MC','AMEX','PayPal','G Pay','Pay'].map(function(p){return '<span>'+p+'</span>';}).join('')+
-      '</div><p style="margin-top:16px;font-size:13px">'+esc(C.BRAND_TAGLINE)+'</p></div>';
-    html += '</div><div class="copy">© '+new Date().getFullYear()+' '+esc(C.BRAND_NAME)+' · Demo store. All products & imagery are original placeholders.</div></footer>';
+    function links(arr) { return arr.map(function (l) { return '<a href="'+l[2]+'" data-i18n="'+l[0]+'">'+l[1]+'</a>'; }).join(''); }
+    var col1 = [['foot.track','Track orders','account.html'],['foot.returns','Return or withdrawal','#'],['foot.help','Need help?','#'],['foot.contact','Contact us','#'],['foot.report','Report illicit content','#'],['foot.seller','Become a seller','sell.html'],['foot.joinus','Join Us','#'],['foot.affiliate','Affiliate Program','#'],['foot.coupons','Terms and conditions of use of coupons','#']];
+    var col2 = [['foot.advice','Our advice','blog.html'],['foot.popcats','The most popular product categories','category.html'],['foot.compare','Our comparisons','#'],['foot.brands','Our brands','brands.html'],['foot.best','Best sellers','deals.html']];
+
+    // Country flags (International) — inline SVG circular flags render the same on
+    // every OS (emoji flags don't on Windows/Chrome).
+    function circleFlag(code, label) {
+      var id = "flg_" + code, gid = "glo_" + code, s;
+      if (code === "fr") s = '<rect width="13.33" height="40" fill="#0055A4"/><rect x="13.33" width="13.34" height="40" fill="#fff"/><rect x="26.67" width="13.33" height="40" fill="#EF4135"/>';
+      else if (code === "it") s = '<rect width="13.33" height="40" fill="#008C45"/><rect x="13.33" width="13.34" height="40" fill="#F4F5F0"/><rect x="26.67" width="13.33" height="40" fill="#CD212A"/>';
+      else if (code === "de") s = '<rect width="40" height="13.33" fill="#0A0A0A"/><rect y="13.33" width="40" height="13.34" fill="#DD0000"/><rect y="26.67" width="40" height="13.33" fill="#FFCE00"/>';
+      else s = '<rect width="40" height="10" fill="#AD1519"/><rect y="10" width="40" height="20" fill="#FABD00"/><rect y="30" width="40" height="10" fill="#AD1519"/>';
+      return '<svg viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="'+label+'">'+
+        '<defs><clipPath id="'+id+'"><circle cx="20" cy="20" r="20"/></clipPath>'+
+          '<radialGradient id="'+gid+'" cx="34%" cy="28%" r="72%">'+
+            '<stop offset="0%" stop-color="#fff" stop-opacity=".42"/><stop offset="42%" stop-color="#fff" stop-opacity="0"/>'+
+            '<stop offset="100%" stop-color="#000" stop-opacity=".16"/></radialGradient></defs>'+
+        '<g clip-path="url(#'+id+')">'+s+'<circle cx="20" cy="20" r="20" fill="url(#'+gid+')"/></g>'+
+        '<circle cx="20" cy="20" r="19.5" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1"/></svg>';
+    }
+    var flags = [['fr','France'],['it','Italy'],['de','Germany'],['es','Spain']]
+      .map(function (f) { return '<a href="#" class="ft-flag" aria-label="'+f[1]+'">'+circleFlag(f[0], f[1])+'</a>'; }).join('');
+
+    // Secure-payment tiles — small brand marks on white.
+    var appleBlack = '<svg viewBox="0 0 24 24" width="13" height="13" fill="#000" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.8 3-.8s1.8.8 3 .7c1.2 0 2-1.1 2.8-2.2.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.8zM14.3 5.6c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>';
+    var pay = [
+      '<span class="pay-tile"><span class="pl-visa">VISA</span></span>',
+      '<span class="pay-tile"><span class="pl-mc"><i></i><i></i></span></span>',
+      '<span class="pay-tile klarna"><span class="pl-klarna">Klarna</span></span>',
+      '<span class="pay-tile"><span class="pl-pp">Pay<span>Pal</span></span></span>',
+      '<span class="pay-tile"><span class="pl-apay">'+appleBlack+'Pay</span></span>',
+      '<span class="pay-tile"><span class="pl-gpay"><b>G</b>Pay</span></span>'
+    ].join('');
+
+    // Social icons
+    function soc(label, path) { return '<a href="#" class="ft-soc" aria-label="'+label+'"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">'+path+'</svg></a>'; }
+    var social =
+      soc('LinkedIn','<path d="M4.98 3.5a2.5 2.5 0 11-.02 5 2.5 2.5 0 01.02-5zM3 9h4v12H3zM10 9h3.8v1.7h.05c.53-1 1.82-2.05 3.75-2.05 4 0 4.4 2.63 4.4 6V21h-4v-5.3c0-1.26-.03-2.9-1.77-2.9-1.77 0-2.04 1.38-2.04 2.8V21h-4z"/>') +
+      soc('Facebook','<path d="M22 12a10 10 0 10-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.5-3.9 3.78-3.9 1.1 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0022 12z"/>') +
+      soc('Instagram','<path d="M12 2.2c3.2 0 3.6 0 4.85.07 1.17.05 1.8.25 2.23.42.56.22.96.48 1.38.9.42.42.68.82.9 1.38.17.42.37 1.06.42 2.23.06 1.25.07 1.65.07 4.85s0 3.6-.07 4.85c-.05 1.17-.25 1.8-.42 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.17-1.06.37-2.23.42-1.25.06-1.65.07-4.85.07s-3.6 0-4.85-.07c-1.17-.05-1.8-.25-2.23-.42a3.8 3.8 0 01-1.38-.9 3.8 3.8 0 01-.9-1.38c-.17-.42-.37-1.06-.42-2.23C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.85c.05-1.17.25-1.8.42-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.17 1.06-.37 2.23-.42C8.4 2.2 8.8 2.2 12 2.2zm0 1.8c-3.14 0-3.5 0-4.74.07-.9.04-1.38.2-1.7.32-.43.17-.74.37-1.06.69-.32.32-.52.63-.69 1.06-.12.32-.28.8-.32 1.7C3.42 8.95 3.4 9.3 3.4 12s0 3.05.07 4.26c.04.9.2 1.38.32 1.7.17.43.37.74.69 1.06.32.32.63.52 1.06.69.32.12.8.28 1.7.32 1.24.07 1.6.07 4.74.07s3.5 0 4.74-.07c.9-.04 1.38-.2 1.7-.32.43-.17.74-.37 1.06-.69.32-.32.52-.63.69-1.06.12-.32.28-.8.32-1.7.07-1.21.07-1.56.07-4.26s0-3.05-.07-4.26c-.04-.9-.2-1.38-.32-1.7a2.85 2.85 0 00-.69-1.06 2.85 2.85 0 00-1.06-.69c-.32-.12-.8-.28-1.7-.32C15.5 4 15.14 4 12 4zm0 3.06A4.94 4.94 0 1112 17a4.94 4.94 0 010-9.88zm0 1.8a3.14 3.14 0 100 6.28 3.14 3.14 0 000-6.28zm5.14-.9a1.15 1.15 0 11-2.3 0 1.15 1.15 0 012.3 0z"/>') +
+      soc('Pinterest','<path d="M12 2a10 10 0 00-3.6 19.3c-.08-.78-.15-1.98.03-2.83.16-.74 1.05-4.7 1.05-4.7s-.27-.54-.27-1.33c0-1.25.72-2.18 1.62-2.18.76 0 1.13.57 1.13 1.26 0 .77-.49 1.92-.74 2.98-.21.9.45 1.63 1.33 1.63 1.6 0 2.83-1.69 2.83-4.12 0-2.15-1.55-3.66-3.76-3.66-2.56 0-4.07 1.92-4.07 3.9 0 .77.3 1.6.67 2.05.07.09.08.17.06.26l-.25 1c-.04.17-.13.2-.3.12-1.12-.52-1.82-2.15-1.82-3.46 0-2.82 2.05-5.4 5.9-5.4 3.1 0 5.51 2.21 5.51 5.16 0 3.08-1.94 5.56-4.64 5.56-.9 0-1.76-.47-2.05-1.03l-.56 2.13c-.2.78-.75 1.76-1.11 2.36A10 10 0 1012 2z"/>');
+
+    var html = '<footer class="app"><div class="cols">'+
+      '<div><h4 data-i18n="foot.information">Information &amp; Contact</h4>'+links(col1)+'</div>'+
+      '<div><h4 data-i18n="foot.more">Find Out More</h4>'+links(col2)+
+        '<h4 style="margin-top:18px" data-i18n="foot.international">International</h4><div class="ft-flags">'+flags+'</div></div>'+
+      '<div>'+
+        '<h4><span data-i18n="foot.app">The application</span></h4>'+
+        '<div class="ft-apps">'+
+          '<a href="https://play.google.com/store" target="_blank" rel="noopener" class="ft-appimg" aria-label="Get it on Google Play"><img src="images/googleplay.png" alt="Get it on Google Play"></a>'+
+          '<a href="https://www.apple.com/app-store/" target="_blank" rel="noopener" class="ft-appimg" aria-label="Download on the App Store"><img src="images/appstore.svg" alt="Download on the App Store"></a>'+
+        '</div>'+
+        '<h4 style="margin-top:20px" data-i18n="foot.secure">Secure payment</h4><div class="pay">'+pay+'</div>'+
+        '<h4 style="margin-top:20px" data-i18n="foot.conversation">Join the conversation!</h4><div class="ft-socials">'+social+'</div>'+
+      '</div>'+
+    '</div>'+
+    '</footer>'+
+    // Awards strip (white band)
+    '<div class="ft-awards"><div class="ft-awards-in">'+
+      '<img src="images/award-1.png" alt="Retail Systems Awards 2022 — Winner">'+
+      '<img src="images/award-2.png" alt="DIY Week Awards 2023">'+
+      '<img src="images/award-3.png" alt="Online Retailer Awards 2022 — Winner">'+
+      '<img src="images/award-4.png" alt="Retail Systems Awards 2021 — Winner">'+
+    '</div></div>'+
+    // Bottom legal bar
+    '<div class="ft-legalbar">'+
+      '<div class="ft-copy">© '+new Date().getFullYear()+' '+esc(C.BRAND_NAME)+'</div>'+
+      '<nav class="ft-legal">'+
+        ['Manage cookies','Sitemap','Legal Notice','Data Protection Policy','Trust Center','Terms and conditions','Consumer information']
+          .map(function (t) { return '<a href="#">'+t+'</a>'; }).join('')+
+      '</nav>'+
+    '</div>';
     return html;
   }
 
@@ -290,6 +354,16 @@ window.I18N = (function () {
     opts = opts || {};
     document.getElementById("site-header").innerHTML = header(opts.active);
     document.getElementById("site-footer").innerHTML = footer();
+    // Floating "back to top" — appears once the page is scrolled down.
+    if (!document.getElementById("scrollTop")) {
+      var st = document.createElement("button");
+      st.id = "scrollTop"; st.className = "scroll-top"; st.type = "button"; st.setAttribute("aria-label", "Back to top");
+      st.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
+      document.body.appendChild(st);
+      st.addEventListener("click", function () { window.scrollTo({ top: 0, behavior: "smooth" }); });
+      var onScroll = function () { st.classList.toggle("show", (window.scrollY || document.documentElement.scrollTop) > 400); };
+      window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
+    }
     document.body.insertAdjacentHTML("beforeend", bottomNav(opts.active));
     document.body.insertAdjacentHTML("beforeend", drawer());
     DATA.categories().then(function (cats) {
