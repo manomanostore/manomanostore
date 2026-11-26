@@ -6,7 +6,7 @@
 <title>Dashboard — ManoMano Seller</title>
 <meta name="theme-color" content="#2f6df6">
 <link rel="icon" href="images/logo-64.png" type="image/png">
-<link rel="stylesheet" href="css/chat.css?v=20261127b">
+<link rel="stylesheet" href="css/chat.css?v=20261127g">
 <style>
   :root{
     --blue:#2f6df6; --blue-d:#1e5fe0; --ink:#17203a; --muted:#8792a6;
@@ -47,23 +47,43 @@
   .sd-nav .sd-pill{margin-left:auto;background:var(--no);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
   .sd-nav .sd-dot{margin-left:auto;width:8px;height:8px;border-radius:999px;background:var(--no)}
   .sd-nav .sd-pill[hidden]{display:none}
-  /* Orders list (orders placed for this shop) */
-  #ordGrid{display:flex;flex-direction:column}
-  .sd-ocard{display:flex;align-items:center;gap:14px;padding:14px 4px;border-top:1px solid var(--line)}
-  .sd-ocard:first-child{border-top:0}
-  .sd-oimg{flex:0 0 auto;width:56px;height:56px;border-radius:12px;background:#f1f4fa;overflow:hidden}
+  /* Orders: earnings summary (Pending | Delivered) + records table */
+  .sd-osum{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .sd-osec{background:rgba(255,255,255,.6);border:1px solid #e4ecfb;border-radius:16px;padding:14px}
+  .sd-osec.done{background:linear-gradient(135deg,#effbf4,#f7fdf9);border-color:#d5f0e0}
+  .sd-oshead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .sd-oshead b{display:block;font-size:16px}
+  .sd-oshead small{color:var(--muted);font-size:12px;font-weight:600}
+  .sd-whic.d{background:#e3f7ec}.sd-whic.d svg{stroke:var(--ok)}
+  .sd-osvals{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .sd-osvals .sd-whbal{padding:14px 8px}
+  .sd-osprofit{color:var(--ok)}
+  @media (max-width:560px){ .sd-osum{grid-template-columns:1fr} }
+  .sd-oprod{display:flex;align-items:center;gap:10px;min-width:160px}
+  .sd-oimg{flex:0 0 auto;width:42px;height:42px;border-radius:10px;background:#f1f4fa;overflow:hidden}
   .sd-oimg img{width:100%;height:100%;object-fit:cover;display:block}
-  .sd-omain{flex:1;min-width:0}
-  .sd-otop{display:flex;align-items:center;gap:8px;margin-bottom:3px}
-  .sd-otop b{font-size:14px}
-  .sd-ost{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef3ff;color:#2f6df6}
+  .sd-oname{font-weight:600;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #ordGrid .sd-table th,#ordGrid .sd-table td{padding-left:12px;padding-right:12px}
+  .sd-okey{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;white-space:nowrap}
+  .sd-table td.sd-num{font-weight:800;white-space:nowrap}
+  .sd-table td.sd-num.profit{color:var(--ok)}
+  .sd-table tr.cancelled td{color:#9aa4b8}
+  .sd-table tr.cancelled td.sd-num{text-decoration:line-through;color:#9aa4b8}
+  .sd-odate{white-space:nowrap}
+  .sd-otime{display:block;color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap;margin-top:2px}
+  .sd-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .sd-pinfo{color:var(--muted);font-size:13px;font-weight:600}
+  .sd-pnums{display:flex;align-items:center;gap:6px}
+  .sd-pbtn{min-width:36px;height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:#fff;font:inherit;font-size:14px;font-weight:700;color:var(--ink);cursor:pointer}
+  .sd-pbtn:hover:not(:disabled){border-color:#b9c9f5;background:#f5f8ff}
+  .sd-pbtn.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .sd-pbtn:disabled{opacity:.4;cursor:default}
+  .sd-pgap{color:var(--muted);padding:0 2px}
+  .sd-ost{white-space:nowrap;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef3ff;color:#2f6df6}
+  .sd-ost.st-pending{background:#fdf1dc;color:#9a6700}
   .sd-ost.st-processing{background:#fff4e3;color:#b26a00}.sd-ost.st-shipped{background:#efe9ff;color:#6d3fd8}
   .sd-ost.st-delivered{background:#e7f7ee;color:#12a150}.sd-ost.st-cancelled{background:#fdecee;color:#e23b4e}
-  .sd-oname{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .sd-oname em{font-style:normal;color:var(--muted);font-weight:600}
-  .sd-osub{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .sd-oamt{flex:0 0 auto;text-align:right;font-weight:800;font-size:15px}
-  .sd-oamt small{display:block;font-size:11.5px;font-weight:700;color:var(--ok);margin-top:2px}
+
   /* Support chat view: fills the screen under the top bar */
   .sd-chatwrap{height:calc(100vh - 116px);height:calc(100dvh - 116px);min-height:440px;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);background:#fff}
   /* Phones/tablets: the chat opens full-screen like an app (js/chat.js then
@@ -758,7 +778,27 @@
         <div class="sd-head" style="margin-bottom:16px">
           <div><h1 class="sd-h1" data-i18n="sd.orders">Orders</h1><p class="sd-sub" data-i18n="sd.orderssub">Orders from your customers.</p></div>
         </div>
-        <div class="sd-panel">
+        <!-- Earnings summary (auto-calculated from the orders below; cancelled orders don't count) -->
+        <div class="sd-whhero sd-osum">
+          <div class="sd-osec pend">
+            <div class="sd-oshead"><span class="sd-whic p"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+              <div><b data-i18n="sd.pendingsec">Pending</b><small id="osPendCount">0</small></div></div>
+            <div class="sd-osvals">
+              <div class="sd-whbal"><b id="osPendAmt">$0.00</b><small data-i18n="sd.pendingearn">Pending Earning Amount</small></div>
+              <div class="sd-whbal"><b id="osPendProfit" class="sd-osprofit">$0.00</b><small data-i18n="sd.profit">Profit</small></div>
+            </div>
+          </div>
+          <div class="sd-osec done">
+            <div class="sd-oshead"><span class="sd-whic d"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg></span>
+              <div><b data-i18n="sd.deliveredsec">Delivered</b><small id="osDoneCount">0</small></div></div>
+            <div class="sd-osvals">
+              <div class="sd-whbal"><b id="osDoneAmt">$0.00</b><small data-i18n="sd.deliveredearn">Delivered Earning Amount</small></div>
+              <div class="sd-whbal"><b id="osDoneProfit" class="sd-osprofit">$0.00</b><small data-i18n="sd.profit">Profit</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="sd-panel" style="margin-top:16px">
+          <div class="sd-phead"><div><h3 data-i18n="sd.orderrecords">Order records</h3></div></div>
           <div id="ordGrid"></div>
           <p class="sd-empty" id="ordEmpty" hidden></p>
         </div>
@@ -788,11 +828,11 @@
 
 <div class="sd-toast" id="sdToast"></div>
 
-<script src="js/config.js?v=20261127b"></script>
-<script src="js/ui.js?v=20261127b"></script>
-<script src="js/auth.js?v=20261127b"></script>
-<script src="js/login.js?v=20261127b"></script>
-<script src="js/chat.js?v=20261127b"></script>
-<script src="js/seller-dashboard.js?v=20261127b"></script>
+<script src="js/config.js?v=20261127g"></script>
+<script src="js/ui.js?v=20261127g"></script>
+<script src="js/auth.js?v=20261127g"></script>
+<script src="js/login.js?v=20261127g"></script>
+<script src="js/chat.js?v=20261127g"></script>
+<script src="js/seller-dashboard.js?v=20261127g"></script>
 </body>
 </html>

@@ -365,3 +365,15 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
   .adm-seller-pick{max-width:none;flex-basis:100%}
   .adm-pgrid{grid-template-columns:repeat(2,1fr);gap:10px}
 }
+.adm-status-sel.pending{background-color:#fdf1dc;color:#9a6700}
+.adm-okey{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;letter-spacing:.02em}
+/* Orders: IST date/time cell + pagination */
+.adm-dt{white-space:nowrap}
+.adm-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:14px 18px;border-top:1px solid var(--line)}
+.adm-pinfo{color:var(--muted);font-size:13px;font-weight:600}
+.adm-pnums{display:flex;align-items:center;gap:6px}
+.adm-pbtn{min-width:36px;height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);font:inherit;font-size:14px;font-weight:700;color:var(--ink);cursor:pointer}
+.adm-pbtn:hover:not(:disabled){border-color:#b9c9f5;background:#f5f8ff}
+.adm-pbtn.on{background:#16233f;border-color:#16233f;color:#fff}
+.adm-pbtn:disabled{opacity:.4;cursor:default}
+.adm-pgap{color:var(--muted);padding:0 2px}

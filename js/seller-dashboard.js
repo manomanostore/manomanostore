@@ -535,7 +535,7 @@
   /* ------------------------------ Wallet / Money Withdraw ---------------- */
   var wallet = { data: null };
   function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
-  function fmtDate(iso) { try { return new Date(iso).toLocaleDateString(); } catch (e) { return ""; } }
+  function fmtDate(iso) { var d = new Date(iso); return isNaN(d) ? "" : IST_DATE.format(d); }   // IST, e.g. 27/11/2026
   function txTypeLabel(t) { return t === "deposit" ? T("sd.deposit") : t === "withdraw" ? T("sd.withdraw2") : t === "guarantee" ? T("sd.guaranteet") : t; }
 
   function paintWalletStats(bal) {
@@ -588,7 +588,7 @@
       '</tr></thead><tbody>' + txs.map(function (t) {
         var wd = t.type === "withdraw";
         return '<tr>' +
-          '<td>' + esc(fmtDate(t.createdAt)) + '</td>' +
+          '<td>' + istDateTime(t.createdAt) + '</td>' +
           '<td style="font-weight:800" class="sd-txamt ' + (wd ? 'wd' : 'dep') + '">' + (wd ? '−' : '+') + esc(t.currency || '$') + Number(t.amount).toFixed(2) + '</td>' +
           '<td>' + esc(txTypeLabel(t.type)) + '</td>' +
           '<td>' + esc(t.method ? t.method.toUpperCase() : '—') + '</td>' +
@@ -697,7 +697,8 @@
   // Orders placed for this seller's shop (e.g. by staff for VIP customers).
   // Fills the Orders view, the "Total Orders" card, the "This month" counters
   // and the sidebar badge (new = still "received").
-  var orders = { list: null, busy: null };
+  var orders = { list: null, busy: null, page: 1 };
+  var ORDERS_PER_PAGE = 10;
   function fetchOrders() {
     if (orders.busy) return orders.busy;
     if (!session.token || !CONFIG.API_URL) return Promise.resolve(null);
@@ -715,28 +716,79 @@
     var count = function (arr, sts) { return arr.filter(function (o) { return sts.indexOf(o.status) > -1; }).length; };
     if ($("sdCardOrders")) $("sdCardOrders").textContent = list.length;
     var v = document.querySelectorAll(".sd-ord-row .sd-ord-v");
-    if (v.length === 3) { v[0].textContent = count(month, ["received"]); v[1].textContent = count(month, ["cancelled"]); v[2].textContent = count(month, ["processing", "shipped"]); }
-    var pill = document.querySelector('.sd-nav a[data-view="orders"] .sd-pill'), fresh = count(list, ["received"]);
+    if (v.length === 3) { v[0].textContent = count(month, ["pending", "received"]); v[1].textContent = count(month, ["cancelled"]); v[2].textContent = count(month, ["processing", "shipped"]); }
+    var pill = document.querySelector('.sd-nav a[data-view="orders"] .sd-pill'), fresh = count(list, ["pending", "received"]);
     if (pill) { pill.textContent = fresh; pill.hidden = !fresh; }
   }
+  // Order date + time in Indian Standard Time: "27/11/2026" and "3:11 AM IST".
+  var IST_DATE = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric" });
+  var IST_TIME = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true });
+  function istDateTime(iso) {
+    var d = new Date(iso); if (isNaN(d)) return "—";
+    return '<div class="sd-odate">' + esc(IST_DATE.format(d)) + "</div>" +
+      '<small class="sd-otime">' + esc(IST_TIME.format(d).toUpperCase()) + " IST</small>";
+  }
+  function orderQty(o) { return (o.items || []).reduce(function (n, x) { return n + (Number(x.qty) || 1); }, 0); }
+  function orderProfit(o) { return (o.items || []).reduce(function (n, x) { return n + (Number(x.profit) || 0) * (Number(x.qty) || 1); }, 0); }
+  // Pending section = every order still on its way (pending, received,
+  // processing, shipped); Delivered = delivered. Cancelled orders count in
+  // neither — they only appear in the records table.
+  function paintOrderSummary() {
+    var list = orders.list || [], pend = { n: 0, amt: 0, profit: 0 }, done = { n: 0, amt: 0, profit: 0 };
+    list.forEach(function (o) {
+      if (o.status === "cancelled") return;
+      var b = o.status === "delivered" ? done : pend;
+      b.n++; b.amt += Number(o.total) || 0; b.profit += orderProfit(o);
+    });
+    var lbl = function (n) { return n + " " + T(n === 1 ? "sd.order1" : "sd.orderN"); };
+    if (!$("osPendAmt")) return;
+    $("osPendAmt").textContent = money(pend.amt); $("osPendProfit").textContent = money(pend.profit); $("osPendCount").textContent = lbl(pend.n);
+    $("osDoneAmt").textContent = money(done.amt); $("osDoneProfit").textContent = money(done.profit); $("osDoneCount").textContent = lbl(done.n);
+  }
   function renderOrders() {
-    var grid = $("ordGrid"), e = $("ordEmpty"), list = orders.list || [];
-    if (!list.length) { grid.innerHTML = ""; e.hidden = false; e.textContent = T("sd.noorders"); return; }
+    var grid = $("ordGrid"), e = $("ordEmpty"), all = orders.list || [];
+    paintOrderSummary();
+    if (!all.length) { grid.innerHTML = ""; e.hidden = false; e.textContent = T("sd.noorders"); return; }
     e.hidden = true;
-    grid.innerHTML = list.map(function (o) {
-      var it = (o.items && o.items[0]) || {}, more = (o.items || []).length - 1;
-      var qty = (o.items || []).reduce(function (n, x) { return n + (Number(x.qty) || 1); }, 0);
-      var profit = (o.items || []).reduce(function (n, x) { return n + (Number(x.profit) || 0) * (Number(x.qty) || 1); }, 0);
-      return '<div class="sd-ocard">' +
-        '<div class="sd-oimg">' + (it.imageUrl ? '<img src="' + esc(it.imageUrl) + '" alt="" loading="lazy">' : "") + "</div>" +
-        '<div class="sd-omain">' +
-          '<div class="sd-otop"><b>#' + esc(o.id) + '</b><span class="sd-ost st-' + esc(o.status) + '">' + esc(T("sd.st." + o.status)) + "</span></div>" +
-          '<div class="sd-oname">' + esc(it.name || "") + (more > 0 ? " +" + more : "") + ' <em>× ' + qty + "</em></div>" +
-          '<div class="sd-osub">' + (o.customerName ? esc(T("sd.customer")) + ": " + esc(o.customerName) + " · " : "") + esc(fmtDate(o.createdAt)) + "</div>" +
-        "</div>" +
-        '<div class="sd-oamt">' + money(o.total) + (profit ? "<small>" + esc(T("sd.profit")) + " " + money(profit) + "</small>" : "") + "</div>" +
-      "</div>";
-    }).join("");
+    // 10 orders per page (newest first)
+    var pages = Math.max(1, Math.ceil(all.length / ORDERS_PER_PAGE));
+    orders.page = Math.min(Math.max(1, orders.page || 1), pages);
+    var from = (orders.page - 1) * ORDERS_PER_PAGE, list = all.slice(from, from + ORDERS_PER_PAGE);
+    grid.innerHTML = '<div class="sd-tablewrap"><table class="sd-table"><thead><tr>' +
+      "<th>" + esc(T("sd.th.orderkey")) + "</th><th>" + esc(T("sd.th.product")) + "</th><th>" + esc(T("sd.customer")) + "</th>" +
+      "<th>" + esc(T("sd.amount")) + "</th><th>" + esc(T("sd.profit")) + "</th><th>" + esc(T("sd.date")) + "</th><th>" + esc(T("sd.status")) + "</th>" +
+      "</tr></thead><tbody>" + list.map(function (o) {
+        var it = (o.items && o.items[0]) || {}, more = (o.items || []).length - 1;
+        var key = String(o.identifier || "").trim() || "#" + o.id;   // the sheet's identifier column
+        return '<tr class="' + esc(o.status) + '">' +
+          '<td><span class="sd-okey">' + esc(key) + "</span></td>" +
+          '<td><div class="sd-oprod"><span class="sd-oimg">' + (it.imageUrl ? '<img src="' + esc(it.imageUrl) + '" alt="" loading="lazy">' : "") + "</span>" +
+            '<div style="min-width:0"><div class="sd-oname" title="' + esc(it.name || "") + '">' + esc(it.name || "—") + (more > 0 ? " +" + more : "") + "</div>" +
+            '<small style="color:var(--muted)">' + esc(T("sd.th.qty")) + ": " + orderQty(o) + "</small></div></div></td>" +
+          "<td>" + esc(o.customerName || "—") + "</td>" +
+          '<td class="sd-num">' + money(o.total) + "</td>" +
+          '<td class="sd-num profit">' + money(orderProfit(o)) + "</td>" +
+          "<td>" + istDateTime(o.createdAt) + "</td>" +
+          '<td><span class="sd-ost st-' + esc(o.status) + '">' + esc(T("sd.st." + o.status)) + "</span></td>" +
+        "</tr>";
+      }).join("") + "</tbody></table></div>" + pagerHtml(orders.page, pages, from + 1, from + list.length, all.length);
+  }
+  // "Showing 11–20 of 34" + ‹ 1 2 3 › (with … for long ranges)
+  function pagerHtml(page, pages, a, b, total) {
+    var info = '<span class="sd-pinfo">' + esc(T("sd.showing").replace("{a}", a).replace("{b}", b).replace("{n}", total)) + "</span>";
+    if (pages <= 1) return '<div class="sd-pager">' + info + "</div>";
+    var nums = [], i;
+    for (i = 1; i <= pages; i++) {
+      if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i);
+      else if (nums[nums.length - 1] !== "…") nums.push("…");
+    }
+    var btn = function (p, label, extra) {
+      return '<button type="button" class="sd-pbtn' + (extra || "") + '" data-page="' + p + '"' + (extra === " dis" ? " disabled" : "") + ">" + label + "</button>";
+    };
+    return '<div class="sd-pager">' + info + '<div class="sd-pnums">' +
+      btn(page - 1, "‹", page === 1 ? " dis" : "") +
+      nums.map(function (n) { return n === "…" ? '<span class="sd-pgap">…</span>' : btn(n, n, n === page ? " on" : ""); }).join("") +
+      btn(page + 1, "›", page === pages ? " dis" : "") + "</div></div>";
   }
   function ensureOrders() {
     if (!orders.list) { $("ordGrid").innerHTML = '<p class="sd-empty">' + esc(T("sd.loading")) + "</p>"; $("ordEmpty").hidden = true; }
@@ -982,6 +1034,11 @@
     startChatWatch();
     fetchOrders();
     document.addEventListener("i18n:change", function () { if (orders.list && !$("viewOrders").hidden) renderOrders(); });
+    if ($("ordGrid")) $("ordGrid").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-page]"); if (!b || b.disabled) return;
+      orders.page = Number(b.getAttribute("data-page")) || 1; renderOrders();
+      var panel = $("ordGrid").closest(".sd-panel"); if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     document.addEventListener("i18n:change", function () {
       if (chat) { chat.setLang((window.I18N && I18N.get()) || "en"); chat.setHeader(chatHeader()); }
     });

@@ -6,7 +6,7 @@
 window.ADMIN = (function () {
   var C = window.CONFIG;
   var SKEY = "mm_admin";
-  var STATUSES = ["received", "processing", "shipped", "delivered", "cancelled"];
+  var STATUSES = ["pending", "received", "processing", "shipped", "delivered", "cancelled"];
   var session = null, catalog = null;
   var ADMIN_ROLES = ["superadmin", "manager", "staff"];
   // Mirror of PERMS in Code.gs (the server enforces these; here we just hide UI).
@@ -54,7 +54,14 @@ window.ADMIN = (function () {
   }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (m) { return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]; }); }
   function money(n) { return DATA.money(Number(n) || 0); }
-  function fmtDate(d) { var x = d ? new Date(d) : null; return x && !isNaN(x) ? x.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" }) : "—"; }
+  // All dates in Indian Standard Time: "27/11/2026" and "12:47 AM IST".
+  var IST_D = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric" });
+  var IST_T = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true });
+  function istParts(d) { var x = d ? new Date(d) : null; return x && !isNaN(x) ? { date: IST_D.format(x), time: IST_T.format(x).toUpperCase() + " IST" } : null; }
+  function fmtDate(d) { var p = istParts(d); return p ? p.date : "—"; }
+  // Two-line cell: date, then the time underneath (HTML).
+  function fmtDateTime(d) { var p = istParts(d); return p ? '<div class="adm-dt">'+esc(p.date)+'</div><div class="adm-cell-sub">'+esc(p.time)+'</div>' : "—"; }
+  function fmtDateTimeInline(d) { var p = istParts(d); return p ? p.date + ", " + p.time : ""; }
   function cap(s) { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1); }
   function $(id) { return document.getElementById(id); }
 
@@ -399,7 +406,7 @@ window.ADMIN = (function () {
   }
 
   /* -------------------------------- orders -------------------------------- */
-  var orderFilter = "", orderSeller = "";
+  var orderFilter = "", orderSeller = "", orderPage = 1, ORDERS_PER_PAGE = 10;
   async function viewOrders() {
     var res = await api("listOrders");
     if (!res.ok) throw new Error(res.error);
@@ -413,7 +420,10 @@ window.ADMIN = (function () {
         STATUSES.map(function (st) { var n = base.filter(function (o) { return o.status === st; }).length;
           return '<option value="'+st+'"'+(orderFilter === st ? " selected" : "")+'>'+cap(st)+' ('+n+')</option>'; }).join("");
       $("ordersHead").innerHTML = orderSeller ? "<h3>Orders for "+esc(sellerName(sellers.filter(function (s) { return String(s.id) === orderSeller; })[0] || {}))+"</h3>" : "";
-      $("ordersBox").innerHTML = list.length ? ordersTable(list, true) : empty("No orders",
+      var pages = Math.max(1, Math.ceil(list.length / ORDERS_PER_PAGE));
+      orderPage = Math.min(Math.max(1, orderPage), pages);
+      var from = (orderPage - 1) * ORDERS_PER_PAGE, pageList = list.slice(from, from + ORDERS_PER_PAGE);
+      $("ordersBox").innerHTML = list.length ? ordersTable(pageList, true) + pager(orderPage, pages, from + 1, from + pageList.length, list.length) : empty("No orders",
         orderFilter ? "No orders with this status." : orderSeller ? "No orders for this seller yet. Pick a product above to place one." : "Orders placed on the shop appear here.");
     }
     $("admView").innerHTML =
@@ -431,8 +441,8 @@ window.ADMIN = (function () {
       '<section class="adm-card adm-flush" id="ordersBox"></section>';
     draw();
     loadShop();
-    $("ordSeller").onchange = function () { orderSeller = this.value; orderFilter = ""; draw(); loadShop(); };
-    $("ordStatus").onchange = function () { orderFilter = this.value; draw(); };
+    $("ordSeller").onchange = function () { orderSeller = this.value; orderFilter = ""; orderPage = 1; draw(); loadShop(); };
+    $("ordStatus").onchange = function () { orderFilter = this.value; orderPage = 1; draw(); };
     $("ordRefresh").onclick = function () { route(); };
 
     // The selected seller's products: tap one to place an order on their behalf.
@@ -492,7 +502,7 @@ window.ADMIN = (function () {
           var r = await api("placeOrder", { sellerId: s.id, sellerProductId: p.id, qty: qty, customerName: name,
             customerPhone: $("oPhone").value.trim(), address: $("oAddr").value.trim(), note: $("oNote").value.trim() });
           if (!r.ok) return r.error;
-          toast("Order #" + r.orderId + " placed for " + name + " · " + money(r.total));
+          toast("Order " + (r.orderKey || "#" + r.orderId) + " placed for " + name + " · " + money(r.total));
           route();
         }, { saveLabel: "Place order", busyLabel: "Placing order…" });
       function calc() {
@@ -518,13 +528,87 @@ window.ADMIN = (function () {
       sel.className = "adm-status-sel " + sel.value;
       toast("Order #" + sel.dataset.order + " marked " + sel.value);
     });
-    $("ordersBox").addEventListener("click", function (e) {
+    $("ordersBox").addEventListener("click", async function (e) {
+      var pg = e.target.closest("[data-opage]");
+      if (pg) { if (!pg.disabled) { orderPage = Number(pg.dataset.opage) || 1; draw(); $("ordersBox").scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
+      var ed = e.target.closest("[data-oedit]"), del = e.target.closest("[data-odel]");
+      if (ed) { var o = all.filter(function (x) { return String(x.id) === ed.dataset.oedit; })[0]; if (o) editOrderForm(o); return; }
+      if (del) {
+        var d = all.filter(function (x) { return String(x.id) === del.dataset.odel; })[0]; if (!d) return;
+        if (!confirm("Delete order " + orderLabel(d) + (d.customer ? " for " + d.customer : "") + "? This can't be undone.")) return;
+        del.disabled = true;
+        var r = await api("deleteOrder", { id: d.id });
+        if (!r.ok) { del.disabled = false; toast(r.error, true); return; }
+        toast("Order " + orderLabel(d) + " deleted");
+        all = all.filter(function (x) { return x !== d; }); draw();
+        return;
+      }
       var b = e.target.closest("[data-items]"); if (!b) return;
       var row = $("items-" + b.dataset.items); if (row) row.hidden = !row.hidden;
     });
+
+    // Edit a staff-placed order: customer details, quantity and status.
+    function editOrderForm(o) {
+      var it = (o.items && o.items[0]) || {}, price = Number(it.price) || 0;
+      modal("Edit order " + orderLabel(o),
+        '<div class="adm-oprod">'+
+          '<div class="adm-pimg sm">'+(it.imageUrl ? '<img src="'+esc(it.imageUrl)+'" alt="">' : svg("box", 22))+'</div>'+
+          '<div><div class="adm-cell-main">'+esc(it.name || "Product")+'</div><div class="adm-cell-sub">'+money(price)+' each · Seller: '+esc(o.sellerName || "—")+'</div></div>'+
+        '</div>'+
+        f("eoName", "Customer name *", '<input id="eoName" type="text" maxlength="100" required autocomplete="off" value="'+esc(o.customerName)+'">')+
+        '<div class="adm-form-cols">'+
+          '<div class="field"><label for="eoQty">Quantity *</label><div class="adm-qty">'+
+            '<button type="button" data-q="-1" aria-label="Less">−</button><input id="eoQty" type="number" min="1" max="9999" step="1" inputmode="numeric" required value="'+esc(it.qty || 1)+'">'+
+            '<button type="button" data-q="1" aria-label="More">+</button></div></div>'+
+          f("eoStatus", "Status", '<select id="eoStatus">'+STATUSES.map(function (st) { return '<option value="'+st+'"'+(o.status === st ? " selected" : "")+'>'+cap(st)+'</option>'; }).join("")+'</select>')+
+        '</div>'+
+        '<div class="adm-form-cols">'+
+          f("eoPhone", "Phone <span class=\"adm-opt\">optional</span>", '<input id="eoPhone" type="tel" maxlength="30" autocomplete="off" value="'+esc(o.customerPhone)+'">')+
+          f("eoNote", "Note <span class=\"adm-opt\">optional</span>", '<input id="eoNote" type="text" maxlength="500" autocomplete="off" value="'+esc(o.note)+'">')+
+        '</div>'+
+        f("eoAddr", "Delivery address <span class=\"adm-opt\">optional</span>", '<textarea id="eoAddr" rows="3" maxlength="500">'+esc(o.address)+'</textarea>')+
+        '<div class="adm-ototal"><span id="eoCalc"></span><strong id="eoTotal"></strong></div>',
+        async function () {
+          var name = $("eoName").value.trim(), qty = Math.floor(Number($("eoQty").value) || 0);
+          if (!name) { $("eoName").focus(); return "Enter the customer's name."; }
+          if (qty < 1 || qty > 9999) { $("eoQty").focus(); return "Enter a quantity between 1 and 9999."; }
+          var r = await api("editOrder", { id: o.id, customerName: name, qty: qty, status: $("eoStatus").value,
+            customerPhone: $("eoPhone").value.trim(), address: $("eoAddr").value.trim(), note: $("eoNote").value.trim() });
+          if (!r.ok) return r.error;
+          toast("Order " + orderLabel(o) + " updated");
+          route();
+        }, { saveLabel: "Save changes" });
+      function calc() {
+        var q = Math.max(0, Math.floor(Number($("eoQty").value) || 0));
+        $("eoCalc").textContent = q + " × " + money(price); $("eoTotal").textContent = money(q * price);
+      }
+      $("eoQty").oninput = calc;
+      document.querySelector(".adm-modal .adm-qty").onclick = function (e) {
+        var b = e.target.closest("[data-q]"); if (!b) return;
+        $("eoQty").value = Math.min(9999, Math.max(1, (Math.floor(Number($("eoQty").value) || 0)) + Number(b.dataset.q))); calc();
+      };
+      calc();
+    }
   }
+  // "Showing 11–20 of 34" + ‹ 1 2 3 › page buttons (… for long ranges).
+  function pager(page, pages, a, b, total) {
+    var info = '<span class="adm-pinfo">Showing '+a+'–'+b+' of '+total+'</span>';
+    if (pages <= 1) return '<div class="adm-pager">'+info+'</div>';
+    var nums = [];
+    for (var i = 1; i <= pages; i++) {
+      if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i);
+      else if (nums[nums.length - 1] !== "…") nums.push("…");
+    }
+    var btn = function (p, label, cls, dis) { return '<button type="button" class="adm-pbtn'+(cls || "")+'" data-opage="'+p+'"'+(dis ? " disabled" : "")+' aria-label="Page '+p+'">'+label+'</button>'; };
+    return '<div class="adm-pager">'+info+'<div class="adm-pnums">'+btn(page - 1, "‹", "", page === 1)+
+      nums.map(function (n) { return n === "…" ? '<span class="adm-pgap">…</span>' : btn(n, n, n === page ? " on" : "", false); }).join("")+
+      btn(page + 1, "›", "", page === pages)+'</div></div>';
+  }
+  // "ORP2711260231101" for staff orders (the order key), "#12" for shop orders.
+  function orderLabel(o) { return /^ORP\d{13}$/.test(o.identifier || "") ? o.identifier : "#" + o.id; }
   function ordersTable(list, editable) {
-    return '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Order</th><th>Customer</th><th>Seller</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th></tr></thead><tbody>'+
+    var cols = editable ? 8 : 7;
+    return '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Order</th><th>Customer</th><th>Seller</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th>'+(editable ? '<th class="r">Actions</th>' : '')+'</tr></thead><tbody>'+
       list.map(function (o) {
         var items = Array.isArray(o.items) ? o.items : [];
         var count = items.reduce(function (n, it) { return n + (Number(it.qty) || 1); }, 0);
@@ -532,17 +616,22 @@ window.ADMIN = (function () {
           ? '<select class="adm-status-sel '+esc(o.status)+'" data-order="'+esc(o.id)+'" aria-label="Status of order '+esc(o.id)+'">'+
               STATUSES.map(function (st) { return '<option value="'+st+'"'+(o.status === st ? " selected" : "")+'>'+cap(st)+'</option>'; }).join("")+'</select>'
           : pill(o.status);
-        var sub = [o.customerPhone || (o.customerName ? "" : o.identifier)].filter(Boolean).join(" · ");
+        var sub = o.customerPhone || (o.customerName || /^ORP\d{13}$/.test(o.identifier || "") ? "" : o.identifier);
         var details = [];
         if (o.address) details.push('<li class="adm-odet"><span>Address</span><b>'+esc(o.address)+'</b></li>');
         if (o.note) details.push('<li class="adm-odet"><span>Note</span><b>'+esc(o.note)+'</b></li>');
         if (o.createdBy) details.push('<li class="adm-odet"><span>Placed by</span><b>'+esc(o.createdBy)+' (staff)</b></li>');
-        return '<tr><td><strong>#'+esc(o.id)+'</strong></td>'+
+        var key = orderLabel(o), canEdit = o.sellerId !== "" && o.sellerId != null, canDel = canEdit || role() !== "staff";
+        var actions = '<td class="r"><div class="adm-actions">'+
+          (canEdit ? '<button type="button" class="adm-icon-btn" data-oedit="'+esc(o.id)+'" title="Edit order" aria-label="Edit order '+esc(key)+'">'+svg("edit")+'</button>' : '')+
+          (canDel ? '<button type="button" class="adm-icon-btn danger" data-odel="'+esc(o.id)+'" title="Delete order" aria-label="Delete order '+esc(key)+'">'+svg("trash")+'</button>' : '')+
+          (!canEdit && !canDel ? '<span class="adm-cell-sub">—</span>' : '')+'</div></td>';
+        return '<tr><td>'+(key.charAt(0) === "#" ? '<strong>'+esc(key)+'</strong>' : '<strong class="adm-okey">'+esc(key)+'</strong><div class="adm-cell-sub">#'+esc(o.id)+'</div>')+'</td>'+
           '<td><div class="adm-cell-main">'+esc(o.customer || "Guest")+(o.createdBy ? ' <span class="adm-tag">VIP</span>' : "")+'</div>'+(sub ? '<div class="adm-cell-sub">'+esc(sub)+'</div>' : "")+'</td>'+
           '<td>'+(o.sellerName ? esc(o.sellerName) : '<span class="adm-cell-sub">—</span>')+'</td>'+
           '<td>'+(editable && items.length ? '<button type="button" class="adm-link" data-items="'+esc(o.id)+'">'+count+' item'+(count === 1 ? "" : "s")+'</button>' : count)+'</td>'+
-          '<td><strong>'+money(o.total)+'</strong></td><td>'+fmtDate(o.createdAt)+'</td><td>'+status+'</td></tr>'+
-          (editable && items.length ? '<tr class="adm-subrow" id="items-'+esc(o.id)+'" hidden><td colspan="7"><ul class="adm-items">'+
+          '<td><strong>'+money(o.total)+'</strong></td><td>'+fmtDateTime(o.createdAt)+'</td><td>'+status+'</td>'+(editable ? actions : '')+'</tr>'+
+          (editable && items.length ? '<tr class="adm-subrow" id="items-'+esc(o.id)+'" hidden><td colspan="'+cols+'"><ul class="adm-items">'+
             items.map(function (it) { return '<li><span>'+esc(it.name)+' <em>× '+esc(it.qty || 1)+'</em></span><b>'+money((it.price || 0) * (it.qty || 1))+'</b></li>'; }).join("")+
             details.join("")+
           '</ul></td></tr>' : '');
@@ -1029,7 +1118,7 @@ window.ADMIN = (function () {
     var res = await api("listWallet");
     if (!res.ok) throw new Error(res.error);
     var allTxs = res.transactions || [], allSellers = res.sellers || [];
-    function dt(iso) { try { return new Date(iso).toLocaleDateString(); } catch (e) { return ""; } }
+    function dt(iso) { return fmtDateTimeInline(iso); }
     function kindOf(s) { return s === "approved" ? "verified" : s === "rejected" ? "blocked" : "pending"; }
     function txRow(t) {
       var actions = can("updateTx")
@@ -1380,7 +1469,7 @@ window.ADMIN = (function () {
           '<td><span class="adm-code">'+esc(a.staffCode || '—')+'</span></td>'+
           '<td><span class="adm-pill '+esc(a.role)+'">'+esc(roleLabel(a.role))+'</span></td>'+
           '<td>'+pill(a.status === "disabled" ? "disabled" : "active", a.status === "disabled" ? "blocked" : "active")+'</td>'+
-          '<td>'+(a.lastLoginAt ? fmtDate(a.lastLoginAt) : 'Never')+'</td><td>'+fmtDate(a.createdAt)+'</td>'+
+          '<td>'+(a.lastLoginAt ? fmtDateTime(a.lastLoginAt) : 'Never')+'</td><td>'+fmtDateTime(a.createdAt)+'</td>'+
           '<td class="r"><div class="adm-actions">'+(me ? '<span class="adm-cell-sub">—</span>' :
             '<button type="button" class="adm-icon-btn" data-edit="'+esc(a.id)+'" aria-label="Edit '+esc(a.username)+'">'+svg("edit")+'</button>'+
             '<button type="button" class="adm-icon-btn danger" data-del="'+esc(a.id)+'" aria-label="Delete '+esc(a.username)+'">'+svg("trash")+'</button>')+

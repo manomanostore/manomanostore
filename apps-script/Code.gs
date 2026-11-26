@@ -54,7 +54,7 @@ var USDT_ADDRESS = "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
 // Currency symbol stored with every wallet transaction (change once here).
 var CURRENCY_SYMBOL = "₹";
-var ORDER_STATUSES = ["received", "processing", "shipped", "delivered", "cancelled"];
+var ORDER_STATUSES = ["pending", "received", "processing", "shipped", "delivered", "cancelled"];
 
 var SHEETS = {
   users:      { name: "Users",      headers: ["id","username","name","passwordHash","role","status","createdAt","updatedAt","lastLoginAt","tokenHash","tokenExpires","staff_code"],
@@ -92,7 +92,7 @@ var PERMS = {
   listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
   chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES,
-  sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES
+  sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES, editOrder: ADMIN_ROLES, deleteOrder: ADMIN_ROLES
 };
 
 /* ----------------------------- HTTP handlers ----------------------------- */
@@ -388,6 +388,11 @@ function sellerRemoveProduct(b) {
 //                    earnings, once Orders are wired)
 //   pendingBalance = Σ (price × qty) of the products the seller stocks
 //   guaranteeMoney = staff-set base (Wallet sheet) + approved guarantee recharges
+// Current time in Indian Standard Time as ISO-8601 with its offset, e.g.
+// "2026-11-27T00:47:12+05:30" — readable as IST in the Sheet and still parsed
+// correctly by every browser. Used for order timestamps.
+function istNow() { return Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd'T'HH:mm:ss") + "+05:30"; }
+
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
 function sellerBalances(sellerId) {
@@ -723,29 +728,28 @@ function getCartItems(cartId) {
 // Orders columns: 0 id | 1 userId | 2 identifier | 3 itemsJson | 4 total | 5 status | 6 createdAt
 
 function createOrder(b) {
-  var sh = sheet("orders");
-  var id = nextId(sh);
-  appendRowAsText(sh, [ id, Number(b.userId) || b.userId || "guest", normId(b.identifier) || "",
-                        JSON.stringify(b.items || []), Number(b.total) || 0,
-                        "received", new Date().toISOString() ]);
+  ensureColumns("orders", SHEETS.orders.headers);
+  var id = nextId(sheet("orders")), now = istNow();
+  appendNamed("orders", { id: id, userId: Number(b.userId) || b.userId || "guest", identifier: normId(b.identifier) || "",
+    itemsJson: JSON.stringify(b.items || []), total: Number(b.total) || 0, status: "received", createdAt: now, updatedAt: now });
   return { ok: true, orderId: id };
 }
 
 function getOrders(userId) {
-  var rows = sheet("orders").getDataRange().getValues();
-  var out = [];
-  for (var i = 1; i < rows.length; i++) if (String(rows[i][1]) === String(userId)) out.push(orderObj(rows[i]));
-  return out.reverse();
+  return readRows("orders").filter(function (o) { return o.id !== "" && String(o.userId) === String(userId); })
+    .map(orderRec).reverse();
 }
 
-function orderObj(r) {
-  return { id: r[0], userId: r[1], identifier: String(r[2] || ""), items: safeParse(r[3]),
-           total: Number(r[4]) || 0, status: String(r[5] || "received"), createdAt: r[6] };
+// An order from a readRows() object (columns matched by NAME, so a hand-
+// reordered Orders tab still works). If `total` isn't a number (e.g. damaged by
+// an old bug that wrote the status into it) it's recomputed from the items.
+function orderItemsTotal(items) {
+  return round2((items || []).reduce(function (n, it) { return n + (Number(it.price) || 0) * (Number(it.qty) || 1); }, 0));
 }
-// Same, from a readRows() object — includes the staff-order columns.
 function orderRec(o) {
-  return { id: Number(o.id) || o.id, userId: o.userId, identifier: String(o.identifier || ""), items: safeParse(o.itemsJson),
-           total: Number(o.total) || 0, status: String(o.status || "received"), createdAt: o.createdAt,
+  var items = safeParse(o.itemsJson), t = Number(o.total);
+  return { id: Number(o.id) || o.id, userId: o.userId, identifier: String(o.identifier || ""), items: items,
+           total: (o.total === "" || isNaN(t)) ? orderItemsTotal(items) : t, status: String(o.status || "received"), createdAt: o.createdAt,
            sellerId: o.seller_id === "" || o.seller_id == null ? "" : (Number(o.seller_id) || o.seller_id),
            customerName: String(o.customer_name || ""), customerPhone: String(o.customer_phone || ""),
            address: String(o.address || ""), note: String(o.note || ""), createdBy: String(o.created_by || "") };
@@ -768,19 +772,19 @@ function adminPlaceOrder(p, meData) {
   if (qty < 1 || qty > 9999) return { ok: false, error: "Enter a quantity between 1 and 9999." };
   var item = sellerProductList(sid).filter(function (x) { return String(x.id) === String(p.sellerProductId); })[0];
   if (!item) return { ok: false, error: "That product is no longer in this seller's shop." };
-  var price = round2(item.price), total = round2(price * qty), now = new Date().toISOString();
+  var price = round2(item.price), total = round2(price * qty), now = istNow();
   ensureColumns("orders", SHEETS.orders.headers);
-  var id = nextId(sheet("orders"));
+  var id = nextId(sheet("orders")), key = newOrderKey();
   appendNamed("orders", {
-    id: id, userId: "staff", identifier: String(p.customerPhone || "").trim().slice(0, 30),
+    id: id, userId: "staff", identifier: key,
     itemsJson: JSON.stringify([{ id: item.productId, sellerProductId: item.id, name: item.name, price: price, qty: qty,
                                   profit: round2(item.profit), imageUrl: item.imageUrl }]),
-    total: total, status: "received", createdAt: now, updatedAt: now,
+    total: total, status: "pending", createdAt: now, updatedAt: now,
     seller_id: sid, customer_name: name, customer_phone: String(p.customerPhone || "").trim().slice(0, 30),
     address: String(p.address || "").trim().slice(0, 500), note: String(p.note || "").trim().slice(0, 500),
     created_by: String(meData[A.name] || meData[A.user] || "")
   });
-  return { ok: true, orderId: id, total: total };
+  return { ok: true, orderId: id, orderKey: key, total: total };
 }
 
 // A seller's own orders (newest first) for their dashboard.
@@ -1245,7 +1249,9 @@ function adminCall(b) {
       listOrders:      function () { return adminOrderList(me.data); },
       sellerShop:      function () { var d = ownsSellerCheck(p.sellerId, me.data); return d || { products: sellerProductList(p.sellerId) }; },
       placeOrder:      function () { return withLock(function () { return adminPlaceOrder(p, me.data); }); },
-      updateOrder:     function () { return withLock(function () { return adminUpdateOrder(p); }); },
+      updateOrder:     function () { return withLock(function () { return adminUpdateOrder(p, me.data); }); },
+      editOrder:       function () { return withLock(function () { return adminEditOrder(p, me.data); }); },
+      deleteOrder:     function () { return withLock(function () { return adminDeleteOrder(p, me.data); }); },
       listCatalog:     function () { return { categories: readCategories(), vendors: readSellers(), products: readProducts(true), banners: readBanners(true) }; },
       saveBanner:      function () { return withLock(function () { return saveBannerRec(p); }); },
       deleteBanner:    function () { return withLock(function () { return deleteBannerRec(p.id, p.matchUrl); }); },
@@ -1310,7 +1316,7 @@ function adminOrderList(meData) {
   var orders = readRows("orders").filter(function (o) { return o.id !== ""; }).map(orderRec).filter(function (o) {
     return !staff || o.sellerId === "" || sc.allowed[String(o.sellerId)];
   }).map(function (o) {
-    o.customer = o.customerName || o.identifier || "";
+    o.customer = o.customerName || (/^ORP\d{13}$/.test(o.identifier) ? "" : o.identifier);
     o.sellerName = o.sellerId !== "" ? (sc.nameOf[String(o.sellerId)] || "Seller #" + o.sellerId) : "";
     return o;
   }).reverse();
@@ -1319,19 +1325,71 @@ function adminOrderList(meData) {
 }
 
 function adminOrders() {
-  var rows = sheet("orders").getDataRange().getValues(), out = [];
-  for (var i = 1; i < rows.length; i++) {
-    var o = orderObj(rows[i]); o.customer = o.identifier || ""; out.push(o);
-  }
-  return out.reverse();
+  return readRows("orders").filter(function (o) { return o.id !== ""; }).map(function (o) {
+    var r = orderRec(o); r.customer = r.customerName || r.identifier || ""; return r;
+  }).reverse();
 }
 
-function adminUpdateOrder(p) {
+// Status change from the orders table. Written by column NAME (it used to write
+// a fixed column, which hit `total` when the tab's columns were reordered —
+// such a damaged total is repaired here from the items).
+function adminUpdateOrder(p, meData) {
   if (ORDER_STATUSES.indexOf(p.status) < 0) return { ok: false, error: "Invalid order status." };
-  var sh = sheet("orders"), idx = findRowById(sh, p.id);
-  if (!idx) return { ok: false, error: "Order not found." };
-  sh.getRange(idx, 6).setValue(p.status);
-  return { ok: true };
+  var row = readRows("orders").filter(function (o) { return o.id !== "" && String(o.id) === String(p.id); })[0];
+  if (!row) return { ok: false, error: "Order not found." };
+  if (row.seller_id !== "" && row.seller_id != null) { var deny = ownsSellerCheck(row.seller_id, meData); if (deny) return deny; }
+  var patch = { id: row.id, status: p.status };
+  if (row.total === "" || isNaN(Number(row.total))) patch.total = orderItemsTotal(safeParse(row.itemsJson));
+  var res = saveRecord("orders", patch, function () { return ""; });
+  return res.ok ? { ok: true } : res;
+}
+
+// Order key shown to staff/sellers: "ORP" + date/time in IST + 3 random digits
+// = 16 characters, e.g. ORP2711260231101 → 27-11-26, minute 02, second 31, 101.
+// Re-rolled if it ever collides with an existing key.
+function newOrderKey() {
+  var used = {};
+  readRows("orders").forEach(function (o) { used[String(o.identifier || "")] = true; });
+  var stamp = Utilities.formatDate(new Date(), "Asia/Kolkata", "ddMMyymmss"), key;
+  for (var i = 0; i < 50; i++) {
+    key = "ORP" + stamp + String(100 + Math.floor(Math.random() * 900));
+    if (!used[key]) return key;
+  }
+  return key;
+}
+
+// Delete an order. Staff: only orders of their own sellers; storefront orders
+// (no seller) need a superadmin/manager.
+function adminDeleteOrder(p, meData) {
+  var row = readRows("orders").filter(function (o) { return o.id !== "" && String(o.id) === String(p.id); })[0];
+  if (!row) return { ok: false, error: "Order not found." };
+  if (row.seller_id !== "" && row.seller_id != null) { var deny = ownsSellerCheck(row.seller_id, meData); if (deny) return deny; }
+  else if (adminRole(meData) === "staff") return { ok: false, error: "Only an admin or manager can delete shop orders." };
+  return deleteRecord("orders", row.id);
+}
+
+// Staff edit a staff-placed order: customer details, quantity (total is
+// recomputed from the unit price) and status. Staff only for their own sellers.
+function adminEditOrder(p, meData) {
+  var row = readRows("orders").filter(function (o) { return o.id !== "" && String(o.id) === String(p.id); })[0];
+  if (!row) return { ok: false, error: "Order not found." };
+  var o = orderRec(row);
+  if (o.sellerId === "") return { ok: false, error: "Only orders placed for a seller can be edited here." };
+  var deny = ownsSellerCheck(o.sellerId, meData);
+  if (deny) return deny;
+  var name = String(p.customerName || "").trim().slice(0, 100);
+  if (!name) return { ok: false, error: "Enter the customer's name." };
+  var qty = Math.floor(Number(p.qty) || 0);
+  if (qty < 1 || qty > 9999) return { ok: false, error: "Enter a quantity between 1 and 9999." };
+  if (ORDER_STATUSES.indexOf(p.status) < 0) return { ok: false, error: "Invalid order status." };
+  var items = o.items.length ? o.items : [];
+  if (items.length) items[0].qty = qty;
+  var res = saveRecord("orders", {
+    id: row.id, customer_name: name, customer_phone: String(p.customerPhone || "").trim().slice(0, 30),
+    address: String(p.address || "").trim().slice(0, 500), note: String(p.note || "").trim().slice(0, 500),
+    itemsJson: JSON.stringify(items), total: orderItemsTotal(items), status: p.status
+  }, function () { return ""; });
+  return res.ok ? { ok: true, total: orderItemsTotal(items) } : res;
 }
 
 /* --------------------------- generic CRUD -------------------------------- */
@@ -1340,7 +1398,7 @@ function adminUpdateOrder(p) {
 function saveRecord(key, obj, validate) {
   var err = validate(obj);
   if (err) return { ok: false, error: err };
-  var cfg = SHEETS[key], sh = sheet(key), now = new Date().toISOString();
+  var cfg = SHEETS[key], sh = sheet(key), now = key === "orders" ? istNow() : new Date().toISOString();
   var hdr = sheetHeaders(key);                     // position by the REAL columns
   var idx = obj.id ? findRowById(sh, obj.id) : 0;
   if (obj.id && !idx) return { ok: false, error: "Record not found — it may have been deleted." };
