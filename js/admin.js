@@ -44,7 +44,9 @@ window.ADMIN = (function () {
     key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
     image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
     wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/>',
-    bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>'
+    bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    chevDown: '<path d="M6 9l6 6 6-6"/>'
   };
   function svg(name, size) {
     return '<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ic[name]+'</svg>';
@@ -154,8 +156,19 @@ window.ADMIN = (function () {
               '<div class="adm-bell-menu" id="admBellMenu" hidden></div>'+
             '</div>'+
             '<button type="button" class="adm-menu adm-refresh" id="admRefresh" aria-label="Refresh" title="Refresh">'+svg("refresh", 20)+'</button>'+
-            '<div class="adm-me"><span class="adm-avatar">'+esc((u.name || u.username || "A").charAt(0).toUpperCase())+'</span>'+
-              '<span class="adm-me-txt"><strong>'+esc(u.name || "Admin")+'</strong><small>@'+esc(u.username || "")+' · '+esc(roleLabel(u.role))+'</small></span></div>'+
+            '<div class="adm-mewrap">'+
+              '<button type="button" class="adm-me" id="admMe" aria-haspopup="menu" aria-expanded="false" aria-controls="admMeMenu">'+
+                '<span class="adm-avatar">'+esc((u.name || u.username || "A").charAt(0).toUpperCase())+'</span>'+
+                '<span class="adm-me-txt"><strong>'+esc(u.name || "Admin")+'</strong><small>@'+esc(u.username || "")+' · '+esc(roleLabel(u.role))+'</small></span>'+
+                '<span class="adm-me-chev">'+svg("chevDown", 16)+'</span>'+
+              '</button>'+
+              '<div class="adm-me-menu" id="admMeMenu" role="menu" hidden>'+
+                '<div class="adm-me-head"><strong>'+esc(u.name || u.username || "Admin")+'</strong><small>@'+esc(u.username || "")+' · '+esc(roleLabel(u.role))+'</small></div>'+
+                '<button type="button" role="menuitem" data-me="profile">'+svg("user")+'<span>Profile</span></button>'+
+                '<button type="button" role="menuitem" data-me="password">'+svg("key")+'<span>Change password</span></button>'+
+                '<button type="button" role="menuitem" data-me="logout" class="danger">'+svg("out")+'<span>Log out</span></button>'+
+              '</div>'+
+            '</div>'+
           '</header>'+
           '<main class="adm-content" id="admView"></main>'+
         '</div>'+
@@ -170,8 +183,18 @@ window.ADMIN = (function () {
 
     $("admLogout").onclick = function () { logout(); };
     $("admRefresh").onclick = function () { location.reload(); };
-    $("admBell").onclick = function (e) { e.stopPropagation(); toggleBell(); };
-    document.addEventListener("click", function () { var m = $("admBellMenu"); if (m) m.hidden = true; });
+    $("admBell").onclick = function (e) { e.stopPropagation(); setMeMenu(false); toggleBell(); };
+    $("admMe").onclick = function (e) { e.stopPropagation(); var m = $("admBellMenu"); if (m) m.hidden = true; setMeMenu($("admMeMenu").hidden); };
+    $("admMeMenu").onclick = function (e) {
+      e.stopPropagation();
+      var b = e.target.closest("[data-me]"); if (!b) return;
+      setMeMenu(false);
+      if (b.dataset.me === "profile") showMyProfile();
+      else if (b.dataset.me === "password") changeMyPassword();
+      else if (b.dataset.me === "logout") logout();
+    };
+    document.addEventListener("click", function () { var m = $("admBellMenu"); if (m) m.hidden = true; setMeMenu(false); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && $("admMeMenu") && !$("admMeMenu").hidden) { setMeMenu(false); $("admMe").focus(); } });
     $("admMenu").onclick = function () { document.body.classList.add("adm-nav-open"); };
     $("admTabMore").onclick = function () { document.body.classList.add("adm-nav-open"); };
     $("admScrim").onclick = function () { document.body.classList.remove("adm-nav-open"); };
@@ -183,10 +206,14 @@ window.ADMIN = (function () {
   /* ---- Real-time transaction alerts (role-scoped polling + loud voice) ---- */
   // Staff hear only their own sellers' requests; admin/manager hear everyone's.
   var _audioCtx = null, _txTimer = null;
+  // True once the user has clicked/tapped the page — before that the browser
+  // blocks audio, and anything scheduled would play late on the first click.
+  function _canSound() { return !navigator.userActivation || navigator.userActivation.hasBeenActive; }
   function _beep() {
     try {
+      if (!_canSound()) return;
       _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (_audioCtx.state === "suspended") _audioCtx.resume();
+      if (_audioCtx.state !== "running") { _audioCtx.resume(); return; }   // never queue beeps into a locked context
       [0, 0.18].forEach(function (t) {
         var o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
         o.type = "sine"; o.frequency.value = 940; g.gain.value = 0.9;   // loud
@@ -198,18 +225,30 @@ window.ADMIN = (function () {
   function speakLoud(text) {
     _beep();
     try {
-      if (!("speechSynthesis" in window)) return;
+      if (!_canSound() || !("speechSynthesis" in window)) return;   // no queued voice before the first click
       var u = new SpeechSynthesisUtterance(text);
       u.volume = 1; u.rate = 1; u.pitch = 1;      // max volume
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
     } catch (e) {}
   }
-  // Browsers block audio until the user interacts — warm it up on first gesture.
+  // Browsers block audio until the user interacts — unlock it SILENTLY on the
+  // first gesture (no beep), so clicking a menu after a reload makes no sound.
   (function () {
-    function prime() { try { _beep(); window.speechSynthesis && window.speechSynthesis.resume && window.speechSynthesis.resume(); } catch (e) {} document.removeEventListener("pointerdown", prime); }
+    function prime() {
+      try {
+        _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (_audioCtx.state === "suspended") _audioCtx.resume();
+      } catch (e) {}
+    }
     document.addEventListener("pointerdown", prime, { once: true });
   })();
+
+  // Account menu under the avatar in the header (Profile / Change password / Log out).
+  function setMeMenu(open) {
+    var m = $("admMeMenu"), b = $("admMe"); if (!m || !b) return;
+    m.hidden = !open; b.setAttribute("aria-expanded", open ? "true" : "false");
+  }
 
   // Notification inbox shown under the header bell.
   var _notes = [], _unread = 0;
@@ -1052,7 +1091,6 @@ window.ADMIN = (function () {
     var admins = res.admins || [], meId = String(res.meId);
     $("admView").innerHTML =
       '<div class="adm-toolbar"><span class="adm-count">'+admins.length+' admin'+(admins.length === 1 ? '' : 's')+'</span>'+
-        '<button class="btn btn-ghost adm-btn" type="button" id="myPw">'+svg("key")+' Change my password</button>'+
         '<button class="btn btn-primary adm-btn" type="button" id="addAdm">'+svg("plus")+' Add admin</button></div>'+
       '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Admin</th><th>Staff code</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Added</th><th class="r">Actions</th></tr></thead><tbody>'+
       admins.map(function (a) {
@@ -1069,7 +1107,6 @@ window.ADMIN = (function () {
           '</div></td></tr>';
       }).join("")+'</tbody></table></div></section>';
     $("addAdm").onclick = function () { adminForm(null); };
-    $("myPw").onclick = changeMyPassword;
     $("admView").onclick = async function (e) {
       var b = e.target.closest("button[data-edit],button[data-del]"); if (!b) return;
       var a = admins.filter(function (x) { return String(x.id) === (b.dataset.edit || b.dataset.del); })[0];
@@ -1115,6 +1152,21 @@ window.ADMIN = (function () {
     enhancePasswords(document.querySelector(".adm-modal"));
   }
 
+  function showMyProfile() {
+    var me = session.admin || {};
+    var row = function (k, v) { return '<div class="adm-prof-row"><span>'+k+'</span><strong>'+v+'</strong></div>'; };
+    modal("My profile",
+      '<div class="adm-prof">'+
+        '<div class="adm-prof-top"><span class="adm-avatar lg">'+esc((me.name || me.username || "A").charAt(0).toUpperCase())+'</span>'+
+          '<div><div class="adm-prof-name">'+esc(me.name || me.username || "Admin")+'</div><div class="adm-cell-sub">@'+esc(me.username || "")+'</div></div></div>'+
+        row("Role", '<span class="adm-pill '+esc(me.role || "")+'">'+esc(roleLabel(me.role))+'</span>')+
+        row("Staff code", '<span class="adm-code">'+esc(me.staffCode || "—")+'</span>')+
+        row("Status", esc(cap(me.status || "active")))+
+        row("Member since", esc(fmtDate(me.createdAt)))+
+      '</div>',
+      null, { readOnly: true });
+  }
+
   function changeMyPassword() {
     var me = session.admin || {};
     modal("Change my password",
@@ -1136,13 +1188,16 @@ window.ADMIN = (function () {
   }
 
   /* --------------------------------- modal -------------------------------- */
-  function modal(title, body, onSave) {
+  function modal(title, body, onSave, opts) {
+    opts = opts || {};
     var wrap = document.createElement("div");
     wrap.className = "adm-modal-back";
     wrap.innerHTML = '<form class="adm-modal" role="dialog" aria-modal="true" aria-labelledby="mTitle" novalidate>'+
       '<div class="adm-modal-head"><h2 id="mTitle">'+esc(title)+'</h2><button type="button" class="adm-icon-btn" data-close aria-label="Close">'+svg("close", 20)+'</button></div>'+
       '<div class="adm-modal-body"><div id="mMsg"></div>'+body+'</div>'+
-      '<div class="adm-modal-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary" id="mSave">Save</button></div>'+
+      '<div class="adm-modal-foot">'+(opts.readOnly
+        ? '<button type="button" class="btn btn-primary" data-close>Close</button>'
+        : '<button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary" id="mSave">Save</button>')+'</div>'+
       '<div class="adm-busy" aria-hidden="true"><span class="spinner lg"></span><span class="adm-busy-txt">Saving…</span></div>'+
     '</form>';
     document.body.appendChild(wrap);
@@ -1156,6 +1211,7 @@ window.ADMIN = (function () {
     var form = wrap.querySelector("form");
     form.addEventListener("submit", async function (e) {
       e.preventDefault();
+      if (!onSave) { close(); return; }
       var save = $("mSave");
       save.disabled = true;
       save.innerHTML = '<span class="spinner sm"></span> Saving…';
