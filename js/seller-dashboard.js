@@ -699,7 +699,63 @@
     var e = $("ordEmpty"); e.hidden = false; e.textContent = T("sd.noorders");
   }
 
-  var VIEWS = ["dashboard", "storehouse", "products", "wallet", "orders"];
+  /* ---------------------------- Support chat ----------------------------- */
+  // The "Conversations" view: a chat between this seller and the support team
+  // (js/chat.js). A light background check keeps the unread badge current.
+  var chat = null, _chatUnread = 0, _chatTimer = null;
+  var _chatPushed = false;   // opened chat with a history entry → phone Back button closes it
+  function chatPost(body) {
+    body.token = session.token;
+    return fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); });
+  }
+  function setChatBadge(n) {
+    var txt = n > 99 ? "99+" : String(n), b = $("sdChatBadge");
+    if (b) { b.hidden = !(n > 0); b.textContent = txt; }
+    // phones: Conversations lives under "More", so badge that tab too
+    var more = $("sdTabMore");
+    if (more) {
+      var mb = more.querySelector(".sd-tabbadge");
+      if (!mb) { mb = document.createElement("span"); mb.className = "sd-tabbadge"; more.appendChild(mb); }
+      mb.hidden = !(n > 0); mb.textContent = txt;
+    }
+  }
+  function chatHeader() {
+    return { title: (CONFIG.BRAND_NAME || "Shop") + " " + T("sd.support"), avatar: "images/support-agent.svg", online: true,
+             subtitle: '<span class="ct-live"></span>' + esc(T("sd.chatsub")) };
+  }
+  function ensureChat() {
+    setChatBadge(0); _chatUnread = 0;
+    if (chat) { chat.refresh(); setTimeout(chat.focus, 50); return; }
+    if (!session.token || !CONFIG.API_URL) { reloginSoon(); return; }
+    chat = CHAT.create({
+      root: $("sdChat"), me: "seller", lang: (window.I18N && I18N.get()) || "en", header: chatHeader(),
+      their: { avatar: "images/support-agent.svg" },
+      // back arrow (shown in the full-screen phone layout)
+      onBack: function () { if (_chatPushed) history.back(); else switchView("dashboard"); },
+      fetch: function (sinceId, mark) { return chatPost({ action: "sellerChat", sinceId: sinceId, mark: mark }); },
+      send: function (m) { return chatPost({ action: "sellerChatSend", text: m.text, images: m.images }); },
+      onAuth: reloginSoon
+    });
+  }
+  // Every 20s (only while the tab is visible and the chat isn't open): count
+  // unread support replies → badge + a toast when a new one arrives.
+  function startChatWatch() {
+    if (_chatTimer || !session.token || !CONFIG.API_URL) return;
+    async function check() {
+      if (document.visibilityState !== "visible" || !$("viewChat").hidden) return;
+      try {
+        var j = await chatPost({ action: "sellerChat", sinceId: 1e15, mark: "delivered" });
+        if (!j || !j.ok) return;
+        var n = Number(j.unread) || 0;
+        if (n > _chatUnread) toast(T("sd.newchat"));
+        _chatUnread = n; setChatBadge(n);
+      } catch (e) {}
+    }
+    check(); _chatTimer = setInterval(check, 20000);
+  }
+
+  var VIEWS = ["dashboard", "storehouse", "products", "wallet", "orders", "chat"];
   function switchView(name, fromHash) {
     if (VIEWS.indexOf(name) < 0) name = "dashboard";
     document.querySelectorAll('.sd-nav a[data-view]').forEach(function (a) { a.classList.toggle("active", a.getAttribute("data-view") === name); });
@@ -709,14 +765,22 @@
     $("viewProducts").hidden = name !== "products";
     $("viewWallet").hidden = name !== "wallet";
     $("viewOrders").hidden = name !== "orders";
-    var key = { storehouse: "sd.storehouse", products: "sd.products", wallet: "sd.withdraw", orders: "sd.orders" }[name] || "sd.dashboard";
+    $("viewChat").hidden = name !== "chat";
+    var key = { storehouse: "sd.storehouse", products: "sd.products", wallet: "sd.withdraw", orders: "sd.orders", chat: "sd.conversations" }[name] || "sd.dashboard";
     var title = $("sdTopTitle"); if (title) { title.setAttribute("data-i18n", key); if (window.I18N) I18N.apply(title); }
     if (name === "storehouse") ensureStorehouse();
     if (name === "products") ensureMyProducts();
     if (name === "wallet") ensureWallet();
     if (name === "orders") ensureOrders();
+    if (name === "chat") ensureChat();
     // keep the URL hash in sync so the storefront can deep-link (e.g. #wallet)
-    if (!fromHash) { try { history.replaceState(null, "", name === "dashboard" ? location.pathname + location.search : "#" + name); } catch (e) {} }
+    if (!fromHash) {
+      try {
+        if (name === "chat" && location.hash !== "#chat") { history.pushState(null, "", "#chat"); _chatPushed = true; }
+        else history.replaceState(null, "", name === "dashboard" ? location.pathname + location.search : "#" + name);
+      } catch (e) {}
+    }
+    if (name !== "chat") _chatPushed = false;
     window.scrollTo({ top: 0 });
   }
 
@@ -870,6 +934,10 @@
     document.querySelectorAll(".sd-nav a").forEach(function (a) { a.addEventListener("click", closeDrawer); });
 
     buildLang();
+    startChatWatch();
+    document.addEventListener("i18n:change", function () {
+      if (chat) { chat.setLang((window.I18N && I18N.get()) || "en"); chat.setHeader(chatHeader()); }
+    });
 
     // Deep-link support: open the view named in the URL hash (e.g. the storefront
     // links to seller-dashboard.html#wallet), and follow hash changes.

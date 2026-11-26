@@ -46,7 +46,8 @@ window.ADMIN = (function () {
     wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/>',
     bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
-    chevDown: '<path d="M6 9l6 6 6-6"/>'
+    chevDown: '<path d="M6 9l6 6 6-6"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/>'
   };
   function svg(name, size) {
     return '<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ic[name]+'</svg>';
@@ -67,7 +68,14 @@ window.ADMIN = (function () {
     } catch (e) {}
     localStorage.removeItem(SKEY); return null;
   }
-  function logout(msg) { localStorage.removeItem(SKEY); session = null; catalog = null; if (_txTimer) { clearInterval(_txTimer); _txTimer = null; } renderLogin(msg); }
+  function logout(msg) {
+    localStorage.removeItem(SKEY); session = null; catalog = null;
+    if (_txTimer) { clearInterval(_txTimer); _txTimer = null; }
+    if (_chatTimer) { clearInterval(_chatTimer); _chatTimer = null; }
+    if (_chatW) { _chatW.destroy(); _chatW = null; }
+    _chatData = null; _chatSel = null; _chatMax = 0;
+    renderLogin(msg);
+  }
 
   async function post(body) {
     try {
@@ -132,6 +140,7 @@ window.ADMIN = (function () {
     ["categories", "Categories", "tag", ["superadmin", "manager"]], ["banners", "Banners", "image", ["superadmin", "manager"]],
     ["vendors", "Sellers", "store", ["superadmin", "manager"]],
     ["wallet", "Wallet Transaction", "wallet", ["superadmin", "manager", "staff"]],
+    ["chat", "Support Chat", "chat", ADMIN_ROLES],
     ["admins", "Admins", "shield", ["superadmin"]]
   ];
   function canRoute(r) { var n = NAV.filter(function (x) { return x[0] === r; })[0]; return n && n[3].indexOf(role()) > -1; }
@@ -203,6 +212,7 @@ window.ADMIN = (function () {
     window.onhashchange = route;
     route();
     startTxAlerts();
+    startChatAlerts();
   }
 
   /* ---- Real-time transaction alerts (role-scoped polling + loud voice) ---- */
@@ -313,9 +323,10 @@ window.ADMIN = (function () {
     $("admTitle").textContent = NAV.filter(function (n) { return n[0] === r; })[0][1];
     document.title = $("admTitle").textContent + " — Admin";
     $("admView").onclick = null;
+    if (_chatW) { _chatW.destroy(); _chatW = null; }
     $("admView").innerHTML = skeleton();
     ({ dashboard: viewDashboard, orders: viewOrders, products: viewProducts, categories: viewCategories,
-       banners: viewBanners, vendors: viewVendors, wallet: viewWallet, admins: viewAdmins })[r]().catch(function (e) {
+       banners: viewBanners, vendors: viewVendors, wallet: viewWallet, chat: viewChat, admins: viewAdmins })[r]().catch(function (e) {
       if (session) $("admView").innerHTML = '<div class="msg err">'+esc(e.message || e)+'</div>';
     });
   }
@@ -1086,6 +1097,177 @@ window.ADMIN = (function () {
   // Admin passwords are hashed in the browser like customers', salted with
   // "admin:<username>" (createAdmin in Code.gs computes the same hash).
   function adminHash(username, pw) { return AUTH.hash("admin:" + AUTH.normId(username), pw); }
+
+  /* ----------------------------- Support chat ----------------------------- */
+  // Inbox of seller conversations (left) + the open chat (right, js/chat.js).
+  // Staff only see the sellers who registered with their staff code; the
+  // server enforces that too. A background poll keeps the nav badge current
+  // and beeps when a seller sends a new message.
+  var _chatW = null, _chatTimer = null, _chatData = null, _chatSel = null, _chatMax = 0;
+  var _chatFilter = "all", _chatQ = "";
+  var _chatPushed = false;   // phone layout: opening a chat adds a history entry so Back closes it
+  window.addEventListener("popstate", function () { if (_chatPushed) { _chatPushed = false; closeThread(); } });
+  function phoneLayout() { return window.matchMedia("(max-width: 900px)").matches; }
+
+  function paintChatBadge(n) {
+    document.querySelectorAll('.adm-nav a[data-route="chat"], .adm-tab[data-route="chat"]').forEach(function (a) {
+      var b = a.querySelector(".adm-navbadge");
+      if (!b) { b = document.createElement("b"); b.className = "adm-navbadge"; a.appendChild(b); }
+      b.hidden = !(n > 0); b.textContent = n > 99 ? "99+" : String(n);
+    });
+  }
+  function onChatRoute() { return (location.hash || "").slice(1) === "chat"; }
+  async function loadChatList() {
+    var r = await api("chatList");
+    if (!r.ok) throw new Error(r.error || "Couldn't load conversations.");
+    // the conversation open on screen is being read right now
+    (r.conversations || []).forEach(function (c) {
+      if (onChatRoute() && String(c.seller.id) === _chatSel) { r.unread -= c.unread; c.unread = 0; }
+    });
+    _chatData = r;
+    paintChatBadge(Math.max(0, r.unread));
+    return r;
+  }
+  function startChatAlerts() {
+    if (!session || _chatTimer) return;
+    async function poll() {
+      if (!session || document.visibilityState !== "visible") return;
+      try {
+        var prevMax = _chatMax, r = await loadChatList();
+        _chatMax = Math.max(_chatMax, Number(r.maxSellerMsg) || 0);
+        if (prevMax && _chatMax > prevMax) {
+          (r.conversations || []).filter(function (c) {
+            return c.lastSender === "seller" && Number(c.lastId) > prevMax && !(onChatRoute() && String(c.seller.id) === _chatSel);
+          }).forEach(function (c) {
+            var who = c.seller.shopName || c.seller.name || "A seller";
+            _notes.unshift({ title: "💬 " + who, sub: c.lastText || "New message" }); _unread++; paintBell();
+            toast("New message from " + who); _beep();
+          });
+        }
+        if (onChatRoute() && $("ctiList")) renderChatList();
+      } catch (e) {}
+    }
+    poll();
+    _chatTimer = setInterval(poll, 12000);
+  }
+
+  function chatAva(s, cls) {
+    var img = String(s.shopImage || "").replace(/["'()\\]/g, "");
+    var initial = esc(((s.shopName || s.name || "?").trim().charAt(0) || "?").toUpperCase());
+    return img ? '<span class="' + cls + ' img" style="background-image:url(&quot;' + esc(img) + '&quot;)"></span>'
+               : '<span class="' + cls + '">' + initial + "</span>";
+  }
+  function renderChatList() {
+    var d = _chatData || { conversations: [], sellers: [] }, q = _chatQ.trim().toLowerCase();
+    var conv = {}; (d.conversations || []).forEach(function (c) { conv[String(c.seller.id)] = c; });
+    var match = function (s) { return !q || [s.shopName, s.name, s.email, s.phone, "#" + s.id].join(" ").toLowerCase().indexOf(q) > -1; };
+    var name = function (c) { return String(c.seller.shopName || c.seller.name || ""); };
+    var rows;
+    if (_chatFilter === "sellers") {
+      rows = (d.sellers || []).filter(match).map(function (s) { return conv[String(s.id)] || { seller: s, none: true, unread: 0 }; })
+        .sort(function (a, b) { return (Number(b.lastId) || 0) - (Number(a.lastId) || 0) || name(a).localeCompare(name(b)); });
+    } else {
+      rows = (d.conversations || []).filter(function (c) { return match(c.seller) && (_chatFilter !== "unread" || c.unread > 0); });
+    }
+    var cnt = $("ctiCount"), total = Math.max(0, d.unread || 0);
+    if (cnt) { cnt.hidden = !total; cnt.textContent = total; }
+    var list = $("ctiList"); if (!list) return;
+    if (!rows.length) {
+      var none = q ? "No sellers match “" + esc(_chatQ) + "”." :
+        _chatFilter === "unread" ? "You're all caught up — no unread messages." :
+        _chatFilter === "sellers" ? (role() === "staff" ? "No sellers have registered with your staff code yet." : "No sellers yet.") :
+        "No conversations yet. Open <b>All sellers</b> to message a seller.";
+      list.innerHTML = '<div class="cti-none">' + none + "</div>"; return;
+    }
+    list.innerHTML = rows.map(function (c) {
+      var s = c.seller, sid = String(s.id), on = sid === _chatSel, unread = on ? 0 : c.unread;
+      var tick = "";
+      if (!c.none && c.lastSender === "support")
+        tick = '<span class="ct-tk' + (c.lastStatus === "seen" ? " seen" : "") + '">' + (c.lastStatus === "sent" ? CHAT.TICK1 : CHAT.TICK2) + "</span>";
+      var prev = c.none ? '<span style="color:#9aa4b8">No messages yet · start a chat</span>' : tick + "<span>" + esc(c.lastText) + "</span>";
+      return '<button type="button" class="cti-item' + (on ? " on" : "") + (unread ? " unread" : "") + '" data-sid="' + esc(sid) + '">' +
+        chatAva(s, "cti-ava") +
+        '<span class="cti-mid"><span class="cti-row1"><span class="cti-name">' + esc(name(c) || "Seller #" + sid) + "</span>" +
+          (c.none ? "" : '<span class="cti-time" title="' + esc(CHAT.fullIST(c.lastAt)) + '">' + esc(CHAT.shortStamp(c.lastAt)) + "</span>") + "</span>" +
+        '<span class="cti-row2"><span class="cti-prev">' + prev + "</span>" +
+          (unread ? '<span class="cti-badge">' + (unread > 99 ? "99+" : unread) + "</span>" : "") + "</span></span>" +
+      "</button>";
+    }).join("");
+  }
+  function chatPick() {
+    return '<div class="cti-pick"><div class="ct-empty-ic">' + svg("chat", 34) + "</div><h4>Select a conversation</h4>" +
+      "<p>Choose a seller on the left to read and reply. Messages, screenshots and read receipts update live. All times are in IST.</p></div>";
+  }
+  function closeThread() {
+    if (_chatW) { _chatW.destroy(); _chatW = null; }
+    _chatSel = null;
+    var box = $("cti"); if (box) box.classList.remove("open");
+    var main = $("ctiMain"); if (main) main.innerHTML = chatPick();
+    renderChatList();
+  }
+  function openThread(sid) {
+    var d = _chatData || {}, s = (d.sellers || []).filter(function (x) { return String(x.id) === String(sid); })[0];
+    if (!s) return;
+    if (_chatW) { _chatW.destroy(); _chatW = null; }
+    _chatSel = String(s.id);
+    // reading it now → drop its unread count from the badges straight away
+    (d.conversations || []).forEach(function (c) {
+      if (String(c.seller.id) === _chatSel && c.unread) { d.unread = Math.max(0, (d.unread || 0) - c.unread); c.unread = 0; }
+    });
+    paintChatBadge(d.unread || 0);
+    $("cti").classList.add("open");
+    var main = $("ctiMain"); main.innerHTML = "";
+    var root = document.createElement("div"); main.appendChild(root);
+    var contact = [s.name, s.email || s.phone].filter(Boolean).join(" · ");
+    function call(op, payload) { payload.sellerId = s.id; return post({ action: "admin", token: session && session.token, op: op, payload: payload }); }
+    _chatW = CHAT.create({
+      root: root, me: "support", showAgent: true, myAdminId: session.admin && session.admin.id, chips: false,
+      their: { avatar: s.shopImage || "", initial: s.shopName || s.name || "S" },
+      header: { title: s.shopName || s.name || "Seller #" + s.id, avatar: s.shopImage || "",
+                subtitle: esc(contact ? contact + " · " : "") + "Seller #" + esc(s.id) +
+                  (s.shopStatus === "verified" ? ' · <span style="color:#12a150;font-weight:600">Verified</span>' : "") },
+      fetch: function (sinceId, mark) { return call("chatThread", { sinceId: sinceId, mark: mark }); },
+      send: function (m) { return call("chatSend", { text: m.text, images: m.images }); },
+      onAuth: function (msg) { logout(msg); },
+      onBack: function () { if (_chatPushed) history.back(); else closeThread(); }
+    });
+    if (phoneLayout() && !_chatPushed) { try { history.pushState({ chat: _chatSel }, "", location.href); _chatPushed = true; } catch (e) {} }
+    renderChatList();
+    setTimeout(function () { if (_chatW) _chatW.focus(); }, 60);
+  }
+
+  async function viewChat() {
+    var v = $("admView");
+    v.innerHTML =
+      '<div class="cti" id="cti">' +
+        '<aside class="cti-side">' +
+          '<div class="cti-top"><h3>Conversations <span class="cti-count" id="ctiCount" hidden></span></h3>' +
+            '<label class="cti-search">' + svg("search", 16) + '<input id="ctiQ" type="search" placeholder="Search shop, name, email, phone" autocomplete="off"></label>' +
+            '<div class="cti-tabs" id="ctiTabs">' +
+              [["all", "Chats"], ["unread", "Unread"], ["sellers", "All sellers"]].map(function (k) {
+                return '<button type="button" data-f="' + k[0] + '"' + (_chatFilter === k[0] ? ' class="on"' : "") + ">" + k[1] + "</button>";
+              }).join("") +
+            "</div></div>" +
+          '<div class="cti-list" id="ctiList"><div class="cti-none">Loading conversations…</div></div>' +
+        "</aside>" +
+        '<section class="cti-main" id="ctiMain">' + chatPick() + "</section>" +
+      "</div>";
+    $("ctiQ").value = _chatQ;
+    $("ctiQ").oninput = function () { _chatQ = this.value; renderChatList(); };
+    $("ctiTabs").onclick = function (e) {
+      var b = e.target.closest("[data-f]"); if (!b) return;
+      _chatFilter = b.getAttribute("data-f");
+      this.querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      renderChatList();
+    };
+    $("ctiList").onclick = function (e) { var b = e.target.closest("[data-sid]"); if (b) openThread(b.getAttribute("data-sid")); };
+    await loadChatList();
+    _chatMax = Math.max(_chatMax, Number(_chatData.maxSellerMsg) || 0);
+    renderChatList();
+    // coming back to the chat page re-opens the last conversation (desktop)
+    var keep = _chatSel; _chatSel = null;
+    if (keep && !phoneLayout()) openThread(keep);
+  }
 
   async function viewAdmins() {
     var res = await api("listAdmins");

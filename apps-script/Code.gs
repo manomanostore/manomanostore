@@ -11,6 +11,7 @@
      Categories  product categories (one cat_id per product)
      Products    the catalog
      Carts       cart lines (one row per product in a cart, with a quantity)
+     Messages    seller ↔ support chat (text, image links, sent/delivered/seen)
 
    Every tab uses a numeric `id` column: 1, 2, 3, ... New rows get the next
    number (max id + 1) under a script lock, so concurrent requests never clash.
@@ -70,6 +71,7 @@ var SHEETS = {
   sellerproducts: { name: "SellerProducts", headers: ["id","seller_id","product_id","name","price","profit","qty","status","createdAt","updatedAt"] },
   wallet:       { name: "Wallet",       headers: ["id","seller_id","guarantee","updatedAt"] },
   transactions: { name: "Transactions", headers: ["id","seller_id","type","method","amount","currency","account","voucher","status","note","createdAt","updatedAt"] },
+  messages:     { name: "Messages",     headers: ["id","seller_id","sender","admin_id","admin_name","text","images_json","status","createdAt","deliveredAt","seenAt"] },
   bank_accounts: { name: "bank_accounts", headers: ["id","seller_id","cash_on","bank_on","bank_name","bank_acc_name","bank_acc_no","ifsc","usdt_on","usdt_link","usdt_address","createdAt","updatedAt"],
                    textCols: ["bank_acc_no","ifsc"] }
 };
@@ -87,7 +89,8 @@ var PERMS = {
   deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
   listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
-  listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"]
+  listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
+  chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES
 };
 
 /* ----------------------------- HTTP handlers ----------------------------- */
@@ -122,6 +125,8 @@ function doPost(e) {
       case "sellerBankSave": return json(withLock(function () { return sellerBankSave(body); }));
       case "sellerDeposit":  return json(withLock(function () { return sellerDeposit(body); }));
       case "sellerWithdraw": return json(withLock(function () { return sellerWithdraw(body); }));
+      case "sellerChat":     return json(sellerChat(body));
+      case "sellerChatSend": return json(sellerChatSend(body));
       case "saveCart":      return json(withLock(function () { return saveCart(body); }));
       case "getCart":       return json({ ok: true, cart: getCartItems(String(body.cartId || "")) });
       case "createOrder":   return json(withLock(function () { return createOrder(body); }));
@@ -873,6 +878,173 @@ function writeRows(key, items) {
   sh.getRange(1, 1, rows.length, headers.length).setValues(rows);
 }
 
+/* ============================ Support chat =============================== */
+// One conversation per seller, between the seller and the support team (any
+// admin/manager, or the staff member whose invite code the seller used).
+// Messages tab: id | seller_id | sender ("seller"/"support") | admin_id |
+// admin_name | text | images_json | status | createdAt | deliveredAt | seenAt
+// status only moves forward: sent → delivered (the other side's app fetched
+// it) → seen (the other side opened the conversation) — the WhatsApp ticks.
+// Images are uploaded to Drive under  seller/images/<sellerId>/chat/.
+var CHAT_RANK = { sent: 1, delivered: 2, seen: 3 };
+var CHAT_MAX_IMAGES = 6;
+function chatRank(v) { return CHAT_RANK[String(v || "sent")] || 1; }
+
+function chatMsgPublic(r) {
+  return { id: Number(r.id) || r.id, sender: String(r.sender || ""), text: String(r.text || ""),
+           images: parseImages(r.images_json), status: String(r.status || "sent"),
+           adminId: r.admin_id === "" ? "" : (Number(r.admin_id) || r.admin_id), adminName: String(r.admin_name || ""),
+           createdAt: r.createdAt, seenAt: r.seenAt || "" };
+}
+
+// Move messages FROM `sender` up to `status` (never backwards). `sellers` is a
+// {sellerId: true} set, or null for every seller; only ids <= upToId change.
+// Rewrites just the status/time columns. Call inside withLock.
+function chatMark(sellers, sender, status, upToId) {
+  var sh = sheet("messages"), vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return 0;
+  var h = vals[0].map(function (x) { return String(x == null ? "" : x).trim(); });
+  var cId = h.indexOf("id"), cSel = h.indexOf("seller_id"), cFrom = h.indexOf("sender"), cSt = h.indexOf("status");
+  var cDel = h.indexOf("deliveredAt"), cSeen = h.indexOf("seenAt");
+  if (cId < 0 || cSel < 0 || cFrom < 0 || cSt < 0) return 0;
+  var now = new Date().toISOString(), want = chatRank(status), n = 0;
+  for (var i = 1; i < vals.length; i++) {
+    var r = vals[i];
+    if (r[cId] === "" || String(r[cFrom]) !== sender || Number(r[cId]) > upToId) continue;
+    if (sellers && !sellers[String(r[cSel])]) continue;
+    if (chatRank(r[cSt]) >= want) continue;
+    r[cSt] = status;
+    if (cDel > -1 && !r[cDel]) r[cDel] = now;
+    if (status === "seen" && cSeen > -1) r[cSeen] = now;
+    n++;
+  }
+  if (!n) return 0;
+  [cSt, cDel, cSeen].forEach(function (c) {
+    if (c > -1) sh.getRange(2, c + 1, vals.length - 1, 1).setValues(vals.slice(1).map(function (r) { return [r[c]]; }));
+  });
+  return n;
+}
+
+// One side reads its conversation with seller `sellerId`.
+//   viewer   "seller" | "support" — whose app is asking
+//   sinceId  only return messages newer than this (0 = the latest 300)
+//   mark     "seen" (conversation is open on screen) | "delivered" (background check)
+// Returns the new messages, how far the viewer's OWN messages got (for ticks)
+// and how many of the other side's messages the viewer hasn't seen.
+function chatFetch(sellerId, viewer, sinceId, mark) {
+  var other = viewer === "seller" ? "support" : "seller";
+  var rows = readRows("messages").filter(function (r) { return r.id !== "" && String(r.seller_id) === String(sellerId); });
+  var maxOther = 0, need = false, want = chatRank(mark);
+  rows.forEach(function (r) {
+    if (String(r.sender) !== other) return;
+    maxOther = Math.max(maxOther, Number(r.id) || 0);
+    if (mark && chatRank(r.status) < want) need = true;
+  });
+  if (need) {
+    var set = {}; set[String(sellerId)] = true;
+    var done = withLock(function () { return { ok: true, n: chatMark(set, other, mark, maxOther) }; });
+    if (done && done.ok) rows.forEach(function (r) {
+      if (String(r.sender) === other && Number(r.id) <= maxOther && chatRank(r.status) < want) r.status = mark;
+    });
+  }
+  var lastDelivered = 0, lastSeen = 0, unread = 0, lastId = 0;
+  rows.forEach(function (r) {
+    var id = Number(r.id) || 0, rk = chatRank(r.status);
+    lastId = Math.max(lastId, id);
+    if (String(r.sender) === viewer) {
+      if (rk >= 2) lastDelivered = Math.max(lastDelivered, id);
+      if (rk >= 3) lastSeen = Math.max(lastSeen, id);
+    } else if (rk < 3) unread++;
+  });
+  var since = Number(sinceId) || 0;
+  var out = rows.filter(function (r) { return (Number(r.id) || 0) > since; }).map(chatMsgPublic);
+  if (!since && out.length > 300) out = out.slice(-300);
+  return { messages: out, lastDelivered: lastDelivered, lastSeen: lastSeen, unread: unread, lastId: lastId };
+}
+
+// Save a new message. Images (base64 data URLs) are uploaded BEFORE taking the
+// script lock so a slow upload doesn't block everyone else's requests.
+function chatSendMsg(sellerId, sender, adminData, text, images) {
+  text = String(text == null ? "" : text).replace(/\r\n?/g, "\n").trim().slice(0, 4000);
+  images = (Array.isArray(images) ? images : []).filter(function (d) { return /^data:image\//.test(String(d || "")); }).slice(0, CHAT_MAX_IMAGES);
+  if (!text && !images.length) return { ok: false, error: "Type a message or add an image." };
+  var urls = [];
+  if (images.length) {
+    var folder = driveChild(driveChild(driveImagesFolder("seller"), String(sellerId)), "chat");
+    images.forEach(function (d, i) { var u = uploadImageTo(d, "chat-" + sellerId + "-" + i, folder, 1600); if (u) urls.push(u); });
+    if (!urls.length && !text) return { ok: false, error: "Couldn't upload the image. Please try again." };
+  }
+  return withLock(function () {
+    ensureColumns("messages", SHEETS.messages.headers);
+    var now = new Date().toISOString();
+    var rec = { id: nextId(sheet("messages")), seller_id: sellerId, sender: sender,
+      admin_id: adminData ? adminData[A.id] : "", admin_name: adminData ? String(adminData[A.name] || adminData[A.user] || "") : "",
+      text: text, images_json: urls.length ? JSON.stringify(urls) : "", status: "sent", createdAt: now, deliveredAt: "", seenAt: "" };
+    appendNamed("messages", rec);
+    return { ok: true, message: chatMsgPublic(rec) };
+  });
+}
+
+// ---- seller side ----
+function sellerChat(b) {
+  try {
+    var me = requireSeller(b.token);
+    var r = chatFetch(me.id, "seller", b.sinceId, b.mark === "seen" ? "seen" : "delivered");
+    r.ok = true; return r;
+  } catch (err) { return authErr(err); }
+}
+function sellerChatSend(b) {
+  try {
+    var me = requireSeller(b.token);
+    return chatSendMsg(me.id, "seller", null, b.text, b.images);
+  } catch (err) { return authErr(err); }
+}
+
+// ---- admin side (scoped like the wallet: staff only see their own sellers) ----
+// The inbox: one row per seller that has messages, newest first, with unread
+// counts. Fetching the inbox marks sellers' messages as "delivered".
+function adminChatList(meData) {
+  var sc = walletScope(meData);
+  var rows = readRows("messages").filter(function (r) { return r.id !== "" && sc.allowed[String(r.seller_id)]; });
+  if (rows.some(function (r) { return String(r.sender) === "seller" && chatRank(r.status) < 2; })) {
+    withLock(function () { chatMark(sc.allowed, "seller", "delivered", Infinity); return { ok: true }; });
+  }
+  var by = {};
+  rows.forEach(function (r) {
+    var k = String(r.seller_id), c = by[k] || (by[k] = { last: null, unread: 0 });
+    if (!c.last || (Number(r.id) || 0) > (Number(c.last.id) || 0)) c.last = r;
+    if (String(r.sender) === "seller" && chatRank(r.status) < 3) c.unread++;
+  });
+  var sellers = sc.sellers.map(function (s) {
+    return { id: Number(s.id) || s.id, shopName: String(s.shopName || ""), name: String(s.name || ""),
+             email: String(s.email || ""), phone: String(s.phone || ""), shopImage: String(s.shopImageURL || ""), shopStatus: s.shopStatus };
+  });
+  var conversations = sellers.filter(function (s) { return by[String(s.id)]; }).map(function (s) {
+    var c = by[String(s.id)], m = chatMsgPublic(c.last);
+    return { seller: s, unread: c.unread, lastId: m.id, lastAt: m.createdAt, lastSender: m.sender, lastStatus: m.status,
+             lastText: m.text || (m.images.length ? "📷 Photo" + (m.images.length > 1 ? " ×" + m.images.length : "") : "") };
+  }).sort(function (a, b) { return (Number(b.lastId) || 0) - (Number(a.lastId) || 0); });
+  var unread = conversations.reduce(function (n, c) { return n + c.unread; }, 0);
+  var maxSellerMsg = rows.reduce(function (m, r) { return String(r.sender) === "seller" ? Math.max(m, Number(r.id) || 0) : m; }, 0);
+  return { conversations: conversations, sellers: sellers, unread: unread, maxSellerMsg: maxSellerMsg };
+}
+function adminChatAllowed(sid, meData) {
+  var deny = ownsSellerCheck(sid, meData);
+  if (deny) return deny;
+  if (!readRows("sellers").some(function (r) { return String(r.id) === String(sid); })) return { ok: false, error: "Seller not found." };
+  return "";
+}
+function adminChatThread(p, meData) {
+  var sid = p.sellerId, deny = adminChatAllowed(sid, meData);
+  if (deny) return deny;
+  return chatFetch(sid, "support", p.sinceId, p.mark === "delivered" ? "delivered" : "seen");
+}
+function adminChatSend(p, meData) {
+  var sid = p.sellerId, deny = adminChatAllowed(sid, meData);
+  if (deny) return deny;
+  return chatSendMsg(sid, "support", meData, p.text, p.images);
+}
+
 /* ================================ Admin ================================== */
 
 // Admin login: username + password (hashed in the browser, salt "admin:<username>").
@@ -1028,6 +1200,9 @@ function adminCall(b) {
       addTx:           function () { return withLock(function () { return adminAddDeposit(p, me.data); }); },
       updateTx:        function () { return withLock(function () { return adminUpdateTx(p); }); },
       setGuarantee:    function () { return withLock(function () { return adminSetGuarantee(p, me.data); }); },
+      chatList:        function () { return adminChatList(me.data); },
+      chatThread:      function () { return adminChatThread(p, me.data); },
+      chatSend:        function () { return adminChatSend(p, me.data); },
       importCatalog:   function () { return withLock(function () {
                            if (readRows("products").length && !p.overwrite) return { ok: false, error: "The Products tab already has data." };
                            var r = importCatalog(p.data || {}); return { ok: true, imported: r }; }); }
