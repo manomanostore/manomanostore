@@ -19,7 +19,7 @@ body.admin-body{display:block;min-height:100vh;background:#f2f4f8}
 
 /* layout */
 .adm{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
-.adm-side{position:sticky;top:0;height:100vh;background:var(--navy);color:#cdd6e6;display:flex;flex-direction:column;padding:18px 12px;z-index:40}
+.adm-side{position:sticky;top:0;height:100vh;height:100dvh;background:var(--navy);color:#cdd6e6;display:flex;flex-direction:column;padding:18px 12px;z-index:40}
 .adm-side .adm-brand{color:#fff;padding:4px 10px 18px}
 .adm-nav{display:flex;flex-direction:column;gap:2px;flex:1}
 .adm-nav a,.adm-side-foot a,.adm-side-foot button{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;font-weight:600;font-size:14px;color:#cdd6e6;width:100%;text-align:left}
@@ -204,7 +204,8 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
   .adm-tab:active{background:#eef1f7}
   /* hide the bottom bar while the menu drawer is open, so its Log out footer shows */
   body.adm-nav-open .adm-tabbar{display:none}
-  .adm-side{overflow-y:auto}
+  /* fit the drawer to the visible screen (100vh overflows under mobile browser bars, hiding Log out) */
+  .adm-side{overflow-y:auto;height:auto;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
 }
 @media (max-width:640px){
   .adm-kpis{grid-template-columns:repeat(2,1fr);gap:10px}
