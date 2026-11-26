@@ -58,14 +58,16 @@ window.ADMIN = (function () {
   function $(id) { return document.getElementById(id); }
 
   /* ------------------------------- session -------------------------------- */
+  // Kept in localStorage so closing the tab/browser doesn't sign the admin out;
+  // the session ends only when they click "Log out".
   function loadSession() {
     try {
-      var s = JSON.parse(sessionStorage.getItem(SKEY));
+      var s = JSON.parse(localStorage.getItem(SKEY));
       if (s && s.token && new Date(s.expires) > new Date()) return s;
     } catch (e) {}
-    sessionStorage.removeItem(SKEY); return null;
+    localStorage.removeItem(SKEY); return null;
   }
-  function logout(msg) { sessionStorage.removeItem(SKEY); session = null; catalog = null; if (_txTimer) { clearInterval(_txTimer); _txTimer = null; } renderLogin(msg); }
+  function logout(msg) { localStorage.removeItem(SKEY); session = null; catalog = null; if (_txTimer) { clearInterval(_txTimer); _txTimer = null; } renderLogin(msg); }
 
   async function post(body) {
     try {
@@ -119,7 +121,7 @@ window.ADMIN = (function () {
       btn.disabled = false; btn.textContent = "Sign in";
       if (!res.ok) { $("admLoginMsg").innerHTML = '<div class="msg err">'+esc(res.error || "Sign in failed.")+'</div>'; return; }
       session = { token: res.token, expires: res.expires, admin: res.admin };
-      sessionStorage.setItem(SKEY, JSON.stringify(session));
+      localStorage.setItem(SKEY, JSON.stringify(session));
       renderShell();
     });
   }

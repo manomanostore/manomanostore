@@ -42,8 +42,10 @@ var ADMIN_PASSWORD = "";
 // Must match PEPPER in js/auth.js — passwords are hashed the same way in both.
 var PASSWORD_PEPPER = "toolnest.v1";
 
-var ADMIN_TOKEN_HOURS = 12;
-var SELLER_TOKEN_HOURS = 24 * 14;   // how long a seller stays signed in
+// No automatic logout: sign-ins last until the person clicks "Log out"
+// (10 years is effectively forever, but keeps the expiry column a real date).
+var ADMIN_TOKEN_HOURS = 24 * 365 * 10;
+var SELLER_TOKEN_HOURS = 24 * 365 * 10;
 
 // TRC20 USDT address sellers send offline wallet deposits to (shown on the
 // recharge screen). Change this to your own address.
