@@ -562,50 +562,14 @@
     return null;
   }
 
-  /* ---- Real-time alerts: when the admin approves/rejects the seller's own
-     deposit or withdrawal, play a loud voice + toast. ---- */
-  var _sAudio = null, _sTxSeen = null, _sTxTimer = null;
-  function _sBeep() {
-    try {
-      _sAudio = _sAudio || new (window.AudioContext || window.webkitAudioContext)();
-      if (_sAudio.state === "suspended") _sAudio.resume();
-      [0, 0.18].forEach(function (t) {
-        var o = _sAudio.createOscillator(), g = _sAudio.createGain();
-        o.type = "sine"; o.frequency.value = 940; g.gain.value = 0.9;
-        o.connect(g); g.connect(_sAudio.destination);
-        o.start(_sAudio.currentTime + t); o.stop(_sAudio.currentTime + t + 0.15);
-      });
-    } catch (e) {}
-  }
-  function sSpeak(text) {
-    _sBeep();
-    try {
-      if (!("speechSynthesis" in window)) return;
-      var u = new SpeechSynthesisUtterance(text); u.volume = 1; u.rate = 1; u.pitch = 1;
-      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
-    } catch (e) {}
-  }
-  (function () {
-    function prime() { try { _sBeep(); window.speechSynthesis && window.speechSynthesis.resume && window.speechSynthesis.resume(); } catch (e) {} document.removeEventListener("pointerdown", prime); }
-    document.addEventListener("pointerdown", prime, { once: true });
-  })();
-  function sTxLabel(t) { return t.type === "withdraw" ? "withdrawal" : t.type === "guarantee" ? "guarantee" : "deposit"; }
+  /* ---- Silent background wallet refresh. The seller panel shows the bell icon
+     only — NO sound, voice or toast alerts (per request). This just keeps the
+     balances/history current when an admin approves/rejects. ---- */
+  var _sTxTimer = null;
   async function pollSellerTx() {
     if (!session.token) return;
     var j = await fetchWallet(false);
-    if (!j || !j.transactions) return;
-    var map = {}; j.transactions.forEach(function (t) { map[String(t.id)] = t.status; });
-    if (_sTxSeen === null) { _sTxSeen = map; return; }   // first run: baseline silently
-    j.transactions.forEach(function (t) {
-      var prev = _sTxSeen[String(t.id)];
-      if (prev !== undefined && prev !== t.status && (t.status === "approved" || t.status === "rejected")) {
-        var amt = (t.currency || "") + Number(t.amount).toFixed(2);
-        sSpeak("Your " + sTxLabel(t) + " of " + amt + " was " + t.status + ".");
-        (t.status === "approved" ? ok : toast)("Your " + sTxLabel(t) + " " + amt + " was " + t.status + ".");
-      }
-    });
-    _sTxSeen = map;
-    if (!$("viewWallet").hidden) renderWallet();
+    if (j && j.transactions && !$("viewWallet").hidden) renderWallet();
   }
 
   function renderWallet() {
@@ -828,7 +792,7 @@
     if ($("wlRecharge")) $("wlRecharge").addEventListener("click", function () { openRecharge("deposit"); });
     // Guarantee Recharge: kept for layout only (guarantee money is set by staff) — no action.
     fetchWallet();   // populate Guarantee Money, Total Products and Wallet Balance cards
-    pollSellerTx();  // baseline, then poll for admin approvals/rejections
+    pollSellerTx();  // silent background refresh (no sound/voice alerts)
     _sTxTimer = setInterval(pollSellerTx, 20000);
 
     // Lock page scroll whenever a modal is open (background stays non-interactive).
