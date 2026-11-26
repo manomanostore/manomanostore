@@ -67,11 +67,12 @@ window.HOME = (function () {
         '<div class="cl">'+UI.esc(c.name)+'</div></a>';
     }).join("");
 
-    // brands
-    var brands = unique(all.map(function (p) { return p.brand; })).filter(function (b) { return b && b.indexOf("Choice") < 0; });
-    document.getElementById("brands").innerHTML = brands.map(function (b) {
-      return '<div class="bchip">'+UI.esc(b)+'</div>';
-    }).join("");
+    // brands section removed from the homepage
+    var brandsEl = document.getElementById("brands");
+    if (brandsEl) {
+      var brands = unique(all.map(function (p) { return p.brand; })).filter(function (b) { return b && b.indexOf("Choice") < 0; });
+      brandsEl.innerHTML = brands.map(function (b) { return '<div class="bchip">'+UI.esc(b)+'</div>'; }).join("");
+    }
 
     // feature icons
     var fi = { f1: UI.icons.tag, f2: UI.icons.truck, f3: UI.icons.card, f4: UI.icons.shield };
