@@ -6,7 +6,7 @@
 <title>Dashboard — ManoMano Seller</title>
 <meta name="theme-color" content="#2f6df6">
 <link rel="icon" href="images/logo-64.png" type="image/png">
-<link rel="stylesheet" href="css/chat.css">
+<link rel="stylesheet" href="css/chat.css?v=20261127b">
 <style>
   :root{
     --blue:#2f6df6; --blue-d:#1e5fe0; --ink:#17203a; --muted:#8792a6;
@@ -47,6 +47,23 @@
   .sd-nav .sd-pill{margin-left:auto;background:var(--no);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
   .sd-nav .sd-dot{margin-left:auto;width:8px;height:8px;border-radius:999px;background:var(--no)}
   .sd-nav .sd-pill[hidden]{display:none}
+  /* Orders list (orders placed for this shop) */
+  #ordGrid{display:flex;flex-direction:column}
+  .sd-ocard{display:flex;align-items:center;gap:14px;padding:14px 4px;border-top:1px solid var(--line)}
+  .sd-ocard:first-child{border-top:0}
+  .sd-oimg{flex:0 0 auto;width:56px;height:56px;border-radius:12px;background:#f1f4fa;overflow:hidden}
+  .sd-oimg img{width:100%;height:100%;object-fit:cover;display:block}
+  .sd-omain{flex:1;min-width:0}
+  .sd-otop{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+  .sd-otop b{font-size:14px}
+  .sd-ost{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef3ff;color:#2f6df6}
+  .sd-ost.st-processing{background:#fff4e3;color:#b26a00}.sd-ost.st-shipped{background:#efe9ff;color:#6d3fd8}
+  .sd-ost.st-delivered{background:#e7f7ee;color:#12a150}.sd-ost.st-cancelled{background:#fdecee;color:#e23b4e}
+  .sd-oname{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sd-oname em{font-style:normal;color:var(--muted);font-weight:600}
+  .sd-osub{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sd-oamt{flex:0 0 auto;text-align:right;font-weight:800;font-size:15px}
+  .sd-oamt small{display:block;font-size:11.5px;font-weight:700;color:var(--ok);margin-top:2px}
   /* Support chat view: fills the screen under the top bar */
   .sd-chatwrap{height:calc(100vh - 116px);height:calc(100dvh - 116px);min-height:440px;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);background:#fff}
   /* Phones/tablets: the chat opens full-screen like an app (js/chat.js then
@@ -771,11 +788,11 @@
 
 <div class="sd-toast" id="sdToast"></div>
 
-<script src="js/config.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/login.js"></script>
-<script src="js/chat.js"></script>
-<script src="js/seller-dashboard.js"></script>
+<script src="js/config.js?v=20261127b"></script>
+<script src="js/ui.js?v=20261127b"></script>
+<script src="js/auth.js?v=20261127b"></script>
+<script src="js/login.js?v=20261127b"></script>
+<script src="js/chat.js?v=20261127b"></script>
+<script src="js/seller-dashboard.js?v=20261127b"></script>
 </body>
 </html>

@@ -399,26 +399,115 @@ window.ADMIN = (function () {
   }
 
   /* -------------------------------- orders -------------------------------- */
-  var orderFilter = "";
+  var orderFilter = "", orderSeller = "";
   async function viewOrders() {
     var res = await api("listOrders");
     if (!res.ok) throw new Error(res.error);
-    var all = res.orders || [];
+    var all = res.orders || [], sellers = res.sellers || [];
+    if (orderSeller && !sellers.some(function (s) { return String(s.id) === orderSeller; })) orderSeller = "";
+    var sellerName = function (s) { return s.shopName || s.name || ("Seller #" + s.id); };
+    function scoped() { return orderSeller ? all.filter(function (o) { return String(o.sellerId) === orderSeller; }) : all; }
     function draw() {
-      var list = orderFilter ? all.filter(function (o) { return o.status === orderFilter; }) : all;
-      $("ordersBox").innerHTML = list.length ? ordersTable(list, true) : empty("No orders", orderFilter ? "No orders with this status." : "Orders placed on the shop appear here.");
+      var base = scoped(), list = orderFilter ? base.filter(function (o) { return o.status === orderFilter; }) : base;
+      $("ordStatus").innerHTML = '<option value="">All statuses ('+base.length+')</option>'+
+        STATUSES.map(function (st) { var n = base.filter(function (o) { return o.status === st; }).length;
+          return '<option value="'+st+'"'+(orderFilter === st ? " selected" : "")+'>'+cap(st)+' ('+n+')</option>'; }).join("");
+      $("ordersHead").innerHTML = orderSeller ? "<h3>Orders for "+esc(sellerName(sellers.filter(function (s) { return String(s.id) === orderSeller; })[0] || {}))+"</h3>" : "";
+      $("ordersBox").innerHTML = list.length ? ordersTable(list, true) : empty("No orders",
+        orderFilter ? "No orders with this status." : orderSeller ? "No orders for this seller yet. Pick a product above to place one." : "Orders placed on the shop appear here.");
     }
     $("admView").innerHTML =
       '<div class="adm-toolbar">'+
-        '<select id="ordStatus" aria-label="Filter by status"><option value="">All statuses ('+all.length+')</option>'+
-          STATUSES.map(function (st) { var n = all.filter(function (o) { return o.status === st; }).length;
-            return '<option value="'+st+'"'+(orderFilter === st ? " selected" : "")+'>'+cap(st)+' ('+n+')</option>'; }).join("")+'</select>'+
+        '<label class="adm-seller-pick">'+svg("store", 18)+
+          '<select id="ordSeller" aria-label="Seller to create an order for"><option value="">'+
+            (sellers.length ? "Create order for seller…" : "No sellers available")+'</option>'+
+          sellers.map(function (s) { return '<option value="'+esc(s.id)+'"'+(String(s.id) === orderSeller ? " selected" : "")+'>'+esc(sellerName(s))+(s.status === "pending" ? " (pending)" : "")+'</option>'; }).join("")+
+        '</select></label>'+
+        '<select id="ordStatus" aria-label="Filter by status"></select>'+
         '<button class="btn btn-ghost adm-btn" type="button" id="ordRefresh">'+svg("refresh")+' Refresh</button>'+
       '</div>'+
+      '<section id="ordShop"></section>'+
+      '<div class="adm-sechead" id="ordersHead"></div>'+
       '<section class="adm-card adm-flush" id="ordersBox"></section>';
     draw();
+    loadShop();
+    $("ordSeller").onchange = function () { orderSeller = this.value; orderFilter = ""; draw(); loadShop(); };
     $("ordStatus").onchange = function () { orderFilter = this.value; draw(); };
     $("ordRefresh").onclick = function () { route(); };
+
+    // The selected seller's products: tap one to place an order on their behalf.
+    var shopItems = [];
+    async function loadShop() {
+      var box = $("ordShop"); if (!box) return;
+      if (!orderSeller) { box.innerHTML = ""; return; }
+      var sid = orderSeller, s = sellers.filter(function (x) { return String(x.id) === sid; })[0] || {};
+      box.innerHTML = '<div class="adm-card adm-shop"><div class="adm-shop-head"><h3>'+esc(sellerName(s))+' — products</h3><span class="adm-cell-sub">Loading…</span></div>'+
+        '<div class="adm-pgrid">'+[1, 2, 3, 4].map(function () { return '<div class="adm-pcard sk"><div class="adm-pimg"></div><div class="adm-pbody"><i></i><i></i></div></div>'; }).join("")+'</div></div>';
+      var r = await api("sellerShop", { sellerId: sid });
+      if (sid !== orderSeller || !$("ordShop")) return;     // switched seller meanwhile
+      if (!r.ok) { box.innerHTML = '<div class="msg err">'+esc(r.error || "Couldn't load products.")+'</div>'; return; }
+      shopItems = (r.products || []).filter(function (p) { return p.status !== "hidden"; });
+      box.innerHTML = '<div class="adm-card adm-shop">'+
+        '<div class="adm-shop-head"><h3>'+esc(sellerName(s))+' — products</h3><span class="adm-cell-sub">'+
+          (shopItems.length ? shopItems.length + " product" + (shopItems.length === 1 ? "" : "s") + " · tap one to create an order" : "")+'</span></div>'+
+        (shopItems.length
+          ? '<div class="adm-pgrid">'+shopItems.map(function (p) {
+              return '<button type="button" class="adm-pcard" data-sp="'+esc(p.id)+'">'+
+                '<div class="adm-pimg">'+(p.imageUrl ? '<img src="'+esc(p.imageUrl)+'" alt="" loading="lazy">' : svg("box", 30))+'</div>'+
+                '<div class="adm-pbody"><div class="adm-pname">'+esc(p.name)+'</div>'+
+                  '<div class="adm-pmeta"><strong>'+money(p.price)+'</strong><span>In shop: '+esc(p.qty)+'</span></div>'+
+                  '<span class="adm-pcta">'+svg("plus", 15)+' Create order</span></div>'+
+              '</button>';
+            }).join("")+'</div>'
+          : '<div class="adm-empty" style="padding:26px"><h3>No products</h3><p>This seller hasn\'t added any products to their shop yet.</p></div>')+
+      '</div>';
+      box.querySelector(".adm-shop").onclick = function (e) {
+        var b = e.target.closest("[data-sp]"); if (!b) return;
+        var p = shopItems.filter(function (x) { return String(x.id) === b.dataset.sp; })[0];
+        if (p) orderForm(s, p);
+      };
+    }
+
+    // Create-order popup: customer name + quantity (phone, address, note optional).
+    function orderForm(s, p) {
+      modal("Create order",
+        '<div class="adm-oprod">'+
+          '<div class="adm-pimg sm">'+(p.imageUrl ? '<img src="'+esc(p.imageUrl)+'" alt="">' : svg("box", 22))+'</div>'+
+          '<div><div class="adm-cell-main">'+esc(p.name)+'</div><div class="adm-cell-sub">'+money(p.price)+' each · Seller: '+esc(sellerName(s))+'</div></div>'+
+        '</div>'+
+        f("oName", "Customer name *", '<input id="oName" type="text" maxlength="100" required autocomplete="off" placeholder="e.g. Rahul Sharma">')+
+        '<div class="field"><label for="oQty">Quantity *</label><div class="adm-qty">'+
+          '<button type="button" data-q="-1" aria-label="Less">−</button><input id="oQty" type="number" min="1" max="9999" step="1" value="1" inputmode="numeric" required>'+
+          '<button type="button" data-q="1" aria-label="More">+</button></div></div>'+
+        '<div class="adm-form-cols">'+
+          f("oPhone", "Phone <span class=\"adm-opt\">optional</span>", '<input id="oPhone" type="tel" maxlength="30" autocomplete="off">')+
+          f("oNote", "Note <span class=\"adm-opt\">optional</span>", '<input id="oNote" type="text" maxlength="500" autocomplete="off">')+
+        '</div>'+
+        f("oAddr", "Delivery address <span class=\"adm-opt\">optional</span>", '<textarea id="oAddr" rows="2" maxlength="500"></textarea>')+
+        '<div class="adm-ototal"><span id="oCalc"></span><strong id="oTotal"></strong></div>',
+        async function () {
+          var name = $("oName").value.trim(), qty = Math.floor(Number($("oQty").value) || 0);
+          if (!name) { $("oName").focus(); return "Enter the customer's name."; }
+          if (qty < 1 || qty > 9999) { $("oQty").focus(); return "Enter a quantity between 1 and 9999."; }
+          var r = await api("placeOrder", { sellerId: s.id, sellerProductId: p.id, qty: qty, customerName: name,
+            customerPhone: $("oPhone").value.trim(), address: $("oAddr").value.trim(), note: $("oNote").value.trim() });
+          if (!r.ok) return r.error;
+          toast("Order #" + r.orderId + " placed for " + name + " · " + money(r.total));
+          route();
+        }, { saveLabel: "Place order", busyLabel: "Placing order…" });
+      function calc() {
+        var q = Math.max(0, Math.floor(Number($("oQty").value) || 0));
+        $("oCalc").textContent = q + " × " + money(p.price);
+        $("oTotal").textContent = money(q * p.price);
+      }
+      $("oQty").oninput = calc;
+      document.querySelector(".adm-qty").onclick = function (e) {
+        var b = e.target.closest("[data-q]"); if (!b) return;
+        $("oQty").value = Math.min(9999, Math.max(1, (Math.floor(Number($("oQty").value) || 0)) + Number(b.dataset.q))); calc();
+      };
+      calc(); $("oName").focus();
+    }
+
     $("ordersBox").addEventListener("change", async function (e) {
       var sel = e.target.closest("select[data-order]"); if (!sel) return;
       sel.disabled = true;
@@ -435,7 +524,7 @@ window.ADMIN = (function () {
     });
   }
   function ordersTable(list, editable) {
-    return '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th></tr></thead><tbody>'+
+    return '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Order</th><th>Customer</th><th>Seller</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th></tr></thead><tbody>'+
       list.map(function (o) {
         var items = Array.isArray(o.items) ? o.items : [];
         var count = items.reduce(function (n, it) { return n + (Number(it.qty) || 1); }, 0);
@@ -443,12 +532,19 @@ window.ADMIN = (function () {
           ? '<select class="adm-status-sel '+esc(o.status)+'" data-order="'+esc(o.id)+'" aria-label="Status of order '+esc(o.id)+'">'+
               STATUSES.map(function (st) { return '<option value="'+st+'"'+(o.status === st ? " selected" : "")+'>'+cap(st)+'</option>'; }).join("")+'</select>'
           : pill(o.status);
+        var sub = [o.customerPhone || (o.customerName ? "" : o.identifier)].filter(Boolean).join(" · ");
+        var details = [];
+        if (o.address) details.push('<li class="adm-odet"><span>Address</span><b>'+esc(o.address)+'</b></li>');
+        if (o.note) details.push('<li class="adm-odet"><span>Note</span><b>'+esc(o.note)+'</b></li>');
+        if (o.createdBy) details.push('<li class="adm-odet"><span>Placed by</span><b>'+esc(o.createdBy)+' (staff)</b></li>');
         return '<tr><td><strong>#'+esc(o.id)+'</strong></td>'+
-          '<td><div class="adm-cell-main">'+esc(o.customer || "Guest")+'</div><div class="adm-cell-sub">'+esc(o.identifier)+'</div></td>'+
+          '<td><div class="adm-cell-main">'+esc(o.customer || "Guest")+(o.createdBy ? ' <span class="adm-tag">VIP</span>' : "")+'</div>'+(sub ? '<div class="adm-cell-sub">'+esc(sub)+'</div>' : "")+'</td>'+
+          '<td>'+(o.sellerName ? esc(o.sellerName) : '<span class="adm-cell-sub">—</span>')+'</td>'+
           '<td>'+(editable && items.length ? '<button type="button" class="adm-link" data-items="'+esc(o.id)+'">'+count+' item'+(count === 1 ? "" : "s")+'</button>' : count)+'</td>'+
           '<td><strong>'+money(o.total)+'</strong></td><td>'+fmtDate(o.createdAt)+'</td><td>'+status+'</td></tr>'+
-          (editable && items.length ? '<tr class="adm-subrow" id="items-'+esc(o.id)+'" hidden><td colspan="6"><ul class="adm-items">'+
+          (editable && items.length ? '<tr class="adm-subrow" id="items-'+esc(o.id)+'" hidden><td colspan="7"><ul class="adm-items">'+
             items.map(function (it) { return '<li><span>'+esc(it.name)+' <em>× '+esc(it.qty || 1)+'</em></span><b>'+money((it.price || 0) * (it.qty || 1))+'</b></li>'; }).join("")+
+            details.join("")+
           '</ul></td></tr>' : '');
       }).join("")+'</tbody></table></div>';
   }
@@ -1381,8 +1477,8 @@ window.ADMIN = (function () {
       '<div class="adm-modal-body"><div id="mMsg"></div>'+body+'</div>'+
       '<div class="adm-modal-foot">'+(opts.readOnly
         ? '<button type="button" class="btn btn-primary" data-close>Close</button>'
-        : '<button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary" id="mSave">Save</button>')+'</div>'+
-      '<div class="adm-busy" aria-hidden="true"><span class="spinner lg"></span><span class="adm-busy-txt">Saving…</span></div>'+
+        : '<button type="button" class="btn btn-ghost" data-close>Cancel</button><button type="submit" class="btn btn-primary" id="mSave">'+esc(opts.saveLabel || "Save")+'</button>')+'</div>'+
+      '<div class="adm-busy" aria-hidden="true"><span class="spinner lg"></span><span class="adm-busy-txt">'+esc(opts.busyLabel || "Saving…")+'</span></div>'+
     '</form>';
     document.body.appendChild(wrap);
     document.documentElement.classList.add("no-scroll");
@@ -1398,7 +1494,7 @@ window.ADMIN = (function () {
       if (!onSave) { close(); return; }
       var save = $("mSave");
       save.disabled = true;
-      save.innerHTML = '<span class="spinner sm"></span> Saving…';
+      save.innerHTML = '<span class="spinner sm"></span> ' + esc(opts.busyLabel || "Saving…");
       // Lock the dialog and show a processing overlay (the save may upload an
       // image to Drive, which takes a moment) so it never looks frozen.
       form.classList.add("busy");
@@ -1406,7 +1502,7 @@ window.ADMIN = (function () {
       var err;
       try { err = await onSave(); } catch (x) { err = x.message; }
       if (err) {
-        save.disabled = false; save.textContent = "Save";
+        save.disabled = false; save.textContent = opts.saveLabel || "Save";
         form.classList.remove("busy");
         wrap.querySelectorAll("[data-close]").forEach(function (b) { b.disabled = false; });
         $("mMsg").innerHTML = '<div class="msg err" role="alert">'+esc(err)+'</div>';

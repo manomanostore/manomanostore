@@ -693,10 +693,55 @@
     });
   }
 
-  // Customer orders (not wired to sellers yet → empty for now).
+  /* ------------------------------- Orders -------------------------------- */
+  // Orders placed for this seller's shop (e.g. by staff for VIP customers).
+  // Fills the Orders view, the "Total Orders" card, the "This month" counters
+  // and the sidebar badge (new = still "received").
+  var orders = { list: null, busy: null };
+  function fetchOrders() {
+    if (orders.busy) return orders.busy;
+    if (!session.token || !CONFIG.API_URL) return Promise.resolve(null);
+    orders.busy = chatPost({ action: "sellerOrders" }).then(function (j) {
+      orders.busy = null;
+      if (j && j.ok) { orders.list = j.orders || []; paintOrderStats(); }
+      else if (j && j.auth) reloginSoon();
+      return orders.list;
+    }, function () { orders.busy = null; return orders.list; });
+    return orders.busy;
+  }
+  function paintOrderStats() {
+    var list = orders.list || [], now = new Date();
+    var month = list.filter(function (o) { var d = new Date(o.createdAt); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); });
+    var count = function (arr, sts) { return arr.filter(function (o) { return sts.indexOf(o.status) > -1; }).length; };
+    if ($("sdCardOrders")) $("sdCardOrders").textContent = list.length;
+    var v = document.querySelectorAll(".sd-ord-row .sd-ord-v");
+    if (v.length === 3) { v[0].textContent = count(month, ["received"]); v[1].textContent = count(month, ["cancelled"]); v[2].textContent = count(month, ["processing", "shipped"]); }
+    var pill = document.querySelector('.sd-nav a[data-view="orders"] .sd-pill'), fresh = count(list, ["received"]);
+    if (pill) { pill.textContent = fresh; pill.hidden = !fresh; }
+  }
+  function renderOrders() {
+    var grid = $("ordGrid"), e = $("ordEmpty"), list = orders.list || [];
+    if (!list.length) { grid.innerHTML = ""; e.hidden = false; e.textContent = T("sd.noorders"); return; }
+    e.hidden = true;
+    grid.innerHTML = list.map(function (o) {
+      var it = (o.items && o.items[0]) || {}, more = (o.items || []).length - 1;
+      var qty = (o.items || []).reduce(function (n, x) { return n + (Number(x.qty) || 1); }, 0);
+      var profit = (o.items || []).reduce(function (n, x) { return n + (Number(x.profit) || 0) * (Number(x.qty) || 1); }, 0);
+      return '<div class="sd-ocard">' +
+        '<div class="sd-oimg">' + (it.imageUrl ? '<img src="' + esc(it.imageUrl) + '" alt="" loading="lazy">' : "") + "</div>" +
+        '<div class="sd-omain">' +
+          '<div class="sd-otop"><b>#' + esc(o.id) + '</b><span class="sd-ost st-' + esc(o.status) + '">' + esc(T("sd.st." + o.status)) + "</span></div>" +
+          '<div class="sd-oname">' + esc(it.name || "") + (more > 0 ? " +" + more : "") + ' <em>× ' + qty + "</em></div>" +
+          '<div class="sd-osub">' + (o.customerName ? esc(T("sd.customer")) + ": " + esc(o.customerName) + " · " : "") + esc(fmtDate(o.createdAt)) + "</div>" +
+        "</div>" +
+        '<div class="sd-oamt">' + money(o.total) + (profit ? "<small>" + esc(T("sd.profit")) + " " + money(profit) + "</small>" : "") + "</div>" +
+      "</div>";
+    }).join("");
+  }
   function ensureOrders() {
-    $("ordGrid").innerHTML = "";
-    var e = $("ordEmpty"); e.hidden = false; e.textContent = T("sd.noorders");
+    if (!orders.list) { $("ordGrid").innerHTML = '<p class="sd-empty">' + esc(T("sd.loading")) + "</p>"; $("ordEmpty").hidden = true; }
+    else renderOrders();
+    fetchOrders().then(function () { if (!$("viewOrders").hidden) renderOrders(); });
   }
 
   /* ---------------------------- Support chat ----------------------------- */
@@ -935,6 +980,8 @@
 
     buildLang();
     startChatWatch();
+    fetchOrders();
+    document.addEventListener("i18n:change", function () { if (orders.list && !$("viewOrders").hidden) renderOrders(); });
     document.addEventListener("i18n:change", function () {
       if (chat) { chat.setLang((window.I18N && I18N.get()) || "en"); chat.setHeader(chatHeader()); }
     });

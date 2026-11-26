@@ -61,8 +61,9 @@ var SHEETS = {
                 textCols: ["username","passwordHash","tokenHash","staff_code"] },
   sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","shopImageURL","invite","rating","passwordHash","createdAt","updatedAt","tokenHash","tokenExpires"],
                 textCols: ["phone","email","passwordHash","staff_code","tokenHash"] },
-  orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt"],
-                textCols: ["identifier"] },
+  orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt",
+                                              "seller_id","customer_name","customer_phone","address","note","created_by","updatedAt"],
+                textCols: ["identifier","customer_phone"] },
   categories: { name: "Categories", headers: ["id","cat_name","seller_profit","cat_img_url","cat_order"] },
   products:   { name: "Products",   headers: ["id","name","cat_id","price","oldPrice","seller_profit","rating","quanitiy","badge","desc","imageUrl_json","status","createdAt","updatedAt"] },
   carts:      { name: "Carts",      headers: ["cart_id","productId","qty","createdAt","updatedAt"],
@@ -90,7 +91,8 @@ var PERMS = {
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
   listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
-  chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES
+  chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES,
+  sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES
 };
 
 /* ----------------------------- HTTP handlers ----------------------------- */
@@ -126,6 +128,7 @@ function doPost(e) {
       case "sellerDeposit":  return json(withLock(function () { return sellerDeposit(body); }));
       case "sellerWithdraw": return json(withLock(function () { return sellerWithdraw(body); }));
       case "sellerChat":     return json(sellerChat(body));
+      case "sellerOrders":   return json(sellerOrders(body));
       case "sellerChatSend": return json(sellerChatSend(body));
       case "saveCart":      return json(withLock(function () { return saveCart(body); }));
       case "getCart":       return json({ ok: true, cart: getCartItems(String(body.cartId || "")) });
@@ -301,25 +304,30 @@ function sellerChangePassword(b) {
 function sellerListProducts(b) {
   try {
     var me = requireSeller(b.token);
-    var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
-    var list = readRows("sellerproducts").filter(function (r) {
-      return r.id !== "" && String(r.seller_id) === String(me.id);
-    }).map(function (r) {
-      var p = cat[String(r.product_id)] || {};
-      return {
-        id: Number(r.id) || r.id, productId: Number(r.product_id) || r.product_id,
-        name: String(p.name || r.name || ""),
-        price: Number(p.price != null ? p.price : r.price) || 0,
-        profit: Number(p.sellerProfit != null ? p.sellerProfit : r.profit) || 0,
-        qty: Math.max(1, Math.floor(Number(r.qty) || 1)),
-        imageUrl: String(p.imageUrl || ""), status: String(r.status || "active")
-      };
-    });
-    return { ok: true, products: list };
+    return { ok: true, products: sellerProductList(me.id) };
   } catch (err) {
     var m = String(err && err.message || err);
     return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
   }
+}
+// The products in one seller's shop (SellerProducts rows), refreshed with the
+// catalog's current name / price / profit / image. Used by the seller dashboard
+// and by staff placing an order on a seller's behalf.
+function sellerProductList(sellerId) {
+  var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
+  return readRows("sellerproducts").filter(function (r) {
+    return r.id !== "" && String(r.seller_id) === String(sellerId);
+  }).map(function (r) {
+    var p = cat[String(r.product_id)] || {};
+    return {
+      id: Number(r.id) || r.id, productId: Number(r.product_id) || r.product_id,
+      name: String(p.name || r.name || ""),
+      price: Number(p.price != null ? p.price : r.price) || 0,
+      profit: Number(p.sellerProfit != null ? p.sellerProfit : r.profit) || 0,
+      qty: Math.max(1, Math.floor(Number(r.qty) || 1)),
+      imageUrl: String(p.imageUrl || ""), status: String(r.status || "active")
+    };
+  });
 }
 
 // Add (or update the quantity of) catalog products in the seller's shop. Items:
@@ -733,6 +741,56 @@ function getOrders(userId) {
 function orderObj(r) {
   return { id: r[0], userId: r[1], identifier: String(r[2] || ""), items: safeParse(r[3]),
            total: Number(r[4]) || 0, status: String(r[5] || "received"), createdAt: r[6] };
+}
+// Same, from a readRows() object — includes the staff-order columns.
+function orderRec(o) {
+  return { id: Number(o.id) || o.id, userId: o.userId, identifier: String(o.identifier || ""), items: safeParse(o.itemsJson),
+           total: Number(o.total) || 0, status: String(o.status || "received"), createdAt: o.createdAt,
+           sellerId: o.seller_id === "" || o.seller_id == null ? "" : (Number(o.seller_id) || o.seller_id),
+           customerName: String(o.customer_name || ""), customerPhone: String(o.customer_phone || ""),
+           address: String(o.address || ""), note: String(o.note || ""), createdBy: String(o.created_by || "") };
+}
+
+/* ---- Staff-placed orders (VIP customers who don't order themselves) ----
+   A staff member picks a seller, one of that seller's products and a quantity,
+   and enters the customer's details. The order is stored with seller_id so it
+   shows in that seller's dashboard; staff then move it through the statuses
+   (received → processing → shipped → delivered). Staff may only order for the
+   sellers who registered with their staff code (same rule as the wallet). */
+function adminPlaceOrder(p, meData) {
+  var sid = p.sellerId, deny = ownsSellerCheck(sid, meData);
+  if (deny) return deny;
+  var seller = readRows("sellers").filter(function (r) { return String(r.id) === String(sid); })[0];
+  if (!seller) return { ok: false, error: "Seller not found." };
+  var name = String(p.customerName || "").trim().slice(0, 100);
+  if (!name) return { ok: false, error: "Enter the customer's name." };
+  var qty = Math.floor(Number(p.qty) || 0);
+  if (qty < 1 || qty > 9999) return { ok: false, error: "Enter a quantity between 1 and 9999." };
+  var item = sellerProductList(sid).filter(function (x) { return String(x.id) === String(p.sellerProductId); })[0];
+  if (!item) return { ok: false, error: "That product is no longer in this seller's shop." };
+  var price = round2(item.price), total = round2(price * qty), now = new Date().toISOString();
+  ensureColumns("orders", SHEETS.orders.headers);
+  var id = nextId(sheet("orders"));
+  appendNamed("orders", {
+    id: id, userId: "staff", identifier: String(p.customerPhone || "").trim().slice(0, 30),
+    itemsJson: JSON.stringify([{ id: item.productId, sellerProductId: item.id, name: item.name, price: price, qty: qty,
+                                  profit: round2(item.profit), imageUrl: item.imageUrl }]),
+    total: total, status: "received", createdAt: now, updatedAt: now,
+    seller_id: sid, customer_name: name, customer_phone: String(p.customerPhone || "").trim().slice(0, 30),
+    address: String(p.address || "").trim().slice(0, 500), note: String(p.note || "").trim().slice(0, 500),
+    created_by: String(meData[A.name] || meData[A.user] || "")
+  });
+  return { ok: true, orderId: id, total: total };
+}
+
+// A seller's own orders (newest first) for their dashboard.
+function sellerOrders(b) {
+  try {
+    var me = requireSeller(b.token);
+    var list = readRows("orders").filter(function (o) { return o.id !== "" && String(o.seller_id) === String(me.id); })
+      .map(function (o) { var r = orderRec(o); delete r.userId; delete r.createdBy; return r; }).reverse();
+    return { ok: true, orders: list };
+  } catch (err) { return authErr(err); }
 }
 
 /* ------------------------------ Products --------------------------------- */
@@ -1184,7 +1242,9 @@ function adminCall(b) {
       saveAdmin:       function () { return withLock(function () { return adminSave(p, me); }); },
       deleteAdmin:     function () { return withLock(function () { return adminDelete(p, me); }); },
       changePassword:  function () { return withLock(function () { return adminChangePassword(p, me); }); },
-      listOrders:      function () { return { orders: adminOrders() }; },
+      listOrders:      function () { return adminOrderList(me.data); },
+      sellerShop:      function () { var d = ownsSellerCheck(p.sellerId, me.data); return d || { products: sellerProductList(p.sellerId) }; },
+      placeOrder:      function () { return withLock(function () { return adminPlaceOrder(p, me.data); }); },
       updateOrder:     function () { return withLock(function () { return adminUpdateOrder(p); }); },
       listCatalog:     function () { return { categories: readCategories(), vendors: readSellers(), products: readProducts(true), banners: readBanners(true) }; },
       saveBanner:      function () { return withLock(function () { return saveBannerRec(p); }); },
@@ -1240,6 +1300,22 @@ function adminStats() {
     },
     recentOrders: orders.slice(0, 8)
   };
+}
+
+// Orders page: every order with seller/customer details, plus the sellers this
+// admin may place orders for. Staff don't see other staff members' sellers'
+// orders (storefront orders without a seller stay visible to everyone).
+function adminOrderList(meData) {
+  var sc = walletScope(meData), staff = adminRole(meData) === "staff";
+  var orders = readRows("orders").filter(function (o) { return o.id !== ""; }).map(orderRec).filter(function (o) {
+    return !staff || o.sellerId === "" || sc.allowed[String(o.sellerId)];
+  }).map(function (o) {
+    o.customer = o.customerName || o.identifier || "";
+    o.sellerName = o.sellerId !== "" ? (sc.nameOf[String(o.sellerId)] || "Seller #" + o.sellerId) : "";
+    return o;
+  }).reverse();
+  var sellers = sc.sellers.map(function (s) { return { id: s.id, shopName: String(s.shopName || ""), name: String(s.name || ""), status: s.status }; });
+  return { orders: orders, sellers: sellers };
 }
 
 function adminOrders() {
