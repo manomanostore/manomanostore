@@ -38,6 +38,7 @@ window.ADMIN = (function () {
     out: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/>',
     ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    sidebar: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/><path class="chev" d="M15.5 9.5 13 12l2.5 2.5"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
@@ -160,17 +161,19 @@ window.ADMIN = (function () {
       '<div class="adm">'+
         '<aside class="adm-side" id="admSide">'+ brand() +
           '<nav class="adm-nav">'+NAV.filter(function (n) { return canRoute(n[0]); }).map(function (n) {
-            return '<a href="#'+n[0]+'" data-route="'+n[0]+'">'+svg(n[2], 20)+'<span>'+n[1]+'</span></a>';
+            return '<a href="#'+n[0]+'" data-route="'+n[0]+'" data-tip="'+esc(n[1])+'">'+svg(n[2], 20)+'<span>'+n[1]+'</span></a>';
           }).join("")+'</nav>'+
           '<div class="adm-side-foot">'+
-            '<a href="index.html" target="_blank" rel="noopener">'+svg("ext")+'<span>View shop</span></a>'+
-            '<button type="button" id="admLogout">'+svg("out")+'<span>Log out</span></button>'+
+            '<a href="index.html" target="_blank" rel="noopener" data-tip="View shop">'+svg("ext")+'<span>View shop</span></a>'+
+            '<button type="button" id="admLogout" data-tip="Log out">'+svg("out")+'<span>Log out</span></button>'+
           '</div>'+
         '</aside>'+
         '<div class="adm-scrim" id="admScrim"></div>'+
         '<div class="adm-main">'+
           '<header class="adm-top">'+
             '<button type="button" class="adm-menu" id="admMenu" aria-label="Open menu">'+svg("menu", 22)+'</button>'+
+            // Desktop: collapse the sidebar to icons only / expand it again (remembered)
+            '<button type="button" class="adm-collapse" id="admCollapse">'+svg("sidebar", 20)+'</button>'+
             '<h1 id="admTitle">Dashboard</h1>'+
             '<div class="adm-bellwrap">'+
               '<button type="button" class="adm-menu adm-refresh adm-bell" id="admBell" aria-label="Notifications" title="Notifications">'+svg("bell", 20)+'<span class="adm-bell-dot" id="admBellDot" hidden></span></button>'+
@@ -221,6 +224,14 @@ window.ADMIN = (function () {
     document.addEventListener("click", function () { var m = $("admBellMenu"); if (m) m.hidden = true; setMeMenu(false); });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && $("admMeMenu") && !$("admMeMenu").hidden) { setMeMenu(false); $("admMe").focus(); } });
     $("admMenu").onclick = function () { document.body.classList.add("adm-nav-open"); };
+    function setCollapsed(on) {
+      document.body.classList.toggle("adm-collapsed", on);
+      var b = $("admCollapse"), t = on ? "Expand sidebar" : "Collapse sidebar";
+      b.setAttribute("aria-label", t); b.title = t; b.setAttribute("aria-expanded", on ? "false" : "true");
+      try { localStorage.setItem("mm_adm_side", on ? "1" : "0"); } catch (e) {}
+    }
+    setCollapsed((function () { try { return localStorage.getItem("mm_adm_side") === "1"; } catch (e) { return false; } })());
+    $("admCollapse").onclick = function () { setCollapsed(!document.body.classList.contains("adm-collapsed")); };
     $("admTabMore").onclick = function () { document.body.classList.add("adm-nav-open"); };
     $("admScrim").onclick = function () { document.body.classList.remove("adm-nav-open"); };
     window.onhashchange = route;
@@ -229,46 +240,10 @@ window.ADMIN = (function () {
     startChatAlerts();
   }
 
-  /* ---- Real-time transaction alerts (role-scoped polling + loud voice) ---- */
-  // Staff hear only their own sellers' requests; admin/manager hear everyone's.
-  var _audioCtx = null, _txTimer = null;
-  // True once the user has clicked/tapped the page — before that the browser
-  // blocks audio, and anything scheduled would play late on the first click.
-  function _canSound() { return !navigator.userActivation || navigator.userActivation.hasBeenActive; }
-  function _beep() {
-    try {
-      if (!_canSound()) return;
-      _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (_audioCtx.state !== "running") { _audioCtx.resume(); return; }   // never queue beeps into a locked context
-      [0, 0.18].forEach(function (t) {
-        var o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
-        o.type = "sine"; o.frequency.value = 940; g.gain.value = 0.9;   // loud
-        o.connect(g); g.connect(_audioCtx.destination);
-        o.start(_audioCtx.currentTime + t); o.stop(_audioCtx.currentTime + t + 0.15);
-      });
-    } catch (e) {}
-  }
-  function speakLoud(text) {
-    _beep();
-    try {
-      if (!_canSound() || !("speechSynthesis" in window)) return;   // no queued voice before the first click
-      var u = new SpeechSynthesisUtterance(text);
-      u.volume = 1; u.rate = 1; u.pitch = 1;      // max volume
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch (e) {}
-  }
-  // Browsers block audio until the user interacts — unlock it SILENTLY on the
-  // first gesture (no beep), so clicking a menu after a reload makes no sound.
-  (function () {
-    function prime() {
-      try {
-        _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-        if (_audioCtx.state === "suspended") _audioCtx.resume();
-      } catch (e) {}
-    }
-    document.addEventListener("pointerdown", prime, { once: true });
-  })();
+  /* ---- Real-time transaction alerts (role-scoped polling) ----
+     Staff see only their own sellers' requests; admin/manager see everyone's.
+     Visual only — a bell notification + toast, no sound or voice. */
+  var _txTimer = null;
 
   // Account menu under the avatar in the header (Profile / Change password / Log out).
   function setMeMenu(open) {
@@ -299,7 +274,6 @@ window.ADMIN = (function () {
     _notes.unshift({ title: (t.sellerName || "Seller") + " — " + cap(kind), sub: amt + " · " + (t.method || "").toUpperCase() });
     _unread++;
     paintBell();
-    speakLoud(text);
     toast(text);
   }
   // Red count on the "Wallet Transaction" menu item: requests new today or still pending.
@@ -1348,7 +1322,7 @@ window.ADMIN = (function () {
   // Inbox of seller conversations (left) + the open chat (right, js/chat.js).
   // Staff only see the sellers who registered with their staff code; the
   // server enforces that too. A background poll keeps the nav badge current
-  // and beeps when a seller sends a new message.
+  // and shows a toast when a seller sends a new message.
   var _chatW = null, _chatTimer = null, _chatData = null, _chatSel = null, _chatMax = 0;
   var _chatFilter = "all", _chatQ = "";
   var _chatPushed = false;   // phone layout: opening a chat adds a history entry so Back closes it
@@ -1389,7 +1363,7 @@ window.ADMIN = (function () {
           }).forEach(function (c) {
             var who = c.seller.shopName || c.seller.name || "A seller";
             _notes.unshift({ title: "💬 " + who, sub: c.lastText || "New message" }); _unread++; paintBell();
-            toast("New message from " + who); _beep();
+            toast("New message from " + who);
           });
         }
         if (onChatRoute() && $("ctiList")) renderChatList();

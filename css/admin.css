@@ -18,7 +18,7 @@ body.admin-body{display:block;min-height:100vh;background:#f2f4f8}
   background:var(--lime);color:var(--lime-ink);padding:3px 7px;border-radius:6px}
 
 /* layout */
-.adm{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.adm{display:grid;grid-template-columns:248px 1fr;min-height:100vh;transition:grid-template-columns .22s ease}
 .adm-side{position:sticky;top:0;height:100vh;height:100dvh;background:var(--navy);color:#cdd6e6;display:flex;flex-direction:column;padding:18px 12px;z-index:40}
 .adm-side .adm-brand{color:#fff;padding:4px 10px 18px}
 .adm-nav{display:flex;flex-direction:column;gap:2px;flex:1}
@@ -81,13 +81,21 @@ body.admin-body{display:block;min-height:100vh;background:#f2f4f8}
 .adm-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .adm-card-head h2{margin:0;font-size:17px}
 .adm-card-head a{font-size:14px;font-weight:700;color:var(--teal-ink)}
-.adm-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}
+.adm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px}
 .adm-kpi{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:16px 18px;display:flex;flex-direction:column;gap:2px;transition:transform .15s,box-shadow .15s}
 a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-kpi .lbl{font-size:13px;color:var(--muted);font-weight:600}
 .adm-kpi .val{font-size:26px;font-weight:800;color:var(--ink)}
 .adm-kpi .sub{font-size:12px;color:var(--muted)}
-.adm-grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start}
+/* minmax(0,…) lets the orders table scroll inside its card instead of pushing
+   the "Orders by status" card off the screen */
+.adm-grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:18px;align-items:start}
+.adm-grid2>*{min-width:0}
+.adm-content{container-type:inline-size}
+@container (max-width:980px){
+  .adm-grid2{grid-template-columns:minmax(0,1fr)}
+  .adm-grid2 .adm-bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));column-gap:36px;row-gap:12px}
+}
 .adm-bars{display:flex;flex-direction:column;gap:12px}
 .adm-bar{display:grid;grid-template-columns:90px 1fr 28px;align-items:center;gap:10px;font-size:13px;font-weight:600}
 .adm-bar .track{height:8px;background:var(--bg);border-radius:6px;overflow:hidden}
@@ -202,7 +210,25 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-toast.err{background:#b4121f}
 
 /* responsive */
-@media (max-width:1100px){ .adm-kpis{grid-template-columns:repeat(3,1fr)} .adm-grid2{grid-template-columns:1fr} }
+/* ---- Collapsible sidebar (desktop): icons only, labels as hover tooltips ---- */
+.adm-collapse{display:grid;width:40px;height:40px;place-items:center;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;flex:0 0 auto;transition:background .15s,color .15s}
+.adm-collapse:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+.adm-collapse .chev{transition:transform .22s ease;transform-origin:14px 12px}
+@media (min-width:901px){
+  body.adm-collapsed .adm{grid-template-columns:76px 1fr}
+  body.adm-collapsed .adm-collapse .chev{transform:scaleX(-1)}
+  body.adm-collapsed .adm-side{padding:18px 10px}
+  body.adm-collapsed .adm-side .adm-brand{justify-content:center;padding:4px 0 18px}
+  body.adm-collapsed .adm-brand span,body.adm-collapsed .adm-brand em{display:none}
+  body.adm-collapsed .adm-nav a,body.adm-collapsed .adm-side-foot a,body.adm-collapsed .adm-side-foot button{justify-content:center;padding:12px 0;gap:0}
+  body.adm-collapsed .adm-nav a>span,body.adm-collapsed .adm-side-foot a>span,body.adm-collapsed .adm-side-foot button>span{display:none}
+  body.adm-collapsed .adm-nav .adm-navbadge{position:absolute;top:3px;right:6px;margin:0;min-width:17px;height:17px;padding:0 4px;font-size:10px;border:2px solid var(--navy)}
+  body.adm-collapsed .adm-side [data-tip]{position:relative}
+  body.adm-collapsed .adm-side [data-tip]:hover::after{content:attr(data-tip);position:absolute;left:calc(100% + 12px);top:50%;transform:translateY(-50%);
+    background:#0d1730;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;padding:6px 10px;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.25);pointer-events:none;z-index:80}
+}
+@media (max-width:900px){ .adm-collapse{display:none} }
+@media (max-width:1100px){ .adm-kpis{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))} }
 .adm-tabbar{display:none}
 @media (max-width:900px){
   .adm{grid-template-columns:1fr}
