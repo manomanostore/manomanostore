@@ -3,21 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Blog — ManoMano</title>
+<title>Blog: shopping guides &amp; style tips | ManoMano</title>
+<meta name="description" content="Buying guides, style tips and the best ways to save on mobiles, fashion, beauty, jewelry, electronics and kids' toys.">
 <meta name="theme-color" content="#16233f">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="images/logo-64.png" type="image/png">
 <link rel="apple-touch-icon" href="images/logo-192.png">
-<link rel="stylesheet" href="css/styles.css?v=20261127zb">
-</head> 
+<link rel="stylesheet" href="css/styles.css?v=20261127zm">
+</head>
 <body>
 <div id="site-header"></div>
 
-<main class="wrap">
-  <div class="crumbs"><a href="index.html">Home</a> › <span>Blog</span></div>
-  <div class="block-head"><h2>From the workshop — tips &amp; guides</h2></div>
-  <div class="blog-grid" id="blogGrid"></div>
-</main>
+<main class="wrap" id="blogMain"></main>
 
 <div id="site-footer"></div>
 
@@ -28,21 +25,7 @@
 <script src="js/auth.js"></script>
 <script src="js/ui.js?v=20261127zb"></script>
 <script src="js/render.js"></script>
-<script>
-  var POSTS = [
-    { t: "10 beginner power tools every DIYer needs", x: "Start your toolkit with the essentials that cover 90% of home projects — without overspending.", tag: "Tools", c: "#1f6f54", e: "🔧", d: "Nov 20, 2026", r: "6 min" },
-    { t: "How to bleed a radiator in 5 minutes", x: "Cold spots at the top of your radiator? Here's the quick, mess-free fix to get even heat again.", tag: "Heating", c: "#b4532a", e: "🔥", d: "Nov 16, 2026", r: "4 min" },
-    { t: "Transform your garden on a budget", x: "Simple, low-cost ideas to refresh your outdoor space before the new season arrives.", tag: "Garden", c: "#3f7a2e", e: "🌿", d: "Nov 12, 2026", r: "7 min" },
-    { t: "Bathroom refresh: small changes, big impact", x: "Swap taps, re-seal, and re-light — three weekend jobs that make a tired bathroom feel new.", tag: "Bathroom", c: "#2b5f8a", e: "🛁", d: "Nov 8, 2026", r: "5 min" },
-    { t: "Corded vs cordless: choosing the right drill", x: "Power, runtime and price compared, so you buy the drill that actually fits your projects.", tag: "Tools", c: "#1f6f54", e: "🪛", d: "Nov 3, 2026", r: "6 min" },
-    { t: "Smart home basics: lighting &amp; plugs", x: "A beginner's guide to automating your lights and sockets — no rewiring required.", tag: "Electrical", c: "#0f3b66", e: "💡", d: "Oct 28, 2026", r: "8 min" }
-  ];
-  document.getElementById("blogGrid").innerHTML = POSTS.map(function (p) {
-    return '<article class="post"><a class="post-cover" href="#" style="background:' + p.c + '"><span class="post-emoji" aria-hidden="true">' + p.e + '</span><span class="post-tag">' + p.tag + '</span></a>' +
-      '<div class="post-body"><h3><a href="#">' + p.t + '</a></h3><p>' + p.x + '</p>' +
-      '<div class="post-meta"><span>' + p.d + '</span><span>·</span><span>' + p.r + ' read</span></div></div></article>';
-  }).join("");
-  UI.mount({ active: "blog" });
-</script>
+<script src="js/blog.js?v=20261127zm"></script>
+<script>UI.mount({ active: "blog" });</script>
 </body>
 </html>
