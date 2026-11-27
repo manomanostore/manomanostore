@@ -366,6 +366,70 @@ window.I18N = (function () {
     });
   }
 
+  /* ---- Visitor log: once per browser session, the website records the visitor's
+     IP + approximate location (from a free IP-lookup service, since Apps Script
+     can't see the caller's IP) and device details into the "Visitors" sheet.
+     Runs after the page has loaded and never blocks or breaks the page. ---- */
+  function deviceInfo() {
+    var ua = navigator.userAgent || "", m;
+    var tablet = /iPad|Tablet|PlayBook|Silk|Kindle/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ||
+                 (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+    var device = tablet ? "Tablet" : /Mobi|iPhone|iPod|Android|Opera Mini|IEMobile/i.test(ua) ? "Mobile" : "Desktop";
+    var os = "Other";
+    if ((m = ua.match(/Windows NT ([\d.]+)/))) os = "Windows " + ({ "10.0": "10/11", "6.3": "8.1", "6.2": "8", "6.1": "7" }[m[1]] || m[1]);
+    else if ((m = ua.match(/Android ([\d.]+)/))) os = "Android " + m[1];
+    else if ((m = ua.match(/(?:iPhone|CPU) OS (\d+)[_.]?(\d+)?/))) os = (/iPad/.test(ua) ? "iPadOS " : "iOS ") + m[1] + (m[2] ? "." + m[2] : "");
+    else if (/Macintosh/.test(ua)) os = tablet ? "iPadOS" : "macOS";
+    else if (/CrOS/.test(ua)) os = "ChromeOS";
+    else if (/Linux/.test(ua)) os = "Linux";
+    var browser = "Other", B = [["Edge", /Edg(?:e|A|iOS)?\/(\d+)/], ["Opera", /(?:OPR|Opera)\/(\d+)/], ["Samsung Internet", /SamsungBrowser\/(\d+)/],
+      ["UC Browser", /UCBrowser\/(\d+)/], ["Firefox", /(?:Firefox|FxiOS)\/(\d+)/], ["Chrome", /(?:Chrome|CriOS)\/(\d+)/], ["Safari", /Version\/(\d+).*Safari/]];
+    for (var i = 0; i < B.length; i++) if ((m = ua.match(B[i][1]))) { browser = B[i][0] + " " + m[1]; break; }
+    var model = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) || (tablet && /Macintosh/.test(ua)) ? "iPad" : "";
+    if (!model && (m = ua.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/)) && m[1] !== "K") model = m[1].trim();
+    return { device: device, os: os, browser: browser, model: model };
+  }
+  function trackVisit() {
+    try {
+      if (!CONFIG.API_URL || sessionStorage.getItem("mm_visit")) return;
+      sessionStorage.setItem("mm_visit", "1");
+      var vid = localStorage.getItem("mm_vid");
+      if (!vid) { vid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem("mm_vid", vid); }
+    } catch (e) { return; }
+    var d = deviceInfo(), user = "";
+    try {
+      var sel = JSON.parse(localStorage.getItem("mm_seller") || "null"), cu = window.AUTH && AUTH.current();
+      if (sel && sel.id) user = "Seller: " + (sel.shopName || sel.name || "") + " #" + sel.id;
+      else if (cu && cu.id) user = "Customer: " + (cu.name || cu.email || cu.phone || "") + " #" + cu.id;
+    } catch (e) {}
+    var ref = ""; try { ref = document.referrer ? new URL(document.referrer).host : ""; } catch (e) {}
+    var visit = { visitorId: vid, device: d.device, os: d.os, browser: d.browser, model: d.model, user: user,
+      screen: screen.width + "x" + screen.height + (window.devicePixelRatio > 1 ? " @" + Math.round(window.devicePixelRatio * 10) / 10 + "x" : ""),
+      language: navigator.language || "", page: (location.pathname.split("/").pop() || "index.html") + location.search,
+      referrer: ref && ref !== location.host ? ref : "", userAgent: navigator.userAgent,
+      timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || "") };
+    var send = function () {
+      fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "logVisit", visit: visit }), keepalive: true }).catch(function () {});
+    };
+    // Model + OS version from Client Hints where the browser offers them (Chrome on Android hides the model in the UA).
+    var hints = navigator.userAgentData && navigator.userAgentData.getHighEntropyValues
+      ? navigator.userAgentData.getHighEntropyValues(["model", "platformVersion"]).then(function (h) {
+          if (h.model) visit.model = h.model;
+          if (/^Windows/.test(visit.os) && h.platformVersion) visit.os = parseInt(h.platformVersion, 10) >= 13 ? "Windows 11" : "Windows 10";
+        }).catch(function () {}) : Promise.resolve();
+    var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function () { if (ctl) ctl.abort(); }, 5000);
+    var geo = fetch("https://get.geojs.io/v1/ip/geo.json", ctl ? { signal: ctl.signal } : {}).then(function (r) { return r.json(); })
+      .then(function (g) {
+        visit.ip = g.ip || ""; visit.country = g.country || ""; visit.region = g.region || ""; visit.city = g.city || "";
+        visit.isp = g.organization_name || g.organization || ""; if (g.timezone) visit.timezone = g.timezone;
+      })
+      .catch(function () {   // lookup blocked (ad blocker / network): still try for the bare IP
+        return fetch("https://api.ipify.org?format=json").then(function (r) { return r.json(); }).then(function (g) { visit.ip = g.ip || ""; }).catch(function () {});
+      });
+    Promise.all([hints, geo]).then(function () { clearTimeout(t); send(); }, send);
+  }
+
   async function mount(opts) {
     opts = opts || {};
     document.getElementById("site-header").innerHTML = header(opts.active);
@@ -414,6 +478,7 @@ window.I18N = (function () {
     stickyHeader();
     passwordToggles();
     I18N.apply(document);   // immediate pass so there's no English flash in Hindi
+    setTimeout(trackVisit, 1200);
   }
 
   // Wire the header language dropdown (flags). Selecting a language re-applies

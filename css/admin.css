@@ -404,3 +404,22 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-pbtn:disabled{opacity:.4;cursor:default}
 .adm-pgap{color:var(--muted);padding:0 2px}
 .adm-hint-sm{display:block;margin-top:5px;color:var(--muted);font-size:12px}
+
+/* ------------------------------- Visitors ------------------------------- */
+.adm-vis-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px;font-size:13px}
+.adm-vis-top>span{color:var(--muted);font-weight:700;margin-right:4px}
+.adm-vis-top b{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-weight:700}
+.adm-vis-top em{font-style:normal;color:var(--muted);font-weight:600;margin-left:4px}
+.adm-vis td{vertical-align:top}
+.adm-clip{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adm-pill.dev-mobile{background:#e3f7f3;color:#0c6b5a}
+.adm-pill.dev-desktop{background:#eaf0fb;color:var(--navy)}
+.adm-pill.dev-tablet{background:#fff3dc;color:#8a5a00}
+.adm-danger-btn{color:#c62828}
+.adm-danger-btn:hover{border-color:#c62828}
+.adm-kvs{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px;margin-bottom:14px}
+.adm-kv{display:flex;flex-direction:column;gap:2px;min-width:0}
+.adm-kv span{font-size:12px;color:var(--muted);font-weight:600}
+.adm-kv b{font-size:14px;overflow-wrap:anywhere}
+.adm-kv-ua code{display:block;font-size:12px;background:var(--bg,#f4f6fa);border:1px solid var(--line);border-radius:10px;padding:10px;overflow-wrap:anywhere;margin-bottom:10px}
+@media(max-width:560px){.adm-kvs{grid-template-columns:1fr}}

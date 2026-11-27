@@ -74,7 +74,10 @@ var SHEETS = {
   transactions: { name: "Transactions", headers: ["id","seller_id","type","method","amount","currency","account","voucher","status","note","createdAt","updatedAt"] },
   messages:     { name: "Messages",     headers: ["id","seller_id","sender","admin_id","admin_name","text","images_json","status","createdAt","deliveredAt","seenAt"] },
   bank_accounts: { name: "bank_accounts", headers: ["id","seller_id","cash_on","bank_on","bank_name","bank_acc_name","bank_acc_no","ifsc","usdt_on","usdt_link","usdt_address","createdAt","updatedAt"],
-                   textCols: ["bank_acc_no","ifsc"] }
+                   textCols: ["bank_acc_no","ifsc"] },
+  // One row per storefront visit (a browser session), logged by the website.
+  visitors:     { name: "Visitors",     headers: ["id","visitor_id","ip","country","region","city","isp","timezone","device","model","os","browser","screen","language","page","referrer","user","user_agent","createdAt"],
+                  textCols: ["visitor_id","ip"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
 var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10, staffCode:11 };
@@ -92,7 +95,8 @@ var PERMS = {
   listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
   chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES,
-  sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES, editOrder: ADMIN_ROLES, deleteOrder: ADMIN_ROLES
+  sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES, editOrder: ADMIN_ROLES, deleteOrder: ADMIN_ROLES,
+  listVisitors: ["superadmin", "manager"], clearVisitors: ["superadmin"]
 };
 
 /* ----------------------------- HTTP handlers ----------------------------- */
@@ -135,6 +139,7 @@ function doPost(e) {
       case "getCart":       return json({ ok: true, cart: getCartItems(String(body.cartId || "")) });
       case "createOrder":   return json(withLock(function () { return createOrder(body); }));
       case "getOrders":     return json({ ok: true, orders: getOrders(body.userId) });
+      case "logVisit":      return json(logVisit(body));
       case "adminLogin":    return json(withLock(function () { return adminLogin(body); }));
       case "admin":         return json(adminCall(body));
       default:              return json({ ok: false, error: "Unknown action: " + action });
@@ -142,6 +147,72 @@ function doPost(e) {
   } catch (err) {
     return json({ ok: false, error: String(err) });
   }
+}
+
+/* ------------------------------ Visitors ---------------------------------- */
+
+// Public: the website sends one record per browser session (IP + location come
+// from the visitor's browser, since Apps Script can't see the caller's IP).
+// Values are trimmed, length-capped and defused so a crafted request can't put
+// a formula into the sheet. The same visitor id is accepted at most once every
+// 10 minutes, which limits flooding.
+function logVisit(b) {
+  var v = b && b.visit || {};
+  var clean = function (x, n) {
+    var t = String(x == null ? "" : x).replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, n || 120);
+    return /^[=+\-@]/.test(t) ? "'" + t : t;
+  };
+  var vid = clean(v.visitorId, 40);
+  if (!vid) return { ok: false, error: "Missing visitor id." };
+  var cache = CacheService.getScriptCache(), ck = "visit_" + vid;
+  if (cache.get(ck)) return { ok: true, skipped: true };
+  cache.put(ck, "1", 600);
+  return withLock(function () {
+    var sh = sheet("visitors");
+    appendNamed("visitors", {
+      id: Math.max(sh.getLastRow(), 1), visitor_id: vid, ip: clean(v.ip, 45),
+      country: clean(v.country, 60), region: clean(v.region, 80), city: clean(v.city, 80), isp: clean(v.isp, 120),
+      timezone: clean(v.timezone, 60), device: clean(v.device, 20), model: clean(v.model, 60), os: clean(v.os, 40),
+      browser: clean(v.browser, 40), screen: clean(v.screen, 30), language: clean(v.language, 20),
+      page: clean(v.page, 200), referrer: clean(v.referrer, 200), user: clean(v.user, 80),
+      user_agent: clean(v.userAgent, 400), createdAt: istNow()
+    });
+    return { ok: true };
+  });
+}
+
+// Admin: summary numbers over every visit, plus the newest 2,000 visits.
+function listVisitors() {
+  var rows = readRows("visitors"), tz = "Asia/Kolkata";
+  var today = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+  var weekAgo = Utilities.formatDate(new Date(Date.now() - 6 * 864e5), tz, "yyyy-MM-dd");
+  var all = {}, todayV = {}, devices = { Mobile: 0, Desktop: 0, Tablet: 0 }, countries = {}, nToday = 0, nWeek = 0;
+  var day = function (v) { var d = v instanceof Date ? v : new Date(v); return isNaN(d) ? "" : Utilities.formatDate(d, tz, "yyyy-MM-dd"); };
+  rows.forEach(function (r) {
+    var d = day(r.createdAt), vid = String(r.visitor_id || "");
+    all[vid] = 1;
+    if (d === today) { nToday++; todayV[vid] = 1; }
+    if (d >= weekAgo) nWeek++;
+    if (devices[r.device] !== undefined) devices[r.device]++;
+    var c = String(r.country || "Unknown"); countries[c] = (countries[c] || 0) + 1;
+  });
+  var top = Object.keys(countries).map(function (k) { return { country: k, visits: countries[k] }; })
+    .sort(function (a, b) { return b.visits - a.visits; }).slice(0, 5);
+  var list = rows.slice(-2000).reverse().map(function (r) {
+    var at = r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt || "");
+    return { id: r.id, visitorId: String(r.visitor_id || ""), ip: String(r.ip || ""), country: r.country, region: r.region, city: r.city,
+             isp: r.isp, timezone: r.timezone, device: r.device, model: r.model, os: r.os, browser: r.browser, screen: r.screen,
+             language: r.language, page: r.page, referrer: r.referrer, user: r.user, userAgent: r.user_agent, createdAt: at };
+  });
+  return { visitors: list, stats: { total: rows.length, today: nToday, week: nWeek, uniqueToday: Object.keys(todayV).length,
+           unique: Object.keys(all).length, devices: devices, countries: top } };
+}
+
+// Superadmin: delete every logged visit (keeps the header row).
+function clearVisitors() {
+  var sh = sheet("visitors"), n = sh.getLastRow() - 1;
+  if (n > 0) sh.deleteRows(2, n);
+  return { cleared: Math.max(n, 0) };
 }
 
 /* ------------------------------ Sellers ---------------------------------- */
@@ -1424,6 +1495,8 @@ function adminCall(b) {
       chatList:        function () { return adminChatList(me.data); },
       chatThread:      function () { return adminChatThread(p, me.data); },
       chatSend:        function () { return adminChatSend(p, me.data); },
+      listVisitors:    function () { return listVisitors(); },
+      clearVisitors:   function () { return withLock(clearVisitors); },
       importCatalog:   function () { return withLock(function () {
                            if (readRows("products").length && !p.overwrite) return { ok: false, error: "The Products tab already has data." };
                            var r = importCatalog(p.data || {}); return { ok: true, imported: r }; }); }

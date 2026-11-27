@@ -33,6 +33,7 @@ window.ADMIN = (function () {
     plus: '<path d="M12 5v14M5 12h14"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     eyeOff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.8 9.8 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     out: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/>',
@@ -152,6 +153,7 @@ window.ADMIN = (function () {
     ["categories", "Categories", "tag", ["superadmin", "manager"]], ["banners", "Banners", "image", ["superadmin", "manager"]],
     ["wallet", "Wallet Transaction", "wallet", ["superadmin", "manager", "staff"]],
     ["chat", "Support Chat", "chat", ADMIN_ROLES],
+    ["visitors", "Visitors", "globe", ["superadmin", "manager"]],
     ["admins", "Admins", "shield", ["superadmin"]]
   ];
   function canRoute(r) { var n = NAV.filter(function (x) { return x[0] === r; })[0]; return n && n[3].indexOf(role()) > -1; }
@@ -330,7 +332,7 @@ window.ADMIN = (function () {
     if (_chatW) { _chatW.destroy(); _chatW = null; }
     $("admView").innerHTML = skeleton();
     ({ dashboard: viewDashboard, orders: viewOrders, products: viewProducts, categories: viewCategories,
-       banners: viewBanners, vendors: viewVendors, wallet: viewWallet, chat: viewChat, admins: viewAdmins })[r]().catch(function (e) {
+       banners: viewBanners, vendors: viewVendors, wallet: viewWallet, chat: viewChat, visitors: viewVisitors, admins: viewAdmins })[r]().catch(function (e) {
       if (session) $("admView").innerHTML = '<div class="msg err">'+esc(e.message || e)+'</div>';
     });
   }
@@ -667,7 +669,7 @@ window.ADMIN = (function () {
       var list = cat.products.filter(function (p) {
         return (!q || p.name.toLowerCase().indexOf(q) > -1) && (!pf.cat || String(p.cat_id) === pf.cat) &&
           (!pf.status || p.status === pf.status);
-      });
+      }).sort(function (a, b) { return (Number(b.id) || 0) - (Number(a.id) || 0); });   // newest first (descending id)
       // 10 products per page
       var pages = Math.max(1, Math.ceil(list.length / PRODUCTS_PER_PAGE));
       prodPage = Math.min(Math.max(1, prodPage), pages);
@@ -1491,6 +1493,91 @@ window.ADMIN = (function () {
     // coming back to the chat page re-opens the last conversation (desktop)
     var keep = _chatSel; _chatSel = null;
     if (keep && !phoneLayout()) openThread(keep);
+  }
+
+  /* ------------------------------- visitors ------------------------------- */
+  // Storefront visits logged by the website (one row per browser session).
+  var vf = { q: "", device: "", day: "" }, visPage = 1, VISITS_PER_PAGE = 20;
+  async function viewVisitors() {
+    var res = await api("listVisitors");
+    if (!res.ok) throw new Error(res.error);
+    var all = res.visitors || [], s = res.stats || {}, dv = s.devices || {};
+    var IST_KEY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+    var dayKey = function (iso) { var d = new Date(iso); return isNaN(d) ? "" : IST_KEY.format(d); };
+    var todayKey = IST_KEY.format(new Date()), weekKey = IST_KEY.format(new Date(Date.now() - 6 * 864e5));
+    var place = function (v) { return [v.city, v.region, v.country].filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(", "); };
+    var pct = function (n) { return s.total ? Math.round(n / s.total * 100) + "%" : "0%"; };
+    function draw() {
+      var q = vf.q.trim().toLowerCase();
+      var list = all.filter(function (v) {
+        if (vf.device && v.device !== vf.device) return false;
+        if (vf.day === "today" && dayKey(v.createdAt) !== todayKey) return false;
+        if (vf.day === "week" && dayKey(v.createdAt) < weekKey) return false;
+        return !q || [v.ip, v.city, v.region, v.country, v.isp, v.os, v.browser, v.model, v.page, v.referrer, v.user].join(" ").toLowerCase().indexOf(q) > -1;
+      });
+      var pages = Math.max(1, Math.ceil(list.length / VISITS_PER_PAGE));
+      visPage = Math.min(Math.max(1, visPage), pages);
+      var from = (visPage - 1) * VISITS_PER_PAGE, pageList = list.slice(from, from + VISITS_PER_PAGE);
+      $("visBox").innerHTML = list.length ?
+        '<div class="adm-table-wrap"><table class="adm-table adm-vis"><thead><tr><th>Time</th><th>IP address</th><th>Location</th><th>Device</th><th>Browser</th><th>Page</th><th class="r"></th></tr></thead><tbody>'+
+        pageList.map(function (v) {
+          var dev = (v.device || "—") + (v.model ? " · " + v.model : "");
+          return '<tr>'+
+            '<td>'+fmtDateTime(v.createdAt)+'</td>'+
+            '<td><span class="adm-code">'+esc(v.ip || "Unknown")+'</span>'+(v.isp ? '<div class="adm-cell-sub adm-clip" title="'+esc(v.isp)+'">'+esc(v.isp)+'</div>' : '')+'</td>'+
+            '<td><div class="adm-cell-main">'+esc(place(v) || "Unknown")+'</div>'+(v.timezone ? '<div class="adm-cell-sub">'+esc(v.timezone)+'</div>' : '')+'</td>'+
+            '<td><span class="adm-pill dev-'+esc(String(v.device || "").toLowerCase())+'">'+esc(dev)+'</span><div class="adm-cell-sub">'+esc(v.os || "")+(v.screen ? ' · '+esc(v.screen) : '')+'</div></td>'+
+            '<td>'+esc(v.browser || "—")+'<div class="adm-cell-sub">'+esc(v.language || "")+'</div></td>'+
+            '<td><div class="adm-cell-main adm-clip" title="'+esc(v.page)+'">'+esc(v.page || "—")+'</div><div class="adm-cell-sub">'+(v.referrer ? 'from '+esc(v.referrer) : 'Direct')+(v.user ? ' · '+esc(v.user) : '')+'</div></td>'+
+            '<td class="r"><button type="button" class="adm-icon-btn" data-vis="'+esc(v.id)+'" title="Details" aria-label="Visit details">'+svg("eye")+'</button></td>'+
+          '</tr>';
+        }).join("")+'</tbody></table></div>' + pager(visPage, pages, from + 1, from + pageList.length, list.length)
+        : empty(all.length ? "No visits match" : "No visits yet", all.length ? "Try a different search or filter." : "Visits to your website appear here a few seconds after someone opens it.");
+      $("visCount").textContent = list.length + " of " + all.length + (s.total > all.length ? " (latest)" : "");
+    }
+    $("admView").innerHTML =
+      '<div class="adm-kpis">'+
+        kpi("Visits today", s.today || 0, (s.uniqueToday || 0) + " unique visitor" + (s.uniqueToday === 1 ? "" : "s")) +
+        kpi("Last 7 days", s.week || 0, "Visits incl. today") +
+        kpi("All time", s.total || 0, (s.unique || 0) + " unique visitors") +
+        kpi("Devices", pct(dv.Mobile || 0) + " mobile", pct(dv.Desktop || 0) + " desktop · " + pct(dv.Tablet || 0) + " tablet") +
+      '</div>'+
+      ((s.countries || []).length ? '<div class="adm-vis-top"><span>Top countries</span>'+s.countries.map(function (c) {
+        return '<b>'+esc(c.country)+' <em>'+c.visits+'</em></b>'; }).join("")+'</div>' : '')+
+      '<div class="adm-toolbar">'+
+        '<label class="adm-search">'+svg("search")+'<input id="vfQ" type="search" placeholder="Search IP, city, ISP, browser…" value="'+esc(vf.q)+'"></label>'+
+        '<select id="vfDay" aria-label="Date"><option value="">All dates</option><option value="today"'+(vf.day === "today" ? " selected" : "")+'>Today</option><option value="week"'+(vf.day === "week" ? " selected" : "")+'>Last 7 days</option></select>'+
+        '<select id="vfDev" aria-label="Device"><option value="">All devices</option>'+["Mobile", "Desktop", "Tablet"].map(function (d) {
+          return '<option'+(vf.device === d ? " selected" : "")+'>'+d+'</option>'; }).join("")+'</select>'+
+        '<span class="adm-count" id="visCount"></span>'+
+        '<button class="btn adm-btn btn-ghost" type="button" id="visRefresh">'+svg("refresh")+' Refresh</button>'+
+        (role() === "superadmin" && all.length ? '<button class="btn adm-btn btn-ghost adm-danger-btn" type="button" id="visClear">'+svg("trash")+' Clear all</button>' : '')+
+      '</div>'+
+      '<section class="adm-card adm-flush" id="visBox"></section>';
+    draw();
+    $("vfQ").oninput = function () { vf.q = this.value; visPage = 1; draw(); };
+    $("vfDay").onchange = function () { vf.day = this.value; visPage = 1; draw(); };
+    $("vfDev").onchange = function () { vf.device = this.value; visPage = 1; draw(); };
+    $("visRefresh").onclick = function () { route(); };
+    if ($("visClear")) $("visClear").onclick = async function () {
+      if (!confirm("Delete all " + s.total + " logged visits from the Visitors sheet? This can't be undone.")) return;
+      var r = await api("clearVisitors"); if (!r.ok) { toast(r.error, true); return; }
+      toast("Visitor log cleared"); route();
+    };
+    $("visBox").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.opage) { if (!b.disabled) { visPage = Number(b.dataset.opage) || 1; draw(); $("visBox").scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
+      var v = all.filter(function (x) { return String(x.id) === b.dataset.vis; })[0]; if (!v) return;
+      var row = function (k, val) { return '<div class="adm-kv"><span>'+esc(k)+'</span><b>'+esc(val || "—")+'</b></div>'; };
+      modal("Visit details",
+        '<div class="adm-kvs">'+row("Time", fmtDateTimeInline(v.createdAt))+row("IP address", v.ip)+row("Location", place(v))+row("ISP / network", v.isp)+
+          row("Time zone", v.timezone)+row("Device", (v.device || "") + (v.model ? " · " + v.model : ""))+row("Operating system", v.os)+row("Browser", v.browser)+
+          row("Screen", v.screen)+row("Language", v.language)+row("Landing page", v.page)+row("Came from", v.referrer || "Direct")+row("Signed in as", v.user || "Guest")+
+          row("Visitor ID", v.visitorId)+'</div>'+
+        '<div class="adm-kv adm-kv-ua"><span>User agent</span><code>'+esc(v.userAgent || "—")+'</code></div>'+
+        (v.visitorId ? '<p class="adm-cell-sub">This browser has visited '+all.filter(function (x) { return x.visitorId === v.visitorId; }).length+' time(s) in the visits shown.</p>' : ''),
+        null, { readOnly: true });
+    });
   }
 
   async function viewAdmins() {
