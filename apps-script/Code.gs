@@ -76,7 +76,7 @@ var SHEETS = {
   bank_accounts: { name: "bank_accounts", headers: ["id","seller_id","cash_on","bank_on","bank_name","bank_acc_name","bank_acc_no","ifsc","usdt_on","usdt_link","usdt_address","createdAt","updatedAt"],
                    textCols: ["bank_acc_no","ifsc"] },
   // One row per storefront visit (a browser session), logged by the website.
-  visitors:     { name: "Visitors",     headers: ["id","visitor_id","ip","country","region","city","isp","timezone","device","model","os","browser","screen","language","page","referrer","user","user_agent","createdAt"],
+  visitors:     { name: "Visitors",     headers: ["id","visitor_id","ip","country","region","city","isp","timezone","device","model","os","browser","screen","language","page","referrer","user","user_agent","createdAt","lastSeen","visits"],
                   textCols: ["visitor_id","ip"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
@@ -151,11 +151,15 @@ function doPost(e) {
 
 /* ------------------------------ Visitors ---------------------------------- */
 
-// Public: the website sends one record per browser session (IP + location come
-// from the visitor's browser, since Apps Script can't see the caller's IP).
-// Values are trimmed, length-capped and defused so a crafted request can't put
-// a formula into the sheet. The same visitor id is accepted at most once every
-// 10 minutes, which limits flooding.
+// Public: the website reports a visit once per browser session (IP + location
+// come from the visitor's browser, since Apps Script can't see the caller's IP).
+// The sheet keeps ONE row per device: a returning device updates its row (latest
+// IP/page/etc., lastSeen, visits + 1) instead of adding a new one. A device is
+// matched by its visitor id, or — if the browser's storage was cleared — by the
+// same IP + user agent + screen. Older duplicate rows of that device are merged
+// into it. Values are trimmed, length-capped and defused so a crafted request
+// can't put a formula into the sheet, and one visitor id is accepted at most
+// once every 10 minutes, which limits flooding.
 function logVisit(b) {
   var v = b && b.visit || {};
   var clean = function (x, n) {
@@ -167,48 +171,83 @@ function logVisit(b) {
   var cache = CacheService.getScriptCache(), ck = "visit_" + vid;
   if (cache.get(ck)) return { ok: true, skipped: true };
   cache.put(ck, "1", 600);
+  var rec = {
+    visitor_id: vid, ip: clean(v.ip, 45),
+    country: clean(v.country, 60), region: clean(v.region, 80), city: clean(v.city, 80), isp: clean(v.isp, 120),
+    timezone: clean(v.timezone, 60), device: clean(v.device, 20), model: clean(v.model, 60), os: clean(v.os, 40),
+    browser: clean(v.browser, 40), screen: clean(v.screen, 30), language: clean(v.language, 20),
+    page: clean(v.page, 200), referrer: clean(v.referrer, 200), user: clean(v.user, 80),
+    user_agent: clean(v.userAgent, 400), lastSeen: istNow()
+  };
   return withLock(function () {
-    var sh = sheet("visitors");
-    appendNamed("visitors", {
-      id: Math.max(sh.getLastRow(), 1), visitor_id: vid, ip: clean(v.ip, 45),
-      country: clean(v.country, 60), region: clean(v.region, 80), city: clean(v.city, 80), isp: clean(v.isp, 120),
-      timezone: clean(v.timezone, 60), device: clean(v.device, 20), model: clean(v.model, 60), os: clean(v.os, 40),
-      browser: clean(v.browser, 40), screen: clean(v.screen, 30), language: clean(v.language, 20),
-      page: clean(v.page, 200), referrer: clean(v.referrer, 200), user: clean(v.user, 80),
-      user_agent: clean(v.userAgent, 400), createdAt: istNow()
-    });
-    return { ok: true };
+    var sh = sheet("visitors"), hdr = visitorHeaders(sh), data = sh.getDataRange().getValues();
+    var col = function (name) { return hdr.indexOf(name); };
+    var cV = col("visitor_id"), cIp = col("ip"), cUa = col("user_agent"), cSc = col("screen");
+    var hits = [];   // sheet row numbers of this device, top to bottom
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      var sameId = String(r[cV]) === vid;
+      var sameDevice = rec.ip && rec.user_agent && String(r[cIp]) === rec.ip &&
+                       String(r[cUa]) === rec.user_agent && String(r[cSc]) === rec.screen;
+      if (sameId || sameDevice) hits.push(i + 1);
+    }
+    if (!hits.length) {
+      rec.id = nextId(sh); rec.createdAt = rec.lastSeen; rec.visits = 1;
+      appendNamed("visitors", rec);
+      return { ok: true, created: true };
+    }
+    // Keep the oldest row (first seen), add up every row's visit count, refresh the rest.
+    var keep = hits[0], old = data[keep - 1], visits = 1;
+    hits.forEach(function (n) { visits += Number(data[n - 1][col("visits")]) || 1; });
+    rec.id = old[col("id")]; rec.createdAt = old[col("createdAt")] || rec.lastSeen; rec.visits = visits;
+    (SHEETS.visitors.textCols || []).forEach(function (name) { if (col(name) > -1) sh.getRange(keep, col(name) + 1).setNumberFormat("@"); });
+    sh.getRange(keep, 1, 1, hdr.length).setValues([hdr.map(function (h, c) { return rec[h] === undefined ? old[c] : rec[h]; })]);
+    for (var k = hits.length - 1; k > 0; k--) sh.deleteRow(hits[k]);   // bottom-up so row numbers stay valid
+    return { ok: true, updated: true, visits: visits };
   });
 }
 
-// Admin: summary numbers over every visit, plus the newest 2,000 visits.
+// Header row of the Visitors tab, adding any columns this version needs that an
+// older sheet doesn't have yet (e.g. lastSeen, visits).
+function visitorHeaders(sh) {
+  var hdr = sheetHeaders("visitors");
+  SHEETS.visitors.headers.forEach(function (h) {
+    if (hdr.indexOf(h) < 0) { sh.getRange(1, hdr.length + 1).setValue(h); hdr.push(h); }
+  });
+  return hdr;
+}
+
+// Admin: summary numbers over every device, plus the 2,000 most recently seen.
 function listVisitors() {
   var rows = readRows("visitors"), tz = "Asia/Kolkata";
   var today = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
   var weekAgo = Utilities.formatDate(new Date(Date.now() - 6 * 864e5), tz, "yyyy-MM-dd");
-  var all = {}, todayV = {}, devices = { Mobile: 0, Desktop: 0, Tablet: 0 }, countries = {}, nToday = 0, nWeek = 0;
-  var day = function (v) { var d = v instanceof Date ? v : new Date(v); return isNaN(d) ? "" : Utilities.formatDate(d, tz, "yyyy-MM-dd"); };
+  var iso = function (x) { return x instanceof Date ? x.toISOString() : String(x || ""); };
+  var ms = function (x) { var d = x instanceof Date ? x : new Date(x); return isNaN(d) ? 0 : d.getTime(); };
+  var day = function (x) { var t = ms(x); return t ? Utilities.formatDate(new Date(t), tz, "yyyy-MM-dd") : ""; };
+  var devices = { Mobile: 0, Desktop: 0, Tablet: 0 }, countries = {}, nToday = 0, nWeek = 0, nNew = 0, visits = 0;
   rows.forEach(function (r) {
-    var d = day(r.createdAt), vid = String(r.visitor_id || "");
-    all[vid] = 1;
-    if (d === today) { nToday++; todayV[vid] = 1; }
+    var seen = r.lastSeen || r.createdAt, d = day(seen);
+    if (d === today) nToday++;
     if (d >= weekAgo) nWeek++;
+    if (day(r.createdAt) === today) nNew++;
+    visits += Number(r.visits) || 1;
     if (devices[r.device] !== undefined) devices[r.device]++;
     var c = String(r.country || "Unknown"); countries[c] = (countries[c] || 0) + 1;
   });
   var top = Object.keys(countries).map(function (k) { return { country: k, visits: countries[k] }; })
     .sort(function (a, b) { return b.visits - a.visits; }).slice(0, 5);
-  var list = rows.slice(-2000).reverse().map(function (r) {
-    var at = r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt || "");
+  var list = rows.map(function (r) {
     return { id: r.id, visitorId: String(r.visitor_id || ""), ip: String(r.ip || ""), country: r.country, region: r.region, city: r.city,
              isp: r.isp, timezone: r.timezone, device: r.device, model: r.model, os: r.os, browser: r.browser, screen: r.screen,
-             language: r.language, page: r.page, referrer: r.referrer, user: r.user, userAgent: r.user_agent, createdAt: at };
-  });
-  return { visitors: list, stats: { total: rows.length, today: nToday, week: nWeek, uniqueToday: Object.keys(todayV).length,
-           unique: Object.keys(all).length, devices: devices, countries: top } };
+             language: r.language, page: r.page, referrer: r.referrer, user: r.user, userAgent: r.user_agent,
+             createdAt: iso(r.createdAt), lastSeen: iso(r.lastSeen || r.createdAt), visits: Number(r.visits) || 1 };
+  }).sort(function (a, b) { return ms(b.lastSeen) - ms(a.lastSeen); }).slice(0, 2000);
+  return { visitors: list, stats: { total: rows.length, visits: visits, today: nToday, week: nWeek, newToday: nNew,
+           devices: devices, countries: top } };
 }
 
-// Superadmin: delete every logged visit (keeps the header row).
+// Superadmin: delete every logged device (keeps the header row).
 function clearVisitors() {
   var sh = sheet("visitors"), n = sh.getLastRow() - 1;
   if (n > 0) sh.deleteRows(2, n);

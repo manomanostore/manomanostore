@@ -412,6 +412,7 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-vis-top em{font-style:normal;color:var(--muted);font-weight:600;margin-left:4px}
 .adm-vis td{vertical-align:top}
 .adm-clip{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adm-vis-n{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;background:#eef2ff;color:#3b4bb8;font-weight:600;font-size:12px}
 .adm-pill.dev-mobile{background:#e3f7f3;color:#0c6b5a}
 .adm-pill.dev-desktop{background:#eaf0fb;color:var(--navy)}
 .adm-pill.dev-tablet{background:#fff3dc;color:#8a5a00}
