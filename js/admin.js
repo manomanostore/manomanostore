@@ -119,11 +119,22 @@ window.ADMIN = (function () {
     return '<a class="adm-brand" href="index.html"><img src="images/logo-64.png" alt="" width="30" height="30"><span>'+n+'</span><em>'+esc(badge)+'</em></a>';
   }
 
+  // Flag language picker (shared I18N from js/i18n.js): button + menu markup.
+  function langPicker(id) {
+    var L = window.I18N ? I18N.langs[I18N.get()] : null;
+    if (!L) return "";
+    return '<div class="adm-langwrap notranslate" translate="no">'+
+      '<button type="button" class="adm-lang-btn" id="'+id+'Btn" aria-haspopup="menu" aria-expanded="false" title="Language">'+
+        '<span class="lang-flag">'+L.flag+'</span><span class="adm-lang-code">'+esc(L.code)+'</span>'+svg("chevDown", 14)+'</button>'+
+      '<div class="adm-lang-menu" id="'+id+'Menu" role="menu" hidden></div></div>';
+  }
+  function wireLangPicker(id) { if (window.I18N && $(id + "Btn")) I18N.picker($(id + "Btn"), $(id + "Menu"), "adm-lang-opt"); }
+
   /* -------------------------------- login --------------------------------- */
   function renderLogin(msg) {
     document.body.classList.remove("adm-nav-open");
     $("adminApp").innerHTML =
-      '<div class="adm-login"><form class="adm-login-card" id="admLogin" novalidate>'+ brand() +
+      '<div class="adm-login"><div class="adm-login-lang">'+langPicker("admLangL")+'</div><form class="adm-login-card" id="admLogin" novalidate>'+ brand() +
         '<h1>Sign in to admin</h1><p class="adm-muted">Enter your admin username and password.</p>'+
         '<div id="admLoginMsg">'+(msg ? '<div class="msg err">'+esc(msg)+'</div>' : '')+'</div>'+
         '<div class="field"><label for="admId">Username</label><input id="admId" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>'+
@@ -132,6 +143,7 @@ window.ADMIN = (function () {
         '<a class="adm-back" href="index.html">← Back to the shop</a>'+
       '</form></div>';
     enhancePasswords(document);
+    wireLangPicker("admLangL");
     $("admId").focus();
     $("admLogin").addEventListener("submit", async function (e) {
       e.preventDefault();
@@ -183,6 +195,7 @@ window.ADMIN = (function () {
               '<button type="button" class="adm-menu adm-refresh adm-bell" id="admBell" aria-label="Notifications" title="Notifications">'+svg("bell", 20)+'<span class="adm-bell-dot" id="admBellDot" hidden></span></button>'+
               '<div class="adm-bell-menu" id="admBellMenu" hidden></div>'+
             '</div>'+
+            langPicker("admLang")+
             '<button type="button" class="adm-menu adm-refresh" id="admRefresh" aria-label="Refresh" title="Refresh">'+svg("refresh", 20)+'</button>'+
             '<div class="adm-mewrap">'+
               '<button type="button" class="adm-me" id="admMe" aria-haspopup="menu" aria-expanded="false" aria-controls="admMeMenu">'+
@@ -215,6 +228,7 @@ window.ADMIN = (function () {
     $("admLogout").onclick = function () { logout(); };
     $("admFab").onclick = function () { location.hash = "#chat"; };
     $("admRefresh").onclick = function () { location.reload(); };
+    wireLangPicker("admLang");
     $("admBell").onclick = function (e) { e.stopPropagation(); setMeMenu(false); toggleBell(); };
     $("admMe").onclick = function (e) { e.stopPropagation(); var m = $("admBellMenu"); if (m) m.hidden = true; setMeMenu($("admMeMenu").hidden); };
     $("admMeMenu").onclick = function (e) {
@@ -1543,7 +1557,7 @@ window.ADMIN = (function () {
             '<td><div class="adm-cell-main">'+esc(place(v) || "Unknown")+'</div>'+(v.timezone ? '<div class="adm-cell-sub">'+esc(v.timezone)+'</div>' : '')+'</td>'+
             '<td><span class="adm-pill dev-'+esc(String(v.device || "").toLowerCase())+'">'+esc(dev)+'</span><div class="adm-cell-sub">'+esc(v.os || "")+(v.screen ? ' · '+esc(v.screen) : '')+'</div></td>'+
             '<td>'+esc(v.browser || "—")+'<div class="adm-cell-sub">'+esc(v.language || "")+'</div></td>'+
-            '<td><span class="adm-area '+(AREA_CLS[v.area] || "web")+'">'+esc(v.area || "Website")+'</span><div class="adm-cell-main adm-clip" title="'+esc(v.page)+'">'+esc(v.page || "—")+'</div><div class="adm-cell-sub">'+(v.referrer ? 'from '+esc(v.referrer) : 'Direct')+(v.user ? ' · '+esc(v.user) : '')+'</div></td>'+
+            '<td><span class="adm-area '+(AREA_CLS[v.area] || "web")+'">'+esc(v.area || "Website")+'</span><div class="adm-cell-main adm-clip adm-vis-page" title="'+esc(v.page)+'">'+esc(v.page || "—")+'</div><div class="adm-cell-sub">'+(v.referrer ? 'from '+esc(v.referrer) : 'Direct')+(v.user ? ' · '+esc(v.user) : '')+'</div></td>'+
             '<td class="r"><div class="adm-actions"><button type="button" class="adm-icon-btn" data-vis="'+esc(v.id)+'" title="Details" aria-label="Visitor details">'+svg("eye")+'</button>'+
               (v.blocked ? '<button type="button" class="adm-icon-btn" data-unblock="'+esc(v.id)+'" title="Unblock device" aria-label="Unblock device">'+svg("unlock")+'</button>'
                          : isMe(v) ? '<button type="button" class="adm-icon-btn" disabled title="This is the device you\'re using — you can\'t block yourself" aria-label="Can\'t block your own device">'+svg("ban")+'</button>'

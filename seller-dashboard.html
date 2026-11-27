@@ -138,6 +138,11 @@
   .sd-lang-menu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;padding:9px 10px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink);text-align:left}
   .sd-lang-menu button:hover{background:#f4f7fc}
   .sd-lang-menu button.on{background:#eef3ff;color:var(--blue)}
+  .sd-lang-menu{min-width:230px;max-height:70vh;overflow:auto}
+  .sd-fl{display:inline-flex}
+  .lang-flag-img{width:22px;height:15px;border-radius:3px;object-fit:cover;box-shadow:0 0 0 1px rgba(0,0,0,.12);display:block}
+  .lang-nm{display:flex;flex-direction:column;line-height:1.2;text-align:left}
+  .lang-nm small{font-size:11.5px;font-weight:500;color:var(--muted,#6b7280)}
 
   .sd-acct{position:relative}
   .sd-who{display:flex;align-items:center;gap:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);border-radius:12px;padding:5px 10px 5px 5px;cursor:pointer}
@@ -588,7 +593,7 @@
         <div class="sd-guarantee"><span data-i18n="sd.guarantee">Guarantee Money</span>: <b id="sdGuarantee">$0.00</b></div>
         <div class="sd-lang">
           <button class="sd-lang-btn" id="sdLangBtn" type="button" aria-haspopup="true" aria-expanded="false">
-            <span class="sd-fl" id="sdLangFlag">🇬🇧</span><span id="sdLangCode">EN</span>
+            <span class="sd-fl" id="sdLangFlag"><img class="lang-flag-img" src="images/flags/us.svg" alt="" width="22" height="15"></span><span id="sdLangCode">EN</span>
             <svg class="sd-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <div class="sd-lang-menu" id="sdLangMenu" role="menu" hidden></div>
@@ -873,11 +878,12 @@
 <div class="sd-toast" id="sdToast"></div>
 
 <script src="js/config.js?v=20261127zi"></script>
+<script src="js/i18n.js?v=20261127zw"></script>
 <script src="js/visit.js?v=20261127zt"></script>
-<script src="js/ui.js?v=20261127zt"></script>
+<script src="js/ui.js?v=20261127zu"></script>
 <script src="js/auth.js?v=20261127zi"></script>
 <script src="js/login.js?v=20261127zi"></script>
 <script src="js/chat.js?v=20261127zi"></script>
-<script src="js/seller-dashboard.js?v=20261127zi"></script>
+<script src="js/seller-dashboard.js?v=20261127zu"></script>
 </body>
 </html>

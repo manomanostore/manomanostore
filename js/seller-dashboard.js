@@ -955,11 +955,13 @@
   function buildLang() {
     if (!window.I18N) return;
     var langs = I18N.langs, menu = $("sdLangMenu"), btn = $("sdLangBtn");
-    function paintBtn() { var cur = I18N.get(); $("sdLangFlag").textContent = langs[cur].flag; $("sdLangCode").textContent = langs[cur].code; }
+    function paintBtn() { var cur = I18N.get(); $("sdLangFlag").innerHTML = langs[cur].flag; $("sdLangCode").textContent = langs[cur].code; }
+    btn.classList.add("notranslate"); btn.setAttribute("translate", "no");
+    menu.classList.add("notranslate"); menu.setAttribute("translate", "no");
     menu.innerHTML = Object.keys(langs).map(function (code) {
       var l = langs[code];
       return '<button type="button" data-l="' + code + '"' + (code === I18N.get() ? ' class="on"' : '') +
-        '><span style="font-size:16px">' + l.flag + '</span> ' + l.name + '</button>';
+        '><span class="sd-fl">' + l.flag + '</span><span class="lang-nm">' + l.name + '<small>' + l.country + '</small></span></button>';
     }).join("");
     paintBtn();
     function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
