@@ -389,12 +389,68 @@ window.I18N = (function () {
     if (!model && (m = ua.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/)) && m[1] !== "K") model = m[1].trim();
     return { device: device, os: os, browser: browser, model: model };
   }
+  /* ---- Blocked devices: an admin can block a device on the Visitors page. The
+     server says so in its reply to the visit log / status check, and the flag is
+     remembered so the block screen covers every page straight away. A blocked
+     device re-checks on each page load, so an unblock takes effect on reload. ---- */
+  var BLK = "mm_blk";
+  function isBlockedLocal() { try { return localStorage.getItem(BLK) === "1"; } catch (e) { return false; } }
+  function blockScreen(on) {
+    var el = document.getElementById("mmBlocked");
+    document.documentElement.classList.toggle("mm-blocked", on);
+    if (!on) { if (el) el.remove(); return; }
+    if (!document.getElementById("mmBlockedCss")) {
+      var st = document.createElement("style"); st.id = "mmBlockedCss";
+      st.textContent = "html.mm-blocked,html.mm-blocked body{overflow:hidden!important}" +
+        "html.mm-blocked body>*:not(#mmBlocked){display:none!important}" +
+        "#mmBlocked{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:24px;background:#f4f6fb;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0f1b3d}" +
+        "#mmBlocked .mb-card{max-width:420px;text-align:center;background:#fff;border-radius:20px;padding:36px 28px;box-shadow:0 12px 40px rgba(15,27,61,.12)}" +
+        "#mmBlocked .mb-ic{width:64px;height:64px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;background:#fdecec;color:#d93636}" +
+        "#mmBlocked h1{font-size:22px;margin:0 0 8px}#mmBlocked p{margin:0;color:#5b6478;line-height:1.55;font-size:15px}";
+      document.head.appendChild(st);
+    }
+    if (el) return;
+    var add = function () {
+      if (document.getElementById("mmBlocked") || !document.documentElement.classList.contains("mm-blocked")) return;
+      el = document.createElement("div"); el.id = "mmBlocked"; el.setAttribute("role", "alert");
+      el.innerHTML = '<div class="mb-card"><div class="mb-ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></div>' +
+        '<h1>Access blocked</h1><p>This device has been blocked from using ManoMano. If you think this is a mistake, please contact our support team.</p></div>';
+      document.body.appendChild(el);
+    };
+    if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);
+  }
+  function setBlocked(on) {
+    try { if (on) localStorage.setItem(BLK, "1"); else localStorage.removeItem(BLK); } catch (e) {}
+    blockScreen(on);
+  }
+  if (isBlockedLocal()) blockScreen(true);
+  // Server reply → remember when we last checked and apply the block state.
+  function visitStatus(r) {
+    return r.json().then(function (res) {
+      try { sessionStorage.setItem("mm_vchk", String(Date.now())); } catch (e) {}
+      if (res && res.ok && typeof res.blocked === "boolean") setBlocked(res.blocked);
+    }).catch(function () {});
+  }
+  var visitTracked = false;
   function trackVisit() {
+    if (visitTracked) return; visitTracked = true;
+    var vid;
     try {
-      if (!CONFIG.API_URL || sessionStorage.getItem("mm_visit")) return;
-      sessionStorage.setItem("mm_visit", "1");
-      var vid = localStorage.getItem("mm_vid");
+      if (!CONFIG.API_URL) return;
+      vid = localStorage.getItem("mm_vid");
       if (!vid) { vid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem("mm_vid", vid); }
+      if (sessionStorage.getItem("mm_visit")) {
+        // Already counted this session: just re-check the block status — always when
+        // blocked (so an unblock shows on reload), otherwise every 5 minutes.
+        var last = Number(sessionStorage.getItem("mm_vchk")) || 0;
+        if (!isBlockedLocal() && Date.now() - last < 5 * 60e3) return;
+        var fp = JSON.parse(sessionStorage.getItem("mm_vfp") || "{}");
+        fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "logVisit", check: true, visit: { visitorId: vid, ip: fp.ip || "", userAgent: navigator.userAgent, screen: fp.screen || "" } })
+        }).then(visitStatus).catch(function () {});
+        return;
+      }
+      sessionStorage.setItem("mm_visit", "1");
     } catch (e) { return; }
     var d = deviceInfo(), user = "";
     try {
@@ -409,8 +465,9 @@ window.I18N = (function () {
       referrer: ref && ref !== location.host ? ref : "", userAgent: navigator.userAgent,
       timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || "") };
     var send = function () {
+      try { sessionStorage.setItem("mm_vfp", JSON.stringify({ ip: visit.ip || "", screen: visit.screen })); } catch (e) {}
       fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "logVisit", visit: visit }), keepalive: true }).catch(function () {});
+        body: JSON.stringify({ action: "logVisit", visit: visit }), keepalive: true }).then(visitStatus).catch(function () {});
     };
     // Model + OS version from Client Hints where the browser offers them (Chrome on Android hides the model in the UA).
     var hints = navigator.userAgentData && navigator.userAgentData.getHighEntropyValues
@@ -478,7 +535,7 @@ window.I18N = (function () {
     stickyHeader();
     passwordToggles();
     I18N.apply(document);   // immediate pass so there's no English flash in Hindi
-    setTimeout(trackVisit, 1200);
+    setTimeout(trackVisit, isBlockedLocal() ? 0 : 1200);
   }
 
   // Wire the header language dropdown (flags). Selecting a language re-applies
@@ -659,5 +716,6 @@ window.I18N = (function () {
   }
   function spClose() { if (spPanel) spPanel.hidden = true; }
 
+  if (isBlockedLocal()) setTimeout(trackVisit, 0);
   window.UI = { mount: mount, toast: toast, icons: ic, esc: esc, updateCartBadges: updateCartBadges };
 })();

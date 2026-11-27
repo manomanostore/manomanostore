@@ -76,8 +76,8 @@ var SHEETS = {
   bank_accounts: { name: "bank_accounts", headers: ["id","seller_id","cash_on","bank_on","bank_name","bank_acc_name","bank_acc_no","ifsc","usdt_on","usdt_link","usdt_address","createdAt","updatedAt"],
                    textCols: ["bank_acc_no","ifsc"] },
   // One row per storefront visit (a browser session), logged by the website.
-  visitors:     { name: "Visitors",     headers: ["id","visitor_id","ip","country","region","city","isp","timezone","device","model","os","browser","screen","language","page","referrer","user","user_agent","createdAt","lastSeen","visits"],
-                  textCols: ["visitor_id","ip"] }
+  visitors:     { name: "Visitors",     headers: ["id","visitor_id","ip","country","region","city","isp","timezone","device","model","os","browser","screen","language","page","referrer","user","user_agent","createdAt","lastSeen","visits","blocked","blockedAt"],
+                  textCols: ["visitor_id","ip","createdAt","lastSeen"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
 var A = { id:0, user:1, name:2, hash:3, role:4, status:5, created:6, updated:7, lastLogin:8, tokenHash:9, tokenExp:10, staffCode:11 };
@@ -96,7 +96,7 @@ var PERMS = {
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
   chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES,
   sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES, editOrder: ADMIN_ROLES, deleteOrder: ADMIN_ROLES,
-  listVisitors: ["superadmin", "manager"], clearVisitors: ["superadmin"]
+  listVisitors: ["superadmin", "manager"], blockVisitor: ["superadmin", "manager"], clearVisitors: ["superadmin"]
 };
 
 /* ----------------------------- HTTP handlers ----------------------------- */
@@ -153,13 +153,15 @@ function doPost(e) {
 
 // Public: the website reports a visit once per browser session (IP + location
 // come from the visitor's browser, since Apps Script can't see the caller's IP).
-// The sheet keeps ONE row per device: a returning device updates its row (latest
-// IP/page/etc., lastSeen, visits + 1) instead of adding a new one. A device is
-// matched by its visitor id, or — if the browser's storage was cleared — by the
-// same IP + user agent + screen. Older duplicate rows of that device are merged
-// into it. Values are trimmed, length-capped and defused so a crafted request
-// can't put a formula into the sheet, and one visitor id is accepted at most
-// once every 10 minutes, which limits flooding.
+// The sheet keeps ONE row per device, newest (last seen) at the top: a returning
+// device updates its row (latest IP/page/etc., lastSeen, visits + 1) instead of
+// adding a new one. A device is matched by its visitor id, or — if the browser's
+// storage was cleared — by the same IP + user agent + screen. Older duplicate
+// rows of that device are merged into it. Values are trimmed, length-capped and
+// defused so a crafted request can't put a formula into the sheet, and one
+// visitor id is counted at most once every 10 minutes, which limits flooding.
+// Every reply says whether the device is blocked; { check: true } only asks that
+// (the website re-checks during a session) without counting a visit.
 function logVisit(b) {
   var v = b && b.visit || {};
   var clean = function (x, n) {
@@ -168,9 +170,6 @@ function logVisit(b) {
   };
   var vid = clean(v.visitorId, 40);
   if (!vid) return { ok: false, error: "Missing visitor id." };
-  var cache = CacheService.getScriptCache(), ck = "visit_" + vid;
-  if (cache.get(ck)) return { ok: true, skipped: true };
-  cache.put(ck, "1", 600);
   var rec = {
     visitor_id: vid, ip: clean(v.ip, 45),
     country: clean(v.country, 60), region: clean(v.region, 80), city: clean(v.city, 80), isp: clean(v.isp, 120),
@@ -179,10 +178,19 @@ function logVisit(b) {
     page: clean(v.page, 200), referrer: clean(v.referrer, 200), user: clean(v.user, 80),
     user_agent: clean(v.userAgent, 400), lastSeen: istNow()
   };
+  var blocked = isVisitorBlocked(vid, rec.ip, rec.user_agent, rec.screen);
+  if (b.check) return { ok: true, blocked: blocked };
+  var cache = CacheService.getScriptCache(), ck = "visit_" + vid;
+  if (cache.get(ck)) return { ok: true, skipped: true, blocked: blocked };
+  cache.put(ck, "1", 600);
   return withLock(function () {
     var sh = sheet("visitors"), hdr = visitorHeaders(sh), data = sh.getDataRange().getValues();
     var col = function (name) { return hdr.indexOf(name); };
-    var cV = col("visitor_id"), cIp = col("ip"), cUa = col("user_agent"), cSc = col("screen");
+    var cV = col("visitor_id"), cIp = col("ip"), cUa = col("user_agent"), cSc = col("screen"), cL = col("lastSeen"), cC = col("createdAt");
+    // Older rows from before "lastSeen" existed: use their first-seen time so the sort below is right.
+    var fill = false;
+    for (var f = 1; f < data.length; f++) if (data[f][cL] === "" && data[f][cC] !== "") { data[f][cL] = data[f][cC]; fill = true; }
+    if (fill) sh.getRange(2, cL + 1, data.length - 1, 1).setNumberFormat("@").setValues(data.slice(1).map(function (r) { return [r[cL]]; }));
     var hits = [];   // sheet row numbers of this device, top to bottom
     for (var i = 1; i < data.length; i++) {
       var r = data[i];
@@ -191,24 +199,74 @@ function logVisit(b) {
                        String(r[cUa]) === rec.user_agent && String(r[cSc]) === rec.screen;
       if (sameId || sameDevice) hits.push(i + 1);
     }
+    var out;
     if (!hits.length) {
       rec.id = nextId(sh); rec.createdAt = rec.lastSeen; rec.visits = 1;
       appendNamed("visitors", rec);
-      return { ok: true, created: true };
+      out = { ok: true, created: true, blocked: blocked };
+    } else {
+      // Keep the oldest row (first seen), add up every row's visit count, refresh the rest.
+      var keep = hits[0], old = data[keep - 1], visits = 1, cB = col("blocked"), wasBlocked = false;
+      hits.forEach(function (n) { visits += Number(data[n - 1][col("visits")]) || 1; if (truthy(data[n - 1][cB])) wasBlocked = true; });
+      rec.id = old[col("id")]; rec.createdAt = old[cC] || rec.lastSeen; rec.visits = visits;
+      if (wasBlocked && !truthy(old[cB])) { rec.blocked = "1"; rec.blockedAt = istNow(); }
+      (SHEETS.visitors.textCols || []).forEach(function (name) { if (col(name) > -1) sh.getRange(keep, col(name) + 1).setNumberFormat("@"); });
+      sh.getRange(keep, 1, 1, hdr.length).setValues([hdr.map(function (h, c) { return rec[h] === undefined ? old[c] : rec[h]; })]);
+      for (var k = hits.length - 1; k > 0; k--) sh.deleteRow(hits[k]);   // bottom-up so row numbers stay valid
+      // A blocked device's IP/visitor id may have changed: refresh the blocked list.
+      if (wasBlocked) { cache.remove("visit_blocked"); blocked = true; }
+      out = { ok: true, updated: true, visits: visits, blocked: blocked };
     }
-    // Keep the oldest row (first seen), add up every row's visit count, refresh the rest.
-    var keep = hits[0], old = data[keep - 1], visits = 1;
-    hits.forEach(function (n) { visits += Number(data[n - 1][col("visits")]) || 1; });
-    rec.id = old[col("id")]; rec.createdAt = old[col("createdAt")] || rec.lastSeen; rec.visits = visits;
-    (SHEETS.visitors.textCols || []).forEach(function (name) { if (col(name) > -1) sh.getRange(keep, col(name) + 1).setNumberFormat("@"); });
-    sh.getRange(keep, 1, 1, hdr.length).setValues([hdr.map(function (h, c) { return rec[h] === undefined ? old[c] : rec[h]; })]);
-    for (var k = hits.length - 1; k > 0; k--) sh.deleteRow(hits[k]);   // bottom-up so row numbers stay valid
-    return { ok: true, updated: true, visits: visits };
+    sortVisitors(sh, hdr);
+    return out;
   });
 }
 
+function truthy(x) { return x === true || x === 1 || /^(1|true|yes|blocked)$/i.test(String(x || "").trim()); }
+
+// Newest first in the sheet: sort every data row by "lastSeen", descending.
+function sortVisitors(sh, hdr) {
+  var n = sh.getLastRow() - 1, c = hdr.indexOf("lastSeen") + 1;
+  if (n > 1 && c > 0) sh.getRange(2, 1, n, hdr.length).sort({ column: c, ascending: false });
+}
+
+// Blocked devices as two lookups — visitor ids, and "ip|user agent|screen" so a
+// blocked device that clears its browser data is still recognised. Cached for
+// 6 hours; blocking, unblocking, clearing or a blocked device's row changing
+// drops the cache.
+function blockedVisitors() {
+  var cache = CacheService.getScriptCache(), hit = cache.get("visit_blocked");
+  if (hit) return JSON.parse(hit);
+  var set = { ids: {}, fps: {} };
+  readRows("visitors").forEach(function (r) {
+    if (!truthy(r.blocked)) return;
+    if (r.visitor_id) set.ids[String(r.visitor_id)] = 1;
+    if (r.ip && r.user_agent) set.fps[[r.ip, r.user_agent, r.screen].join("|")] = 1;
+  });
+  try { cache.put("visit_blocked", JSON.stringify(set), 21600); } catch (e) {}
+  return set;
+}
+function isVisitorBlocked(vid, ip, ua, screen) {
+  var set = blockedVisitors();
+  return !!(set.ids[vid] || (ip && ua && set.fps[[ip, ua, screen].join("|")]));
+}
+
+// Admin: block / unblock one device (row id). A blocked device sees an
+// "access blocked" screen instead of the website.
+function blockVisitor(p, meData) {
+  var sh = sheet("visitors"), hdr = visitorHeaders(sh), data = sh.getDataRange().getValues();
+  var cId = hdr.indexOf("id"), row = 0;
+  for (var i = 1; i < data.length; i++) if (String(data[i][cId]) === String(p.id)) { row = i + 1; break; }
+  if (!row) return { ok: false, error: "Visitor not found — refresh and try again." };
+  var on = !!p.blocked, at = on ? istNow() : "";
+  sh.getRange(row, hdr.indexOf("blocked") + 1).setValue(on ? "1" : "");
+  sh.getRange(row, hdr.indexOf("blockedAt") + 1).setNumberFormat("@").setValue(at);
+  CacheService.getScriptCache().remove("visit_blocked");
+  return { blocked: on, blockedAt: at };
+}
+
 // Header row of the Visitors tab, adding any columns this version needs that an
-// older sheet doesn't have yet (e.g. lastSeen, visits).
+// older sheet doesn't have yet (e.g. lastSeen, visits, blocked).
 function visitorHeaders(sh) {
   var hdr = sheetHeaders("visitors");
   SHEETS.visitors.headers.forEach(function (h) {
@@ -225,13 +283,14 @@ function listVisitors() {
   var iso = function (x) { return x instanceof Date ? x.toISOString() : String(x || ""); };
   var ms = function (x) { var d = x instanceof Date ? x : new Date(x); return isNaN(d) ? 0 : d.getTime(); };
   var day = function (x) { var t = ms(x); return t ? Utilities.formatDate(new Date(t), tz, "yyyy-MM-dd") : ""; };
-  var devices = { Mobile: 0, Desktop: 0, Tablet: 0 }, countries = {}, nToday = 0, nWeek = 0, nNew = 0, visits = 0;
+  var devices = { Mobile: 0, Desktop: 0, Tablet: 0 }, countries = {}, nToday = 0, nWeek = 0, nNew = 0, visits = 0, nBlocked = 0;
   rows.forEach(function (r) {
     var seen = r.lastSeen || r.createdAt, d = day(seen);
     if (d === today) nToday++;
     if (d >= weekAgo) nWeek++;
     if (day(r.createdAt) === today) nNew++;
     visits += Number(r.visits) || 1;
+    if (truthy(r.blocked)) nBlocked++;
     if (devices[r.device] !== undefined) devices[r.device]++;
     var c = String(r.country || "Unknown"); countries[c] = (countries[c] || 0) + 1;
   });
@@ -241,9 +300,10 @@ function listVisitors() {
     return { id: r.id, visitorId: String(r.visitor_id || ""), ip: String(r.ip || ""), country: r.country, region: r.region, city: r.city,
              isp: r.isp, timezone: r.timezone, device: r.device, model: r.model, os: r.os, browser: r.browser, screen: r.screen,
              language: r.language, page: r.page, referrer: r.referrer, user: r.user, userAgent: r.user_agent,
-             createdAt: iso(r.createdAt), lastSeen: iso(r.lastSeen || r.createdAt), visits: Number(r.visits) || 1 };
+             createdAt: iso(r.createdAt), lastSeen: iso(r.lastSeen || r.createdAt), visits: Number(r.visits) || 1,
+             blocked: truthy(r.blocked), blockedAt: iso(r.blockedAt) };
   }).sort(function (a, b) { return ms(b.lastSeen) - ms(a.lastSeen); }).slice(0, 2000);
-  return { visitors: list, stats: { total: rows.length, visits: visits, today: nToday, week: nWeek, newToday: nNew,
+  return { visitors: list, stats: { total: rows.length, visits: visits, today: nToday, week: nWeek, newToday: nNew, blocked: nBlocked,
            devices: devices, countries: top } };
 }
 
@@ -251,6 +311,7 @@ function listVisitors() {
 function clearVisitors() {
   var sh = sheet("visitors"), n = sh.getLastRow() - 1;
   if (n > 0) sh.deleteRows(2, n);
+  CacheService.getScriptCache().remove("visit_blocked");
   return { cleared: Math.max(n, 0) };
 }
 
@@ -1535,6 +1596,7 @@ function adminCall(b) {
       chatThread:      function () { return adminChatThread(p, me.data); },
       chatSend:        function () { return adminChatSend(p, me.data); },
       listVisitors:    function () { return listVisitors(); },
+      blockVisitor:    function () { return withLock(function () { return blockVisitor(p, me.data); }); },
       clearVisitors:   function () { return withLock(clearVisitors); },
       importCatalog:   function () { return withLock(function () {
                            if (readRows("products").length && !p.overwrite) return { ok: false, error: "The Products tab already has data." };

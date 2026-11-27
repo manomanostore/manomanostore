@@ -50,6 +50,8 @@ window.ADMIN = (function () {
     bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     chevDown: '<path d="M6 9l6 6 6-6"/>',
+    ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+    unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.7-1.5"/>',
     chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/>'
   };
   function svg(name, size) {
@@ -534,7 +536,8 @@ window.ADMIN = (function () {
       if (ed) { var o = all.filter(function (x) { return String(x.id) === ed.dataset.oedit; })[0]; if (o) editOrderForm(o); return; }
       if (del) {
         var d = all.filter(function (x) { return String(x.id) === del.dataset.odel; })[0]; if (!d) return;
-        if (!confirm("Delete order " + orderLabel(d) + (d.customer ? " for " + d.customer : "") + "? This can't be undone.")) return;
+        if (!(await confirmDialog({ title: "Delete this order?", confirmLabel: "Delete order",
+          message: "Order <b>" + esc(orderLabel(d)) + "</b>" + (d.customer ? " for <b>" + esc(d.customer) + "</b>" : "") + " will be permanently deleted. This can't be undone." }))) return;
         del.disabled = true;
         var r = await api("deleteOrder", { id: d.id });
         if (!r.ok) { del.disabled = false; toast(r.error, true); return; }
@@ -717,7 +720,9 @@ window.ADMIN = (function () {
       if (b.dataset.edit) productForm(find(b.dataset.edit));
       if (b.dataset.del) {
         var d = find(b.dataset.del);
-        if (!confirm('Delete "' + d.name + '"? This can\'t be undone. (Tip: set its status to Hide in Edit instead to keep it.)')) return;
+        if (!(await confirmDialog({ title: "Delete this product?", confirmLabel: "Delete product",
+          message: "<b>" + esc(d.name) + "</b> and its images will be permanently removed from the catalog. This can't be undone.",
+          detail: "Tip: to take it off the shop but keep it, edit the product and set its status to <b>Hide</b> instead." }))) return;
         b.disabled = true;
         var rr = await api("deleteProduct", { id: d.id });
         if (!rr.ok) { b.disabled = false; toast(rr.error, true); return; }
@@ -884,7 +889,8 @@ window.ADMIN = (function () {
       var c = cat.categories.filter(function (x) { return String(x.id) === (b.dataset.edit || b.dataset.del); })[0];
       if (b.dataset.edit) categoryForm(c);
       if (b.dataset.del) {
-        if (!confirm('Delete the category "' + c.name + '"?')) return;
+        if (!(await confirmDialog({ title: "Delete this category?", confirmLabel: "Delete category",
+          message: "The category <b>" + esc(c.name) + "</b> and its image will be deleted. A category that still has products can't be deleted." }))) return;
         var r = await api("deleteCategory", { id: c.id });
         if (!r.ok) { toast(r.error, true); return; }
         catalogChanged(); toast("Category deleted"); route();
@@ -988,7 +994,8 @@ window.ADMIN = (function () {
         catalogChanged(); toast(next === "hidden" ? "Banner hidden" : "Banner shown"); route();
       }
       if (btn.dataset.act === "del") {
-        if (!confirm("Delete this banner? It will be removed from the homepage.")) return;
+        if (!(await confirmDialog({ title: "Delete this banner?", confirmLabel: "Delete banner",
+          message: "This banner will be removed from the homepage slider and its image deleted. This can't be undone." }))) return;
         var r = await api("deleteBanner", { id: rec.id, matchUrl: rec.imageUrl });
         if (!r.ok) { toast(r.error, true); return; }
         catalogChanged(); toast("Banner deleted"); route();
@@ -1092,7 +1099,8 @@ window.ADMIN = (function () {
       if (b.dataset.shop !== undefined) { var rs = await api("saveVendor", { id: v.id, shop_status: b.dataset.to === "1" ? 1 : 0 }); if (!rs.ok) { toast(rs.error, true); return; } catalogChanged(); toast(b.dataset.to === "1" ? "Shop verified" : "Shop set unverified"); route(); return; }
       if (b.dataset.edit) vendorForm(v);
       if (b.dataset.del) {
-        if (!confirm('Delete the seller "' + (v.shopName||v.name) + '"?')) return;
+        if (!(await confirmDialog({ title: "Delete this seller?", confirmLabel: "Delete seller",
+          message: "<b>" + esc(v.shopName || v.name) + "</b> will be deleted along with their uploaded documents. They won't be able to sign in. This can't be undone." }))) return;
         var r = await api("deleteVendor", { id: v.id });
         if (!r.ok) { toast(r.error, true); return; }
         catalogChanged(); toast("Seller deleted"); route();
@@ -1497,7 +1505,7 @@ window.ADMIN = (function () {
 
   /* ------------------------------- visitors ------------------------------- */
   // Storefront visitors logged by the website — one row per device, updated on each new visit.
-  var vf = { q: "", device: "", day: "" }, visPage = 1, VISITS_PER_PAGE = 20;
+  var vf = { q: "", device: "", day: "", status: "" }, visPage = 1, VISITS_PER_PAGE = 20;
   async function viewVisitors() {
     var res = await api("listVisitors");
     if (!res.ok) throw new Error(res.error);
@@ -1511,6 +1519,8 @@ window.ADMIN = (function () {
       var q = vf.q.trim().toLowerCase();
       var list = all.filter(function (v) {
         if (vf.device && v.device !== vf.device) return false;
+        if (vf.status === "blocked" && !v.blocked) return false;
+        if (vf.status === "active" && v.blocked) return false;
         if (vf.day === "today" && dayKey(v.lastSeen) !== todayKey) return false;
         if (vf.day === "week" && dayKey(v.lastSeen) < weekKey) return false;
         return !q || [v.ip, v.city, v.region, v.country, v.isp, v.os, v.browser, v.model, v.page, v.referrer, v.user].join(" ").toLowerCase().indexOf(q) > -1;
@@ -1522,14 +1532,16 @@ window.ADMIN = (function () {
         '<div class="adm-table-wrap"><table class="adm-table adm-vis"><thead><tr><th>Last seen</th><th>IP address</th><th>Location</th><th>Device</th><th>Browser</th><th>Page</th><th class="r"></th></tr></thead><tbody>'+
         pageList.map(function (v) {
           var dev = (v.device || "—") + (v.model ? " · " + v.model : "");
-          return '<tr>'+
-            '<td>'+fmtDateTime(v.lastSeen)+'<div class="adm-cell-sub"><span class="adm-vis-n">'+v.visits+' visit'+(v.visits === 1 ? '' : 's')+'</span></div></td>'+
+          return '<tr'+(v.blocked ? ' class="is-blocked"' : '')+'>'+
+            '<td>'+fmtDateTime(v.lastSeen)+'<div class="adm-cell-sub"><span class="adm-vis-n">'+v.visits+' visit'+(v.visits === 1 ? '' : 's')+'</span>'+(v.blocked ? ' <span class="adm-vis-blk">Blocked</span>' : '')+'</div></td>'+
             '<td><span class="adm-code">'+esc(v.ip || "Unknown")+'</span>'+(v.isp ? '<div class="adm-cell-sub adm-clip" title="'+esc(v.isp)+'">'+esc(v.isp)+'</div>' : '')+'</td>'+
             '<td><div class="adm-cell-main">'+esc(place(v) || "Unknown")+'</div>'+(v.timezone ? '<div class="adm-cell-sub">'+esc(v.timezone)+'</div>' : '')+'</td>'+
             '<td><span class="adm-pill dev-'+esc(String(v.device || "").toLowerCase())+'">'+esc(dev)+'</span><div class="adm-cell-sub">'+esc(v.os || "")+(v.screen ? ' · '+esc(v.screen) : '')+'</div></td>'+
             '<td>'+esc(v.browser || "—")+'<div class="adm-cell-sub">'+esc(v.language || "")+'</div></td>'+
             '<td><div class="adm-cell-main adm-clip" title="'+esc(v.page)+'">'+esc(v.page || "—")+'</div><div class="adm-cell-sub">'+(v.referrer ? 'from '+esc(v.referrer) : 'Direct')+(v.user ? ' · '+esc(v.user) : '')+'</div></td>'+
-            '<td class="r"><button type="button" class="adm-icon-btn" data-vis="'+esc(v.id)+'" title="Details" aria-label="Visitor details">'+svg("eye")+'</button></td>'+
+            '<td class="r"><div class="adm-actions"><button type="button" class="adm-icon-btn" data-vis="'+esc(v.id)+'" title="Details" aria-label="Visitor details">'+svg("eye")+'</button>'+
+              (v.blocked ? '<button type="button" class="adm-icon-btn" data-unblock="'+esc(v.id)+'" title="Unblock device" aria-label="Unblock device">'+svg("unlock")+'</button>'
+                         : '<button type="button" class="adm-icon-btn danger" data-block="'+esc(v.id)+'" title="Block device" aria-label="Block device">'+svg("ban")+'</button>')+'</div></td>'+
           '</tr>';
         }).join("")+'</tbody></table></div>' + pager(visPage, pages, from + 1, from + pageList.length, list.length)
         : empty(all.length ? "No visitors match" : "No visitors yet", all.length ? "Try a different search or filter." : "Visitors to your website appear here a few seconds after someone opens it.");
@@ -1539,7 +1551,7 @@ window.ADMIN = (function () {
       '<div class="adm-kpis">'+
         kpi("Visitors today", s.today || 0, (s.newToday || 0) + " new device" + (s.newToday === 1 ? "" : "s")) +
         kpi("Last 7 days", s.week || 0, "Devices seen, incl. today") +
-        kpi("All devices", s.total || 0, (s.visits || 0) + " visit" + (s.visits === 1 ? "" : "s") + " in total") +
+        kpi("All devices", s.total || 0, (s.visits || 0) + " visit" + (s.visits === 1 ? "" : "s") + " in total" + (s.blocked ? " · " + s.blocked + " blocked" : "")) +
         kpi("Devices", pct(dv.Mobile || 0) + " mobile", pct(dv.Desktop || 0) + " desktop · " + pct(dv.Tablet || 0) + " tablet") +
       '</div>'+
       ((s.countries || []).length ? '<div class="adm-vis-top"><span>Top countries</span>'+s.countries.map(function (c) {
@@ -1549,6 +1561,7 @@ window.ADMIN = (function () {
         '<select id="vfDay" aria-label="Date"><option value="">All dates</option><option value="today"'+(vf.day === "today" ? " selected" : "")+'>Today</option><option value="week"'+(vf.day === "week" ? " selected" : "")+'>Last 7 days</option></select>'+
         '<select id="vfDev" aria-label="Device"><option value="">All devices</option>'+["Mobile", "Desktop", "Tablet"].map(function (d) {
           return '<option'+(vf.device === d ? " selected" : "")+'>'+d+'</option>'; }).join("")+'</select>'+
+        '<select id="vfSt" aria-label="Status"><option value="">All status</option><option value="active"'+(vf.status === "active" ? " selected" : "")+'>Allowed</option><option value="blocked"'+(vf.status === "blocked" ? " selected" : "")+'>Blocked</option></select>'+
         '<span class="adm-count" id="visCount"></span>'+
         '<button class="btn adm-btn btn-ghost" type="button" id="visRefresh">'+svg("refresh")+' Refresh</button>'+
         (role() === "superadmin" && all.length ? '<button class="btn adm-btn btn-ghost adm-danger-btn" type="button" id="visClear">'+svg("trash")+' Clear all</button>' : '')+
@@ -1558,19 +1571,37 @@ window.ADMIN = (function () {
     $("vfQ").oninput = function () { vf.q = this.value; visPage = 1; draw(); };
     $("vfDay").onchange = function () { vf.day = this.value; visPage = 1; draw(); };
     $("vfDev").onchange = function () { vf.device = this.value; visPage = 1; draw(); };
+    $("vfSt").onchange = function () { vf.status = this.value; visPage = 1; draw(); };
     $("visRefresh").onclick = function () { route(); };
     if ($("visClear")) $("visClear").onclick = async function () {
-      if (!confirm("Delete all " + s.total + " logged devices from the Visitors sheet? This can't be undone.")) return;
+      if (!(await confirmDialog({ title: "Clear the visitor log?", confirmLabel: "Clear all",
+        message: "All <b>" + s.total + "</b> logged device" + (s.total === 1 ? "" : "s") + " will be deleted from the Visitors sheet. This can't be undone.",
+        detail: s.blocked ? "<b>" + s.blocked + "</b> blocked device" + (s.blocked === 1 ? " is" : "s are") + " in the log — clearing it unblocks " + (s.blocked === 1 ? "it" : "them") + "." : "" }))) return;
       var r = await api("clearVisitors"); if (!r.ok) { toast(r.error, true); return; }
       toast("Visitor log cleared"); route();
     };
-    $("visBox").addEventListener("click", function (e) {
+    $("visBox").addEventListener("click", async function (e) {
       var b = e.target.closest("button"); if (!b) return;
       if (b.dataset.opage) { if (!b.disabled) { visPage = Number(b.dataset.opage) || 1; draw(); $("visBox").scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
+      if (b.dataset.block || b.dataset.unblock) {
+        var t = all.filter(function (x) { return String(x.id) === (b.dataset.block || b.dataset.unblock); })[0]; if (!t) return;
+        var on = !!b.dataset.block;
+        if (on && !(await confirmDialog({ title: "Block this device?", confirmLabel: "Block device", icon: "ban",
+          message: "This device will see an <b>“Access blocked”</b> screen instead of your website until you unblock it.",
+          detail: '<div class="adm-cf-dev"><span class="adm-pill dev-'+esc(String(t.device || "").toLowerCase())+'">'+esc((t.device || "Device") + (t.model ? " · " + t.model : ""))+'</span>'+
+            '<div><span class="adm-code">'+esc(t.ip || "Unknown IP")+'</span>'+(place(t) ? ' · '+esc(place(t)) : '')+'</div>'+
+            '<div class="adm-cell-sub">'+esc([t.os, t.browser].filter(Boolean).join(" · "))+' · '+t.visits+' visit'+(t.visits === 1 ? '' : 's')+'</div></div>' }))) return;
+        b.disabled = true;
+        var r = await api("blockVisitor", { id: t.id, blocked: on });
+        if (!r.ok) { b.disabled = false; toast(r.error, true); return; }
+        t.blocked = on; t.blockedAt = r.blockedAt || "";
+        s.blocked = Math.max(0, (s.blocked || 0) + (on ? 1 : -1));
+        toast(on ? "Device blocked" : "Device unblocked"); draw(); return;
+      }
       var v = all.filter(function (x) { return String(x.id) === b.dataset.vis; })[0]; if (!v) return;
       var row = function (k, val) { return '<div class="adm-kv"><span>'+esc(k)+'</span><b>'+esc(val || "—")+'</b></div>'; };
       modal("Visitor details",
-        '<div class="adm-kvs">'+row("Last seen", fmtDateTimeInline(v.lastSeen))+row("First seen", fmtDateTimeInline(v.createdAt))+row("Visits", String(v.visits))+row("IP address", v.ip)+row("Location", place(v))+row("ISP / network", v.isp)+
+        '<div class="adm-kvs">'+row("Status", v.blocked ? "Blocked" + (v.blockedAt ? " since " + fmtDateTimeInline(v.blockedAt) : "") : "Allowed")+row("Last seen", fmtDateTimeInline(v.lastSeen))+row("First seen", fmtDateTimeInline(v.createdAt))+row("Visits", String(v.visits))+row("IP address", v.ip)+row("Location", place(v))+row("ISP / network", v.isp)+
           row("Time zone", v.timezone)+row("Device", (v.device || "") + (v.model ? " · " + v.model : ""))+row("Operating system", v.os)+row("Browser", v.browser)+
           row("Screen", v.screen)+row("Language", v.language)+row("Last page", v.page)+row("Came from", v.referrer || "Direct")+row("Signed in as", v.user || "Guest")+
           row("Visitor ID", v.visitorId)+'</div>'+
@@ -1606,7 +1637,8 @@ window.ADMIN = (function () {
       var a = admins.filter(function (x) { return String(x.id) === (b.dataset.edit || b.dataset.del); })[0];
       if (b.dataset.edit) adminForm(a);
       if (b.dataset.del) {
-        if (!confirm('Delete the admin "' + a.username + '"? They will lose access immediately.')) return;
+        if (!(await confirmDialog({ title: "Delete this admin?", confirmLabel: "Delete admin",
+          message: "<b>" + esc(a.name || a.username) + "</b> (@" + esc(a.username) + ") will lose access to the admin panel immediately. This can't be undone." }))) return;
         var r = await api("deleteAdmin", { id: a.id });
         if (!r.ok) { toast(r.error, true); return; }
         toast("Admin deleted"); route();
@@ -1722,6 +1754,50 @@ window.ADMIN = (function () {
         $("mMsg").innerHTML = '<div class="msg err" role="alert">'+esc(err)+'</div>';
         wrap.querySelector(".adm-modal-body").scrollTop = 0;
       } else close();
+    });
+  }
+
+  /* ---------------------------- confirm dialog ---------------------------- */
+  // Styled replacement for the browser's native confirm box. Resolves true (confirmed) or
+  // false (cancelled / Esc / clicked outside).
+  //   o.title, o.message (HTML — escape user values), o.detail (HTML, optional
+  //   highlighted box), o.confirmLabel, o.tone "danger" (default) | "primary",
+  //   o.icon (an ic name).
+  function confirmDialog(o) {
+    o = o || {};
+    var tone = o.tone === "primary" ? "primary" : "danger";
+    return new Promise(function (resolve) {
+      var wrap = document.createElement("div");
+      wrap.className = "adm-modal-back adm-confirm-back";
+      wrap.innerHTML = '<div class="adm-confirm" role="alertdialog" aria-modal="true" aria-labelledby="cfTitle" aria-describedby="cfMsg">'+
+        '<div class="adm-confirm-ic '+tone+'">'+svg(o.icon || (tone === "danger" ? "trash" : "shield"), 26)+'</div>'+
+        '<h2 id="cfTitle">'+esc(o.title || "Are you sure?")+'</h2>'+
+        '<p id="cfMsg">'+(o.message || "")+'</p>'+
+        (o.detail ? '<div class="adm-confirm-detail">'+o.detail+'</div>' : '')+
+        '<div class="adm-confirm-foot"><button type="button" class="btn btn-ghost" data-cf="0">'+esc(o.cancelLabel || "Cancel")+'</button>'+
+          '<button type="button" class="btn '+(tone === "danger" ? "btn-danger" : "btn-primary")+'" data-cf="1">'+esc(o.confirmLabel || "Confirm")+'</button></div>'+
+      '</div>';
+      document.body.appendChild(wrap);
+      document.documentElement.classList.add("no-scroll");
+      var prev = document.activeElement;
+      var done = function (v) {
+        wrap.remove(); document.removeEventListener("keydown", onKey, true);
+        if (!document.querySelector(".adm-modal-back")) document.documentElement.classList.remove("no-scroll");
+        if (prev && prev.focus) try { prev.focus(); } catch (e) {}
+        resolve(v);
+      };
+      var btns = wrap.querySelectorAll("[data-cf]");
+      var onKey = function (e) {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); }
+        else if (e.key === "Tab") {      // keep focus inside the dialog
+          e.preventDefault(); (document.activeElement === btns[0] ? btns[1] : btns[0]).focus();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      wrap.addEventListener("mousedown", function (e) { if (e.target === wrap) done(false); });
+      btns.forEach(function (b) { b.onclick = function () { done(b.dataset.cf === "1"); }; });
+      // Destructive actions start on Cancel so a stray Enter doesn't delete anything.
+      (tone === "danger" ? btns[0] : btns[1]).focus();
     });
   }
 
