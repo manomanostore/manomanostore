@@ -1,5 +1,5 @@
 /* Service worker — app-shell cache for an app-like, offline-capable PWA */
-var CACHE = "manomano-v102";
+var CACHE = "manomano-v106";
 var SHELL = [
   "index.html", "category.html", "product.html", "cart.html", "login.html", "account.html", "blog.html", "brands.html", "sell.html", "seller-dashboard.html",
   "css/styles.css",
@@ -7,7 +7,7 @@ var SHELL = [
   "js/home.js", "js/category.js", "js/product.js", "js/cart-page.js", "js/login.js", "js/account.js", "js/seller-dashboard.js",
   "js/blog.js", "js/chat.js", "css/chat.css", "images/support-agent.svg", "images/support-agent-site.svg",
   "data/products.json", "images/logo-64.png", "images/logo-192.png", "images/logo-512.png",
-  "images/banner-1.png", "images/banner-2.png", "images/banner-3.png", "images/banner-4.png", "images/promo-1.jpg", "images/promo-2.jpg", "images/promo-3.jpg", "images/googleplay.png", "images/appstore.svg",
+  "images/banner-1.png", "images/banner-2.png", "images/banner-3.png", "images/banner-4.png", "images/promo-1.jpg", "images/promo-2.jpg", "images/promo-3.jpg", "images/googleplay.png", "images/gpay.png", "images/appstore.svg",
   "images/award-1.png", "images/award-2.png", "images/award-3.png", "images/award-4.png", "images/flags/us.svg", "images/flags/gb.svg", "images/flags/in.svg", "images/flags/fr.svg", "images/flags/de.svg", "images/flags/es.svg", "images/flags/it.svg", "images/flags/be.svg", "manifest.webmanifest"
 ];
 

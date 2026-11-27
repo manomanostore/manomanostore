@@ -110,9 +110,9 @@ window.CARTPAGE = (function () {
             '<ul class="clines">'+lines+'</ul>'+
           '</section>'+
           '<div class="cart-perks">'+
-            perk(UI.icons.truck, "Free delivery", "On every order") +
-            perk(I.returns, "Easy returns", "Hassle-free process") +
-            perk(UI.icons.shield, "Secure payment", "Encrypted checkout") +
+            perk(UI.icons.truck, "Free delivery", "On every order, no minimum", "g") +
+            perk(I.returns, "Easy returns", "Simple, hassle-free returns", "b") +
+            perk(UI.icons.shield, "Secure payment", "Your details are encrypted", "p") +
           '</div>'+
         '</div>'+
         '<aside class="cart-summary">'+
@@ -123,8 +123,9 @@ window.CARTPAGE = (function () {
           '<p class="sum-tax">Prices in '+UI.esc(CONFIG.CURRENCY_CODE)+'</p>'+
           '<button class="btn btn-checkout btn-block" type="button" data-checkout id="checkoutBtn">'+I.lock+' Proceed to checkout</button>'+
           (user ? '' : '<p class="sum-hint">You\'ll sign in or create an account at the next step.</p>')+
+          '<div class="sum-secure">'+I.lock+' Safe &amp; secure checkout</div>'+
           '<div class="sum-pay" aria-label="Accepted payment methods">'+
-            ['VISA','MC','AMEX','PayPal','G Pay','Pay'].map(function (p) { return '<span>'+p+'</span>'; }).join('')+
+            (UI.payTiles ? UI.payTiles(['visa', 'mc', 'amex', 'pp', 'apay', 'gpay']) : '')+
           '</div>'+
         '</aside>'+
       '</div>'+
@@ -135,8 +136,8 @@ window.CARTPAGE = (function () {
       '</div>';
   }
 
-  function perk(icon, title, sub) {
-    return '<div class="perk"><span class="perk-ic">'+icon+'</span><div><strong>'+title+'</strong><span>'+sub+'</span></div></div>';
+  function perk(icon, title, sub, tone) {
+    return '<div class="perk"><span class="perk-ic '+(tone || '')+'">'+icon+'</span><div><strong>'+title+'</strong><span>'+sub+'</span></div></div>';
   }
 
   function wire(body) {

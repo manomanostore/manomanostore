@@ -81,7 +81,8 @@ window.HOME = (function () {
     }
 
     // feature icons
-    var fi = { f1: UI.icons.tag, f2: UI.icons.truck, f3: UI.icons.card, f4: UI.icons.shield };
+    var CHAT_IC = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg>';
+    var fi = { f1: UI.icons.grid || UI.icons.tag, f2: UI.icons.truck, f3: UI.icons.card, f4: CHAT_IC };
     Object.keys(fi).forEach(function (id) { var e = document.getElementById(id); if (e) e.innerHTML = fi[id]; });
   }
 

@@ -80,6 +80,19 @@
     '</nav>';
   }
 
+  // Payment brand marks (on white tiles) — used in the footer and the basket.
+  var APPLE = '<svg viewBox="0 0 24 24" width="13" height="13" fill="#000" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.8 3-.8s1.8.8 3 .7c1.2 0 2-1.1 2.8-2.2.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.8zM14.3 5.6c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>';
+  var PAY = {
+    visa: '<span class="pay-tile" title="Visa"><span class="pl-visa">VISA</span></span>',
+    mc: '<span class="pay-tile" title="Mastercard"><span class="pl-mc"><i></i><i></i></span></span>',
+    amex: '<span class="pay-tile amex" title="American Express"><span class="pl-amex">AMEX</span></span>',
+    klarna: '<span class="pay-tile klarna" title="Klarna"><span class="pl-klarna">Klarna</span></span>',
+    pp: '<span class="pay-tile" title="PayPal"><span class="pl-pp">Pay<span>Pal</span></span></span>',
+    apay: '<span class="pay-tile" title="Apple Pay"><span class="pl-apay">' + APPLE + 'Pay</span></span>',
+    gpay: '<span class="pay-tile" title="Google Pay"><img class="pl-gpay-img" src="images/gpay.png" alt="Google Pay" width="49" height="20" loading="lazy"></span>'
+  };
+  function payTiles(list) { return (list || Object.keys(PAY)).map(function (k) { return PAY[k] || ""; }).join(""); }
+
   function footer() {
     function links(arr) { return arr.map(function (l) { return '<a href="'+l[2]+'" data-i18n="'+l[0]+'">'+l[1]+'</a>'; }).join(''); }
     var col1 = [['foot.track','Track orders','account.html'],['foot.returns','Return or withdrawal','#'],['foot.help','Need help?','#'],['foot.contact','Contact us','#'],['foot.report','Report illicit content','#'],['foot.seller','Become a seller','sell.html'],['foot.joinus','Join Us','#'],['foot.affiliate','Affiliate Program','#'],['foot.coupons','Terms and conditions of use of coupons','#']];
@@ -104,16 +117,7 @@
     var flags = [['fr','France'],['it','Italy'],['de','Germany'],['es','Spain']]
       .map(function (f) { return '<a href="#" class="ft-flag" aria-label="'+f[1]+'">'+circleFlag(f[0], f[1])+'</a>'; }).join('');
 
-    // Secure-payment tiles — small brand marks on white.
-    var appleBlack = '<svg viewBox="0 0 24 24" width="13" height="13" fill="#000" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.8 3-.8s1.8.8 3 .7c1.2 0 2-1.1 2.8-2.2.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.8zM14.3 5.6c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>';
-    var pay = [
-      '<span class="pay-tile"><span class="pl-visa">VISA</span></span>',
-      '<span class="pay-tile"><span class="pl-mc"><i></i><i></i></span></span>',
-      '<span class="pay-tile klarna"><span class="pl-klarna">Klarna</span></span>',
-      '<span class="pay-tile"><span class="pl-pp">Pay<span>Pal</span></span></span>',
-      '<span class="pay-tile"><span class="pl-apay">'+appleBlack+'Pay</span></span>',
-      '<span class="pay-tile"><span class="pl-gpay"><b>G</b>Pay</span></span>'
-    ].join('');
+    var pay = payTiles(['visa', 'mc', 'klarna', 'pp', 'apay', 'gpay']);
 
     // Social icons
     function soc(label, path) { return '<a href="#" class="ft-soc" aria-label="'+label+'"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">'+path+'</svg></a>'; }
@@ -161,22 +165,86 @@
   // Signed-in seller (shared with the dashboard via the "mm_seller" key).
   function sellerSess() { try { return JSON.parse(localStorage.getItem("mm_seller") || "null"); } catch (e) { return null; } }
 
+  // Small line icons for the signed-in seller's side menu.
+  var SI = function (d) { return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'; };
+  var sic = {
+    home: SI('<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'),
+    box: SI('<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>'),
+    store: SI('<path d="M4 9l1.5-5h13L20 9M4 9h16v2a3 3 0 0 1-5.3 2A3 3 0 0 1 12 14a3 3 0 0 1-2.7-1A3 3 0 0 1 4 11zM5 13v7h14v-7"/>'),
+    orders: SI('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>'),
+    chat: SI('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/>'),
+    wallet: SI('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/>'),
+    lock: SI('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+    profile: SI('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+    shop: SI('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
+    out: SI('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/>')
+  };
+  // An icon that fits a category's NAME (keyword match), for the side menu.
+  // Unknown names fall back to a tag. Order matters ("women" before "men").
+  var CAT_ICONS = [
+    [/wom[ae]n|ladies|dress|saree|lingerie/i, '<path d="M9 3h6l-1 4 4 13H6l4-13z"/><path d="M10 7h4"/>'],
+    [/\bmen\b|\bman\b|men'?s|gents|shirt|apparel|clothing|fashion|wear/i, '<path d="M8 3l4 2 4-2 4 3-2 4-2-1v12H8V9L6 10 4 6z"/>'],
+    [/mobile|phone|smartphone|tablet/i, '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'],
+    [/beauty|cosmetic|makeup|skin|personal care|fragrance|perfume/i, '<path d="M9 21h6V11H9zM10 11V7l4-3v7"/><path d="M9 15h6"/>'],
+    [/jewel|ring|gold|silver|diamond|watch/i, '<path d="M6 3h12l3 5-9 13L3 8z"/><path d="M3 8h18M9 3l3 5 3-5M12 8v13"/>'],
+    [/computer|laptop|pc\b|accessor|electronic|gadget/i, '<rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20M9 19l1-4h4l1 4"/>'],
+    [/baby|kid|child|toy|infant/i, '<circle cx="12" cy="13" r="7"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="6.5" r="2.5"/><path d="M9.5 15.5a3.5 3.5 0 0 0 5 0M10 12h.01M14 12h.01"/>'],
+    [/tool|hardware|diy/i, '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>'],
+    [/bath|shower|toilet/i, '<path d="M4 12h16v3a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM6 12V5a2 2 0 0 1 4 0M7 20l-1 2M17 20l1 2"/>'],
+    [/heat|plumb|pipe|boiler/i, '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-7 2 1 3 3 3 5"/>'],
+    [/electric|smart|light|power|solar/i, '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'],
+    [/home|living|furniture|decor|kitchen/i, '<path d="M4 11h16v6H4zM6 17v3M18 17v3M6 11V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/>'],
+    [/garden|outdoor|plant|lawn/i, '<path d="M12 21V11M12 11c0-4 3-7 8-7 0 5-3 8-8 7zM12 14c0-3-2-6-7-6 0 4 2 7 7 6z"/>'],
+    [/sport|fitness|gym|outdoor/i, '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6c3 3 3 9.8 0 12.8M18.4 5.6c-3 3-3 9.8 0 12.8"/>'],
+    [/book|station|office/i, '<path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z"/>'],
+    [/shoe|footwear|sneaker/i, '<path d="M3 16l2-8 4 2 3 3 7 1a2 2 0 0 1 2 2v2H3z"/><path d="M3 18h18"/>'],
+    [/bag|luggage|travel/i, '<rect x="4" y="7" width="16" height="13" rx="2"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/>'],
+    [/food|grocery|drink|snack/i, '<path d="M5 8h14l-1.5 12h-11zM9 8V5a3 3 0 0 1 6 0v3"/>'],
+    [/car|auto|bike|motor/i, '<path d="M5 16l1.5-5h11L19 16M3 16h18v3H3zM7 19v2M17 19v2"/><circle cx="7.5" cy="16" r=".5"/><circle cx="16.5" cy="16" r=".5"/>'],
+    [/pet|dog|cat\b/i, '<circle cx="12" cy="15" r="4"/><circle cx="6" cy="10" r="2"/><circle cx="18" cy="10" r="2"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/>']
+  ];
+  var CAT_COLORS = ["#e2557a", "#3b6fe0", "#14a37f", "#c2410c", "#7c3aed", "#0891b2", "#d97706", "#16a34a", "#db2777", "#4f46e5"];
+  function catIcon(name) {
+    var d = null;
+    for (var i = 0; i < CAT_ICONS.length && !d; i++) if (CAT_ICONS[i][0].test(String(name || ""))) d = CAT_ICONS[i][1];
+    return d ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>' : ic.tag;
+  }
+  var FIRE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8z"/><path d="M8 13l5-5"/><circle cx="8.5" cy="8.5" r=".6"/><circle cx="12.5" cy="12.5" r=".6"/></svg>';   // deals: % tag
+
   function drawer() {
     var s = sellerSess();
-    var account = s
-      ? '<a class="d-item" href="seller-dashboard.html"><span class="di">'+ic.user+'<span data-i18n="drawer.dash">Seller Dashboard</span></span>'+ic.chev+'</a>'+
-        '<a class="d-item" href="seller-dashboard.html#products"><span class="di">'+ic.tag+'<span data-i18n="drawer.myproducts">My Products</span></span>'+ic.chev+'</a>'+
-        '<a class="d-item" href="seller-dashboard.html#wallet"><span class="di">'+ic.tag+'<span data-i18n="drawer.wallet">My Wallet</span></span>'+ic.chev+'</a>'+
-        '<a class="d-item" href="#" id="drawerLogout"><span class="di">'+ic.user+'<span data-i18n="drawer.logout">Log out</span></span>'+ic.chev+'</a>'
-      : '<a class="d-item" href="login.html"><span class="di">'+ic.user+'<span data-i18n="drawer.signin">Sign in / Register</span></span>'+ic.chev+'</a>';
+    var D = "seller-dashboard.html";
+    var item = function (href, icon, key, label, extra) {
+      return '<a class="d-item s-item' + (extra || "") + '" href="' + href + '"' + (href === "#" ? ' id="drawerLogout"' : "") + '><span class="di">' + icon +
+        '<span data-i18n="' + key + '">' + label + '</span></span>' + (href === "#" ? "" : ic.chev) + '</a>';
+    };
+    // Signed-in seller: an account menu (like the seller panel) at the top of the
+    // side menu; the shop's categories follow underneath.
+    var sellerMenu = s
+      ? '<div class="d-seller"><span class="d-sava">' + esc(String(s.shopName || s.name || "S").charAt(0).toUpperCase()) + '</span>' +
+          '<span class="d-stx"><b>' + esc(s.shopName || s.name || "My shop") + '</b><small data-i18n="sd.seller">Seller</small></span></div>' +
+        '<nav class="d-smenu">' +
+          item(D + "#dashboard", sic.home, "sd.dashboard", "Dashboard") +
+          item(D + "#products", sic.box, "drawer.myproducts", "My Products") +
+          item(D + "#storehouse", sic.store, "sd.storehouse", "Product Storehouse") +
+          item(D + "#orders", sic.orders, "sd.orders", "Orders") +
+          item(D + "#chat", sic.chat, "sd.conversations", "Conversations") +
+          item(D + "#wallet", sic.wallet, "drawer.wallet", "My Wallet") +
+          item(D + "#password", sic.lock, "drawer.password", "Change Password") +
+          item(D + "#profile", sic.profile, "drawer.profile", "Manage Profile") +
+          item("#", sic.out, "drawer.logout", "Log out", " s-out") +
+        '</nav>'
+      : "";
+    var account = s ? ""
+      : '<h3 data-i18n="drawer.account">Account</h3><a class="d-item" href="login.html"><span class="di">'+ic.user+'<span data-i18n="drawer.signin">Sign in / Register</span></span>'+ic.chev+'</a>';
     return '<div class="drawer-back" id="drawerBack"></div>'+
       '<aside class="drawer" id="drawer">'+
         '<div class="d-head"><strong style="font-size:18px"><span data-i18n="drawer.browse">Browse</span> '+esc(C.BRAND_NAME)+'</strong>'+
           '<button class="icon-btn" id="drawerClose" style="color:var(--ink)">'+ic.close+'</button></div>'+
+        sellerMenu +
         '<h3 data-i18n="drawer.catalog">Catalog</h3><div id="drawerCats"></div>'+
-        '<h3 data-i18n="drawer.account">Account</h3>'+
         account +
-        '<a class="d-item" href="deals.html"><span class="di">'+ic.tag+'<span data-i18n="drawer.today">Today\'s deals</span></span>'+ic.chev+'</a>'+
+        '<a class="d-item" href="deals.html"><span class="di"><span class="d-cic" style="--c:#e5484d">'+FIRE+'</span><span data-i18n="drawer.today">Today\'s deals</span></span>'+ic.chev+'</a>'+
       '</aside>';
   }
 
@@ -212,9 +280,10 @@
     document.body.insertAdjacentHTML("beforeend", bottomNav(opts.active));
     document.body.insertAdjacentHTML("beforeend", drawer());
     DATA.categories().then(function (cats) {
-      document.getElementById("drawerCats").innerHTML = cats.map(function (c) {
+      document.getElementById("drawerCats").innerHTML = cats.map(function (c, i) {
+        var col = /^#[0-9a-f]{6}$/i.test(String(c.color || "")) ? c.color : CAT_COLORS[i % CAT_COLORS.length];
         return '<a class="d-item" href="category.html?cat='+c.id+'"><span class="di">'+
-          '<span style="width:34px;height:34px;border-radius:9px;display:inline-grid;place-items:center;background:'+c.color+'22;color:'+c.color+'">'+ic.tag+'</span>'+
+          '<span class="d-cic" style="--c:'+col+'">'+catIcon(c.name)+'</span>'+
           esc(c.name)+'</span>'+ic.chev+'</a>';
       }).join('');
     }).catch(function (e) { console.warn("Catalog unavailable:", e); });
@@ -297,7 +366,9 @@
     });
     wrap.appendChild(btn);
   }
+  var _pwOn = false;
   function passwordToggles() {
+    if (_pwOn || !document.body) return; _pwOn = true;   // once per page (shop pages + seller panel)
     var scan = function (root) {
       if (root.matches && root.matches('input[type="password"]')) enhancePassword(root);
       if (root.querySelectorAll) root.querySelectorAll('input[type="password"]').forEach(enhancePassword);
@@ -423,5 +494,5 @@
   }
   function spClose() { if (spPanel) spPanel.hidden = true; }
 
-  window.UI = { mount: mount, toast: toast, icons: ic, esc: esc, updateCartBadges: updateCartBadges };
+  window.UI = { payTiles: payTiles, passwordToggles: passwordToggles, mount: mount, toast: toast, icons: ic, esc: esc, updateCartBadges: updateCartBadges };
 })();

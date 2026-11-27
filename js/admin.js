@@ -1195,6 +1195,8 @@ window.ADMIN = (function () {
   /* -------------------------------- wallet -------------------------------- */
   // Approve/reject sellers' deposit & withdrawal requests, and set each seller's
   // guarantee money. Balances are auto-computed server-side from these.
+  // Wallet transactions: 10 per page (kept while approving / editing).
+  var txPage = 1, TX_PER_PAGE = 10;
   async function viewWallet() {
     var res = await api("listWallet");
     if (!res.ok) throw new Error(res.error);
@@ -1245,9 +1247,18 @@ window.ADMIN = (function () {
           '<thead><tr><th>Seller</th><th>Wallet</th><th>Pending</th><th>Guarantee</th><th class="r">Actions</th></tr></thead>'+
           '<tbody>'+(sellers.length ? sellers.map(selRow).join("") : '<tr><td colspan="5">'+empty("No sellers", "")+'</td></tr>')+'</tbody></table></div></section>'+
         '<div class="adm-toolbar" style="margin-top:20px"><span class="adm-count">Wallet transactions</span></div>'+
-        '<section class="adm-card adm-flush"><div class="adm-table-wrap"><table class="adm-table">'+
+        '<section class="adm-card adm-flush" id="wlTxBox"></section>';
+      curTxs = txs; drawTx();
+    }
+    var curTxs = [];
+    function drawTx() {
+      var txs = curTxs, pages = Math.max(1, Math.ceil(txs.length / TX_PER_PAGE));
+      txPage = Math.min(Math.max(1, txPage), pages);
+      var from = (txPage - 1) * TX_PER_PAGE, pageList = txs.slice(from, from + TX_PER_PAGE);
+      $("wlTxBox").innerHTML = '<div class="adm-table-wrap"><table class="adm-table">'+
           '<thead><tr><th>Seller</th><th>Type</th><th>Amount</th><th>Method</th><th>Status</th><th>Voucher</th><th class="r">Actions</th></tr></thead>'+
-          '<tbody>'+(txs.length ? txs.map(txRow).join("") : '<tr><td colspan="7">'+empty("No transactions", "Deposits and withdrawal requests will appear here.")+'</td></tr>')+'</tbody></table></div></section>';
+          '<tbody>'+(txs.length ? pageList.map(txRow).join("") : '<tr><td colspan="7">'+empty("No transactions", "Deposits and withdrawal requests will appear here.")+'</td></tr>')+'</tbody></table></div>'+
+        (txs.length ? pager(txPage, pages, from + 1, from + pageList.length, txs.length) : '');
     }
     // Remember the chosen seller so a page refresh keeps them selected.
     var SELKEY = "mm_wallet_seller", saved = "";
@@ -1257,11 +1268,15 @@ window.ADMIN = (function () {
     render(saved);
     $("wlSeller").addEventListener("change", function () {
       try { localStorage.setItem(SELKEY, this.value); } catch (e) {}
-      render(this.value);
+      txPage = 1; render(this.value);
     });
 
     $("admView").onclick = async function (e) {
       var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.opage) {
+        if (!b.disabled) { txPage = Number(b.dataset.opage) || 1; drawTx(); $("wlTxBox").scrollIntoView({ behavior: "smooth", block: "start" }); }
+        return;
+      }
       if (b.dataset.approve) {
         approveForm(b.dataset.approve, b.dataset.amt, b.dataset.cur, b.dataset.type);
       } else if (b.dataset.reject) {
@@ -1431,7 +1446,10 @@ window.ADMIN = (function () {
     var match = function (s) { return !q || [s.shopName, s.name, s.email, s.phone, "#" + s.id].join(" ").toLowerCase().indexOf(q) > -1; };
     var name = function (c) { return String(c.seller.shopName || c.seller.name || ""); };
     var rows;
-    if (_chatFilter === "sellers") {
+    // "All sellers" — or any search on the Chats tab — lists every seller this
+    // admin may chat with (staff: the sellers who registered with their staff
+    // code), so a seller with no conversation yet can still be found and messaged.
+    if (_chatFilter === "sellers" || (q && _chatFilter === "all")) {
       rows = (d.sellers || []).filter(match).map(function (s) { return conv[String(s.id)] || { seller: s, none: true, unread: 0 }; })
         .sort(function (a, b) { return (Number(b.lastId) || 0) - (Number(a.lastId) || 0) || name(a).localeCompare(name(b)); });
     } else {
@@ -1441,7 +1459,8 @@ window.ADMIN = (function () {
     if (cnt) { cnt.hidden = !total; cnt.textContent = total; }
     var list = $("ctiList"); if (!list) return;
     if (!rows.length) {
-      var none = q ? "No sellers match “" + esc(_chatQ) + "”." :
+      var none = q ? "No sellers match “" + esc(_chatQ) + "”." +
+          (_chatFilter === "unread" ? " (searching unread chats only)" : role() === "staff" ? "<br><small>You can chat with the sellers who registered with your staff code.</small>" : "") :
         _chatFilter === "unread" ? "You're all caught up — no unread messages." :
         _chatFilter === "sellers" ? (role() === "staff" ? "No sellers have registered with your staff code yet." : "No sellers yet.") :
         "No conversations yet. Open <b>All sellers</b> to message a seller.";
@@ -1539,7 +1558,7 @@ window.ADMIN = (function () {
 
   /* ------------------------------- visitors ------------------------------- */
   // Storefront visitors logged by the website — one row per device, updated on each new visit.
-  var vf = { q: "", device: "", day: "", status: "", area: "" }, visPage = 1, VISITS_PER_PAGE = 20;
+  var vf = { q: "", device: "", day: "", status: "", area: "" }, visPage = 1, VISITS_PER_PAGE = 10;
   async function viewVisitors() {
     var res = await api("listVisitors");
     if (!res.ok) throw new Error(res.error);
@@ -1569,10 +1588,11 @@ window.ADMIN = (function () {
       visPage = Math.min(Math.max(1, visPage), pages);
       var from = (visPage - 1) * VISITS_PER_PAGE, pageList = list.slice(from, from + VISITS_PER_PAGE);
       $("visBox").innerHTML = list.length ?
-        '<div class="adm-table-wrap"><table class="adm-table adm-vis"><thead><tr><th>Last seen</th><th>IP address</th><th>Location</th><th>Device</th><th>Browser</th><th>Page</th><th class="r"></th></tr></thead><tbody>'+
-        pageList.map(function (v) {
+        '<div class="adm-table-wrap"><table class="adm-table adm-vis"><thead><tr><th class="adm-vis-no">#</th><th>Last seen</th><th>IP address</th><th>Location</th><th>Device</th><th>Browser</th><th>Page</th><th class="r"></th></tr></thead><tbody>'+
+        pageList.map(function (v, i) {
           var dev = (v.device || "—") + (v.model ? " · " + v.model : "");
           return '<tr'+(v.blocked ? ' class="is-blocked"' : '')+'>'+
+            '<td class="adm-vis-no">'+(from + i + 1)+'</td>'+
             '<td>'+fmtDateTime(v.lastSeen)+'<div class="adm-cell-sub"><span class="adm-vis-n">'+v.visits+' visit'+(v.visits === 1 ? '' : 's')+'</span>'+(v.blocked ? ' <span class="adm-vis-blk">Blocked</span>' : '')+(isMe(v) ? ' <span class="adm-vis-me">This device</span>' : '')+'</div></td>'+
             '<td><span class="adm-code">'+esc(v.ip || "Unknown")+'</span>'+(v.isp ? '<div class="adm-cell-sub adm-clip" title="'+esc(v.isp)+'">'+esc(v.isp)+'</div>' : '')+'</td>'+
             '<td><div class="adm-cell-main">'+esc(place(v) || "Unknown")+'</div>'+(v.timezone ? '<div class="adm-cell-sub">'+esc(v.timezone)+'</div>' : '')+'</td>'+

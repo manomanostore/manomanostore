@@ -139,6 +139,16 @@
   .sd-lang-menu button:hover{background:#f4f7fc}
   .sd-lang-menu button.on{background:#eef3ff;color:var(--blue)}
   .sd-lang-menu{min-width:230px;max-height:70vh;overflow:auto}
+  /* password show / hide eye */
+  .pw-wrap{position:relative;display:block}
+  .pw-wrap input{padding-right:52px!important;width:100%}
+  .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:40px;height:40px;border:0;background:none;border-radius:10px;cursor:pointer;
+    display:grid;place-items:center;color:#8a94a8;transition:background .15s,color .15s;padding:0}
+  .pw-toggle:hover{background:#f1f4f9;color:var(--ink,#0f1b3d)}
+  .pw-toggle:focus-visible{outline:2px solid var(--blue,#2f6bff);outline-offset:1px}
+  .pw-toggle[aria-pressed="true"]{color:var(--blue,#2f6bff)}
+  input::-ms-reveal,input::-ms-clear{display:none}
+  .sd-table .sd-tno{width:44px;text-align:center;color:var(--muted,#6b7280);font-weight:700;font-variant-numeric:tabular-nums}
   .sd-fl{display:inline-flex}
   .lang-flag-img{width:22px;height:15px;border-radius:3px;object-fit:cover;box-shadow:0 0 0 1px rgba(0,0,0,.12);display:block}
   .lang-nm{display:flex;flex-direction:column;line-height:1.2;text-align:left}
@@ -878,12 +888,12 @@
 <div class="sd-toast" id="sdToast"></div>
 
 <script src="js/config.js?v=20261127zi"></script>
-<script src="js/i18n.js?v=20261127zw"></script>
+<script src="js/i18n.js?v=20261128j"></script>
 <script src="js/visit.js?v=20261127zt"></script>
-<script src="js/ui.js?v=20261127zu"></script>
+<script src="js/ui.js?v=20261128p"></script>
 <script src="js/auth.js?v=20261127zi"></script>
 <script src="js/login.js?v=20261127zi"></script>
 <script src="js/chat.js?v=20261127zi"></script>
-<script src="js/seller-dashboard.js?v=20261127zu"></script>
+<script src="js/seller-dashboard.js?v=20261128i"></script>
 </body>
 </html>

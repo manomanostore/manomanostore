@@ -161,10 +161,16 @@ section.block{padding:10px 0}
 .brand-row .bchip{background:#fff;border:1px solid var(--line);border-radius:14px;height:84px;width:150px;display:grid;place-items:center;padding:14px;font-weight:800;color:#1b2b4d;font-size:16px}
 
 /* ------------------------- Trust / feature strip ------------------------- */
-.features{display:grid;gap:14px;grid-template-columns:repeat(2,1fr);padding:16px 0}
+/* "Why shop with us" band above the footer */
+.features{display:grid;grid-template-columns:repeat(2,1fr);gap:0;margin:28px 0 36px;background:var(--card);border-radius:18px;box-shadow:var(--shadow);border:1px solid var(--line,#e6e8ee);overflow:hidden}
 @media(min-width:860px){.features{grid-template-columns:repeat(4,1fr)}}
-.feature{display:flex;gap:10px;align-items:center;font-size:13px;font-weight:600}
-.feature .fi{width:42px;height:42px;border-radius:50%;background:#eaf0fb;display:grid;place-items:center;color:var(--navy);flex:0 0 auto}
+.feature{display:flex;gap:14px;align-items:center;padding:22px 20px;position:relative}
+.feature + .feature::before{content:"";position:absolute;left:0;top:22%;bottom:22%;width:1px;background:var(--line,#e6e8ee)}
+.feature b{display:block;font-size:15px;color:var(--ink);line-height:1.25}
+.feature small{display:block;font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.35}
+.feature .fi{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;flex:0 0 auto;background:#eaf0fb;color:var(--navy)}
+.feature .fi.t1{background:#fff1e6;color:#d9620f}.feature .fi.t2{background:#e6f6ef;color:#13865a}
+.feature .fi.t3{background:#ebeefe;color:#3b4fd8}.feature .fi.t4{background:#fde9f1;color:#c72a6b}
 
 /* ------------------------------- Footer ---------------------------------- */
 body > main{flex:1 0 auto;width:100%} /* width: auto side-margins would otherwise shrink it */
@@ -178,6 +184,8 @@ footer.app a{display:block;padding:7px 0;color:#cdd6e6;font-size:14px}
 footer.app .pay{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .pay-tile{background:#fff;border-radius:6px;min-width:50px;height:32px;padding:0 9px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .pay-tile.klarna{background:#ffb3c7}
+.pay-tile.amex{background:#1f72cd}
+.pl-amex{color:#fff;font-weight:800;font-size:11px;letter-spacing:.6px}
 .pl-visa{color:#1a1f71;font-style:italic;font-weight:800;letter-spacing:.5px;font-size:15px}
 .pl-mc{position:relative;width:34px;height:21px}
 .pl-mc i{position:absolute;top:0;width:21px;height:21px;border-radius:50%}
@@ -189,6 +197,8 @@ footer.app .pay{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .pl-apay{color:#000;display:inline-flex;align-items:center;gap:2px;font-weight:700;font-size:13px}
 .pl-gpay{color:#5f6368;display:inline-flex;align-items:center;gap:2px;font-weight:700;font-size:13px}
 .pl-gpay b{color:#4285f4;font-size:15px;font-weight:800}
+.pl-gpay-img{height:20px;width:auto;display:block}
+.sum-pay .pl-gpay-img{height:17px}
 /* International flags */
 .ft-flags{display:flex;gap:10px;margin-top:4px}
 .ft-flag{width:40px;height:40px;border-radius:50%;display:block;box-shadow:0 2px 6px rgba(0,0,0,.3);padding:0;overflow:hidden;transition:transform .15s}
@@ -256,6 +266,18 @@ body.has-cart-bar .ft-legalbar{padding-bottom:calc(16px + 136px + env(safe-area-
 .drawer .d-item{display:flex;align-items:center;justify-content:space-between;padding:14px 10px;border-radius:12px;font-weight:600}
 .drawer .d-item:hover{background:var(--bg)}
 .drawer .d-item .di{display:flex;align-items:center;gap:12px}
+.drawer .d-cic{width:36px;height:36px;border-radius:10px;display:inline-grid;place-items:center;flex:none;color:var(--c);background:color-mix(in srgb,var(--c) 13%,#fff)}
+/* signed-in seller: account card + menu at the top of the side menu */
+.drawer .d-seller{display:flex;align-items:center;gap:12px;padding:14px;margin:4px 0 8px;border-radius:14px;background:linear-gradient(135deg,#eef3ff,#f6f9ff);border:1px solid #e2e9fb}
+.drawer .d-sava{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:#2f6bff;color:#fff;font-weight:800;font-size:18px;flex:none}
+.drawer .d-stx{display:flex;flex-direction:column;min-width:0}
+.drawer .d-stx b{font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drawer .d-stx small{font-size:12.5px;color:var(--muted)}
+.drawer .d-smenu{display:flex;flex-direction:column;padding-bottom:6px;border-bottom:1px solid var(--line,#e6e8ee)}
+.drawer .s-item{padding:12px 10px;font-weight:500;color:var(--ink)}
+.drawer .s-item svg:first-child{color:#6b7488}
+.drawer .s-item:hover svg:first-child{color:#2f6bff}
+.drawer .s-out{color:#d93636}.drawer .s-out svg:first-child{color:#d93636}
 
 /* --------------------------- Product detail ------------------------------ */
 .pdp{display:grid;gap:20px;padding:16px 0;grid-template-columns:1fr}
@@ -406,9 +428,13 @@ input::-ms-reveal,input::-ms-clear{display:none} /* avoid a second, built-in eye
   .cat-card .ci{aspect-ratio:1/1}
   .cat-card .cl{padding:8px 6px 10px;font-size:12px;line-height:1.25;text-align:center}
 
-  .features{gap:12px;padding:12px 0}
-  .feature{font-size:12px}
-  .feature .fi{width:36px;height:36px}
+  .features{margin:18px 0 24px;border-radius:16px}
+  .feature{padding:16px 14px;gap:10px;align-items:flex-start}
+  .feature:nth-child(3)::before{display:none}
+  .feature:nth-child(n+3){border-top:1px solid var(--line,#e6e8ee)}
+  .feature b{font-size:13.5px}
+  .feature small{font-size:11.5px}
+  .feature .fi{width:40px;height:40px;border-radius:12px}
   .brand-row .bchip{height:64px;width:120px;font-size:14px}
 
   footer.app .cols{gap:18px;padding:22px 16px}
@@ -583,10 +609,13 @@ a.acct-stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .cline-total{font-size:18px;font-weight:800}
 .cline-unit{font-size:12px;color:var(--muted);margin-top:2px}
 
-.cart-perks{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.perk{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
-.perk-ic{width:40px;height:40px;border-radius:50%;background:#eaf0fb;color:var(--navy);display:grid;place-items:center;flex:0 0 auto}
-.perk strong{display:block;font-size:14px}
+/* basket: one trust card split into three */
+.cart-perks{display:grid;grid-template-columns:repeat(3,1fr);background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line,#e6e8ee);overflow:hidden}
+.perk{display:flex;align-items:center;gap:12px;padding:16px 18px;position:relative}
+.perk + .perk::before{content:"";position:absolute;left:0;top:20%;bottom:20%;width:1px;background:var(--line,#e6e8ee)}
+.perk-ic{width:42px;height:42px;border-radius:12px;background:#eaf0fb;color:var(--navy);display:grid;place-items:center;flex:0 0 auto}
+.perk-ic.g{background:#e6f6ef;color:#13865a}.perk-ic.b{background:#ebeefe;color:#3b4fd8}.perk-ic.p{background:#f3eafe;color:#7c3aed}
+.perk strong{display:block;font-size:14px;color:var(--ink)}
 .perk span{font-size:12px;color:var(--muted)}
 
 .cart-summary{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
@@ -598,8 +627,12 @@ a.acct-stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .sum-total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--line);margin-top:10px;padding-top:14px;font-size:20px;font-weight:800}
 .sum-tax{margin:2px 0 16px;font-size:12px;color:var(--muted);text-align:right}
 .sum-hint{margin:10px 0 0;font-size:12px;color:var(--muted);text-align:center}
-.sum-pay{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
-.sum-pay span{border:1px solid var(--line);border-radius:6px;font-weight:800;font-size:10px;padding:4px 7px;color:#1b2b4d;background:#fff}
+.sum-secure{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;font-weight:600;color:#13865a}
+.sum-secure svg{width:14px;height:14px}
+.sum-pay{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.sum-pay .pay-tile{height:30px;min-width:0;width:100%;padding:0 6px;box-shadow:none;border:1px solid var(--line,#e3e6ee);border-radius:6px}
+.sum-pay .pl-visa{font-size:13px}.sum-pay .pl-mc{transform:scale(.85)}
+.sum-pay .pl-pp,.sum-pay .pl-apay,.sum-pay .pl-gpay{font-size:12px}
 
 .cart-bar{display:none}
 .cart-reco{margin-top:12px}
@@ -628,8 +661,9 @@ a.acct-stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
   .cline-price{grid-column:2;text-align:left;display:flex;align-items:baseline;gap:8px;order:3}
   .cline-total{font-size:17px}
   .cline-actions{margin-top:6px}
-  .cart-perks{grid-template-columns:1fr;gap:8px}
-  .perk{padding:12px}
+  .cart-perks{grid-template-columns:1fr}
+  .perk{padding:13px 14px}
+  .perk + .perk::before{left:14px;right:14px;top:0;bottom:auto;width:auto;height:1px}
   .cart-summary{padding:18px 16px}
 }
 

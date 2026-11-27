@@ -478,7 +478,7 @@
     } catch (e) {}
   }
 
-  function myRow(p) {
+  function myRow(p, n) {
     var img = p.imageUrl || "";
     var thumb = img ? '<span class="sd-tthumb" style="background-image:url(\'' + esc(img) + '\')"></span>'
       : '<span class="sd-tthumb" style="display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c7cedd" stroke-width="1.5"><path d="M3 9l9-5 9 5v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span>';
@@ -487,6 +487,7 @@
     // Show at most 60 characters of the name, then "..." (full name on hover).
     var full = String(p.name || ""), short = full.length > 60 ? full.slice(0, 60).replace(/\s+$/, "") + "..." : full;
     return '<tr>' +
+      '<td class="sd-tno">' + n + '</td>' +
       '<td><div class="sd-tprod">' + thumb + '<span class="sd-tname" title="' + esc(full) + '">' + esc(short) + '</span></div></td>' +
       '<td class="sd-tprice">$' + Number(p.price).toFixed(2) + '</td>' +
       '<td class="sd-tprofit">$' + Number(p.profit || 0).toFixed(2) + '</td>' +
@@ -506,7 +507,12 @@
       amount += (Number(p.price) || 0) * qty;
       profit += (Number(p.profit) || 0) * qty;
     });
-    var pageInfo = pageSlice(list, mine);   // totals above cover ALL matching products; the table shows 10 per page
+    // Totals above cover ALL matching products; the table shows 10 per page with
+    // "Showing 1–10 of N" (it's the seller's own list, so the count is shown).
+    var pages = Math.max(1, Math.ceil(list.length / PRODUCTS_PER_PAGE));
+    mine.page = Math.min(Math.max(1, mine.page || 1), pages);
+    var from = (mine.page - 1) * PRODUCTS_PER_PAGE, items = list.slice(from, from + PRODUCTS_PER_PAGE);
+    var pageInfo = { items: items, pager: list.length ? pagerHtml(mine.page, pages, from + 1, from + items.length, list.length, false) : "" };
     var stats = '<div class="sd-mpstats">' +
       '<div class="sd-mpstat"><span class="sd-mpic a"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg></span>' +
         '<div><span>' + esc(T("sd.totalamount")) + '</span><b>$' + amount.toFixed(2) + '</b></div></div>' +
@@ -514,9 +520,9 @@
         '<div><span>' + esc(T("sd.totalprofit")) + '</span><b class="sd-green">$' + profit.toFixed(2) + '</b></div></div>' +
       '</div>';
     var table = list.length ? '<div class="sd-tablewrap"><table class="sd-table"><thead><tr>' +
-        '<th>' + esc(T("sd.th.product")) + '</th><th>' + esc(T("sd.th.price")) + '</th>' +
+        '<th class="sd-tno">#</th><th>' + esc(T("sd.th.product")) + '</th><th>' + esc(T("sd.th.price")) + '</th>' +
         '<th>' + esc(T("sd.profit")) + '</th><th>' + esc(T("sd.th.qty")) + '</th><th>' + esc(T("sd.status")) + '</th><th></th>' +
-        '</tr></thead><tbody>' + pageInfo.items.map(myRow).join("") + '</tbody></table></div>' : "";
+        '</tr></thead><tbody>' + pageInfo.items.map(function (p, i) { return myRow(p, from + i + 1); }).join("") + '</tbody></table></div>' : "";
     $("mpGrid").innerHTML = (list.length ? stats : "") + table;
     $("mpPager").innerHTML = pageInfo.pager;
     $("mpCount").textContent = "";
@@ -1112,6 +1118,8 @@
     document.querySelectorAll(".sd-nav a").forEach(function (a) { a.addEventListener("click", closeDrawer); });
 
     buildLang();
+    // Show/hide eye on every password field (Change password, etc.), including dialogs opened later.
+    if (window.UI && UI.passwordToggles) UI.passwordToggles();
     // Floating support button (bottom-right on every view) → Conversations
     if (!$("spFab")) {
       var fab = document.createElement("button");
@@ -1136,7 +1144,17 @@
 
     // Deep-link support: open the view named in the URL hash (e.g. the storefront
     // links to seller-dashboard.html#wallet), and follow hash changes.
-    function fromHash() { switchView((location.hash || "").replace("#", "") || "dashboard", true); }
+    // #password / #profile (linked from the shop's side menu) open those dialogs.
+    function fromHash() {
+      var h = (location.hash || "").replace("#", "");
+      if (h === "password" || h === "profile") {
+        switchView("dashboard", true);
+        try { history.replaceState(null, "", location.pathname + location.search + "#dashboard"); } catch (e) {}
+        (h === "password" ? openChangePw : openProfile)();
+        return;
+      }
+      switchView(h || "dashboard", true);
+    }
     window.addEventListener("hashchange", fromHash);
     if (location.hash) fromHash();
   }
