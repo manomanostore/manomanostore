@@ -96,6 +96,19 @@ header.app{color:#fff}
   .hero-main h2{font-size:46px}
 }
 
+/* --------------------- Promo row: three offer banners --------------------- */
+/* Fixed 200px height. Desktop: one row, widths in proportion to each banner's shape so they crop evenly.
+   Narrower screens: a swipeable row. --pos keeps each banner's text in view when its sides are cropped. */
+.promo-row{display:flex;gap:14px;margin:18px 0 8px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.promo-row::-webkit-scrollbar{display:none}
+.pr-item{flex:0 0 min(86%,560px);height:200px;scroll-snap-align:start;display:block;border-radius:14px;overflow:hidden;box-shadow:var(--shadow);background:var(--card);transition:transform .2s ease,box-shadow .2s ease}
+.pr-item img{display:block;width:100%;height:100%;object-fit:cover;object-position:var(--pos,50% 50%)}
+.pr-item:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.pr-item:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+@media(min-width:900px){.promo-row{overflow:visible}.pr-item{flex:var(--ar) 1 0;min-width:0}}
+@media(max-width:859px){.promo-row{margin:12px -14px 6px;padding:0 14px 4px;scroll-padding-inline:14px;gap:10px}}
+@media(prefers-reduced-motion:reduce){.pr-item{transition:none}.pr-item:hover{transform:none}}
+
 /* ----------------------------- Section head ------------------------------ */
 section.block{padding:10px 0}
 .block-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px}
