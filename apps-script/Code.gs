@@ -75,8 +75,8 @@ var SHEETS = {
   messages:     { name: "Messages",     headers: ["id","seller_id","sender","admin_id","admin_name","text","images_json","status","createdAt","deliveredAt","seenAt"] },
   bank_accounts: { name: "bank_accounts", headers: ["id","seller_id","cash_on","bank_on","bank_name","bank_acc_name","bank_acc_no","ifsc","usdt_on","usdt_link","usdt_address","createdAt","updatedAt"],
                    textCols: ["bank_acc_no","ifsc"] },
-  // One row per storefront visit (a browser session), logged by the website.
-  visitors:     { name: "Visitors",     headers: ["id","visitor_id","ip","country","region","city","isp","timezone","device","model","os","browser","screen","language","page","referrer","user","user_agent","createdAt","lastSeen","visits","blocked","blockedAt"],
+  // One row per device that opened the shop, seller panel or admin panel.
+  visitors:     { name: "Visitors",     headers: ["id","visitor_id","area","ip","country","region","city","isp","timezone","device","model","os","browser","screen","language","page","referrer","user","user_agent","createdAt","lastSeen","visits","blocked","blockedAt"],
                   textCols: ["visitor_id","ip","createdAt","lastSeen"] }
 };
 // Users (admin) columns: 0 id | 1 username | 2 name | 3 passwordHash | 4 role | 5 status | 6 createdAt | 7 updatedAt | 8 lastLoginAt | 9 tokenHash | 10 tokenExpires
@@ -171,7 +171,7 @@ function logVisit(b) {
   var vid = clean(v.visitorId, 40);
   if (!vid) return { ok: false, error: "Missing visitor id." };
   var rec = {
-    visitor_id: vid, ip: clean(v.ip, 45),
+    visitor_id: vid, area: clean(v.area, 20) || "Website", ip: clean(v.ip, 45),
     country: clean(v.country, 60), region: clean(v.region, 80), city: clean(v.city, 80), isp: clean(v.isp, 120),
     timezone: clean(v.timezone, 60), device: clean(v.device, 20), model: clean(v.model, 60), os: clean(v.os, 40),
     browser: clean(v.browser, 40), screen: clean(v.screen, 30), language: clean(v.language, 20),
@@ -180,7 +180,9 @@ function logVisit(b) {
   };
   var blocked = isVisitorBlocked(vid, rec.ip, rec.user_agent, rec.screen);
   if (b.check) return { ok: true, blocked: blocked };
-  var cache = CacheService.getScriptCache(), ck = "visit_" + vid;
+  // Throttle per visitor id + area + signed-in user, so moving from the shop to
+  // the admin/seller panel (or signing in) still updates the row.
+  var cache = CacheService.getScriptCache(), ck = "visit_" + Utilities.base64EncodeWebSafe(vid + "|" + rec.area + "|" + rec.user).slice(0, 200);
   if (cache.get(ck)) return { ok: true, skipped: true, blocked: blocked };
   cache.put(ck, "1", 600);
   return withLock(function () {
@@ -232,8 +234,9 @@ function sortVisitors(sh, hdr) {
 
 // Blocked devices as two lookups — visitor ids, and "ip|user agent|screen" so a
 // blocked device that clears its browser data is still recognised. Cached for
-// 6 hours; blocking, unblocking, clearing or a blocked device's row changing
-// drops the cache.
+// 5 minutes (so a "blocked" cell cleared by hand in the sheet takes effect
+// soon); blocking, unblocking, clearing or a blocked device's row changing
+// drops the cache at once.
 function blockedVisitors() {
   var cache = CacheService.getScriptCache(), hit = cache.get("visit_blocked");
   if (hit) return JSON.parse(hit);
@@ -243,7 +246,7 @@ function blockedVisitors() {
     if (r.visitor_id) set.ids[String(r.visitor_id)] = 1;
     if (r.ip && r.user_agent) set.fps[[r.ip, r.user_agent, r.screen].join("|")] = 1;
   });
-  try { cache.put("visit_blocked", JSON.stringify(set), 21600); } catch (e) {}
+  try { cache.put("visit_blocked", JSON.stringify(set), 300); } catch (e) {}
   return set;
 }
 function isVisitorBlocked(vid, ip, ua, screen) {
@@ -258,6 +261,11 @@ function blockVisitor(p, meData) {
   var cId = hdr.indexOf("id"), row = 0;
   for (var i = 1; i < data.length; i++) if (String(data[i][cId]) === String(p.id)) { row = i + 1; break; }
   if (!row) return { ok: false, error: "Visitor not found — refresh and try again." };
+  // Never let an admin block the device they're using (they'd lock themselves out).
+  var me = p.self || {}, r = data[row - 1], col = function (n) { return r[hdr.indexOf(n)]; };
+  if (p.blocked && ((me.vid && String(col("visitor_id")) === String(me.vid)) ||
+      (me.ip && me.ua && String(col("ip")) === String(me.ip) && String(col("user_agent")) === String(me.ua) && String(col("screen")) === String(me.screen))))
+    return { ok: false, error: "That's the device you're using now — you can't block yourself." };
   var on = !!p.blocked, at = on ? istNow() : "";
   sh.getRange(row, hdr.indexOf("blocked") + 1).setValue(on ? "1" : "");
   sh.getRange(row, hdr.indexOf("blockedAt") + 1).setNumberFormat("@").setValue(at);
@@ -297,7 +305,7 @@ function listVisitors() {
   var top = Object.keys(countries).map(function (k) { return { country: k, visits: countries[k] }; })
     .sort(function (a, b) { return b.visits - a.visits; }).slice(0, 5);
   var list = rows.map(function (r) {
-    return { id: r.id, visitorId: String(r.visitor_id || ""), ip: String(r.ip || ""), country: r.country, region: r.region, city: r.city,
+    return { id: r.id, visitorId: String(r.visitor_id || ""), area: String(r.area || "Website"), ip: String(r.ip || ""), country: r.country, region: r.region, city: r.city,
              isp: r.isp, timezone: r.timezone, device: r.device, model: r.model, os: r.os, browser: r.browser, screen: r.screen,
              language: r.language, page: r.page, referrer: r.referrer, user: r.user, userAgent: r.user_agent,
              createdAt: iso(r.createdAt), lastSeen: iso(r.lastSeen || r.createdAt), visits: Number(r.visits) || 1,

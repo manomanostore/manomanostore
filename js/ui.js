@@ -366,127 +366,6 @@ window.I18N = (function () {
     });
   }
 
-  /* ---- Visitor log: once per browser session, the website records the visitor's
-     IP + approximate location (from a free IP-lookup service, since Apps Script
-     can't see the caller's IP) and device details into the "Visitors" sheet.
-     Runs after the page has loaded and never blocks or breaks the page. ---- */
-  function deviceInfo() {
-    var ua = navigator.userAgent || "", m;
-    var tablet = /iPad|Tablet|PlayBook|Silk|Kindle/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ||
-                 (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
-    var device = tablet ? "Tablet" : /Mobi|iPhone|iPod|Android|Opera Mini|IEMobile/i.test(ua) ? "Mobile" : "Desktop";
-    var os = "Other";
-    if ((m = ua.match(/Windows NT ([\d.]+)/))) os = "Windows " + ({ "10.0": "10/11", "6.3": "8.1", "6.2": "8", "6.1": "7" }[m[1]] || m[1]);
-    else if ((m = ua.match(/Android ([\d.]+)/))) os = "Android " + m[1];
-    else if ((m = ua.match(/(?:iPhone|CPU) OS (\d+)[_.]?(\d+)?/))) os = (/iPad/.test(ua) ? "iPadOS " : "iOS ") + m[1] + (m[2] ? "." + m[2] : "");
-    else if (/Macintosh/.test(ua)) os = tablet ? "iPadOS" : "macOS";
-    else if (/CrOS/.test(ua)) os = "ChromeOS";
-    else if (/Linux/.test(ua)) os = "Linux";
-    var browser = "Other", B = [["Edge", /Edg(?:e|A|iOS)?\/(\d+)/], ["Opera", /(?:OPR|Opera)\/(\d+)/], ["Samsung Internet", /SamsungBrowser\/(\d+)/],
-      ["UC Browser", /UCBrowser\/(\d+)/], ["Firefox", /(?:Firefox|FxiOS)\/(\d+)/], ["Chrome", /(?:Chrome|CriOS)\/(\d+)/], ["Safari", /Version\/(\d+).*Safari/]];
-    for (var i = 0; i < B.length; i++) if ((m = ua.match(B[i][1]))) { browser = B[i][0] + " " + m[1]; break; }
-    var model = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) || (tablet && /Macintosh/.test(ua)) ? "iPad" : "";
-    if (!model && (m = ua.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/)) && m[1] !== "K") model = m[1].trim();
-    return { device: device, os: os, browser: browser, model: model };
-  }
-  /* ---- Blocked devices: an admin can block a device on the Visitors page. The
-     server says so in its reply to the visit log / status check, and the flag is
-     remembered so the block screen covers every page straight away. A blocked
-     device re-checks on each page load, so an unblock takes effect on reload. ---- */
-  var BLK = "mm_blk";
-  function isBlockedLocal() { try { return localStorage.getItem(BLK) === "1"; } catch (e) { return false; } }
-  function blockScreen(on) {
-    var el = document.getElementById("mmBlocked");
-    document.documentElement.classList.toggle("mm-blocked", on);
-    if (!on) { if (el) el.remove(); return; }
-    if (!document.getElementById("mmBlockedCss")) {
-      var st = document.createElement("style"); st.id = "mmBlockedCss";
-      st.textContent = "html.mm-blocked,html.mm-blocked body{overflow:hidden!important}" +
-        "html.mm-blocked body>*:not(#mmBlocked){display:none!important}" +
-        "#mmBlocked{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:24px;background:#f4f6fb;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0f1b3d}" +
-        "#mmBlocked .mb-card{max-width:420px;text-align:center;background:#fff;border-radius:20px;padding:36px 28px;box-shadow:0 12px 40px rgba(15,27,61,.12)}" +
-        "#mmBlocked .mb-ic{width:64px;height:64px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;background:#fdecec;color:#d93636}" +
-        "#mmBlocked h1{font-size:22px;margin:0 0 8px}#mmBlocked p{margin:0;color:#5b6478;line-height:1.55;font-size:15px}";
-      document.head.appendChild(st);
-    }
-    if (el) return;
-    var add = function () {
-      if (document.getElementById("mmBlocked") || !document.documentElement.classList.contains("mm-blocked")) return;
-      el = document.createElement("div"); el.id = "mmBlocked"; el.setAttribute("role", "alert");
-      el.innerHTML = '<div class="mb-card"><div class="mb-ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></div>' +
-        '<h1>Access blocked</h1><p>This device has been blocked from using ManoMano. If you think this is a mistake, please contact our support team.</p></div>';
-      document.body.appendChild(el);
-    };
-    if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);
-  }
-  function setBlocked(on) {
-    try { if (on) localStorage.setItem(BLK, "1"); else localStorage.removeItem(BLK); } catch (e) {}
-    blockScreen(on);
-  }
-  if (isBlockedLocal()) blockScreen(true);
-  // Server reply → remember when we last checked and apply the block state.
-  function visitStatus(r) {
-    return r.json().then(function (res) {
-      try { sessionStorage.setItem("mm_vchk", String(Date.now())); } catch (e) {}
-      if (res && res.ok && typeof res.blocked === "boolean") setBlocked(res.blocked);
-    }).catch(function () {});
-  }
-  var visitTracked = false;
-  function trackVisit() {
-    if (visitTracked) return; visitTracked = true;
-    var vid;
-    try {
-      if (!CONFIG.API_URL) return;
-      vid = localStorage.getItem("mm_vid");
-      if (!vid) { vid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem("mm_vid", vid); }
-      if (sessionStorage.getItem("mm_visit")) {
-        // Already counted this session: just re-check the block status — always when
-        // blocked (so an unblock shows on reload), otherwise every 5 minutes.
-        var last = Number(sessionStorage.getItem("mm_vchk")) || 0;
-        if (!isBlockedLocal() && Date.now() - last < 5 * 60e3) return;
-        var fp = JSON.parse(sessionStorage.getItem("mm_vfp") || "{}");
-        fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "logVisit", check: true, visit: { visitorId: vid, ip: fp.ip || "", userAgent: navigator.userAgent, screen: fp.screen || "" } })
-        }).then(visitStatus).catch(function () {});
-        return;
-      }
-      sessionStorage.setItem("mm_visit", "1");
-    } catch (e) { return; }
-    var d = deviceInfo(), user = "";
-    try {
-      var sel = JSON.parse(localStorage.getItem("mm_seller") || "null"), cu = window.AUTH && AUTH.current();
-      if (sel && sel.id) user = "Seller: " + (sel.shopName || sel.name || "") + " #" + sel.id;
-      else if (cu && cu.id) user = "Customer: " + (cu.name || cu.email || cu.phone || "") + " #" + cu.id;
-    } catch (e) {}
-    var ref = ""; try { ref = document.referrer ? new URL(document.referrer).host : ""; } catch (e) {}
-    var visit = { visitorId: vid, device: d.device, os: d.os, browser: d.browser, model: d.model, user: user,
-      screen: screen.width + "x" + screen.height + (window.devicePixelRatio > 1 ? " @" + Math.round(window.devicePixelRatio * 10) / 10 + "x" : ""),
-      language: navigator.language || "", page: (location.pathname.split("/").pop() || "index.html") + location.search,
-      referrer: ref && ref !== location.host ? ref : "", userAgent: navigator.userAgent,
-      timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || "") };
-    var send = function () {
-      try { sessionStorage.setItem("mm_vfp", JSON.stringify({ ip: visit.ip || "", screen: visit.screen })); } catch (e) {}
-      fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "logVisit", visit: visit }), keepalive: true }).then(visitStatus).catch(function () {});
-    };
-    // Model + OS version from Client Hints where the browser offers them (Chrome on Android hides the model in the UA).
-    var hints = navigator.userAgentData && navigator.userAgentData.getHighEntropyValues
-      ? navigator.userAgentData.getHighEntropyValues(["model", "platformVersion"]).then(function (h) {
-          if (h.model) visit.model = h.model;
-          if (/^Windows/.test(visit.os) && h.platformVersion) visit.os = parseInt(h.platformVersion, 10) >= 13 ? "Windows 11" : "Windows 10";
-        }).catch(function () {}) : Promise.resolve();
-    var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function () { if (ctl) ctl.abort(); }, 5000);
-    var geo = fetch("https://get.geojs.io/v1/ip/geo.json", ctl ? { signal: ctl.signal } : {}).then(function (r) { return r.json(); })
-      .then(function (g) {
-        visit.ip = g.ip || ""; visit.country = g.country || ""; visit.region = g.region || ""; visit.city = g.city || "";
-        visit.isp = g.organization_name || g.organization || ""; if (g.timezone) visit.timezone = g.timezone;
-      })
-      .catch(function () {   // lookup blocked (ad blocker / network): still try for the bare IP
-        return fetch("https://api.ipify.org?format=json").then(function (r) { return r.json(); }).then(function (g) { visit.ip = g.ip || ""; }).catch(function () {});
-      });
-    Promise.all([hints, geo]).then(function () { clearTimeout(t); send(); }, send);
-  }
-
   async function mount(opts) {
     opts = opts || {};
     document.getElementById("site-header").innerHTML = header(opts.active);
@@ -535,7 +414,6 @@ window.I18N = (function () {
     stickyHeader();
     passwordToggles();
     I18N.apply(document);   // immediate pass so there's no English flash in Hindi
-    setTimeout(trackVisit, isBlockedLocal() ? 0 : 1200);
   }
 
   // Wire the header language dropdown (flags). Selecting a language re-applies
@@ -716,6 +594,5 @@ window.I18N = (function () {
   }
   function spClose() { if (spPanel) spPanel.hidden = true; }
 
-  if (isBlockedLocal()) setTimeout(trackVisit, 0);
   window.UI = { mount: mount, toast: toast, icons: ic, esc: esc, updateCartBadges: updateCartBadges };
 })();

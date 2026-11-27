@@ -1505,7 +1505,7 @@ window.ADMIN = (function () {
 
   /* ------------------------------- visitors ------------------------------- */
   // Storefront visitors logged by the website — one row per device, updated on each new visit.
-  var vf = { q: "", device: "", day: "", status: "" }, visPage = 1, VISITS_PER_PAGE = 20;
+  var vf = { q: "", device: "", day: "", status: "", area: "" }, visPage = 1, VISITS_PER_PAGE = 20;
   async function viewVisitors() {
     var res = await api("listVisitors");
     if (!res.ok) throw new Error(res.error);
@@ -1515,15 +1515,20 @@ window.ADMIN = (function () {
     var todayKey = IST_KEY.format(new Date()), weekKey = IST_KEY.format(new Date(Date.now() - 6 * 864e5));
     var place = function (v) { return [v.city, v.region, v.country].filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(", "); };
     var pct = function (n) { return s.total ? Math.round(n / s.total * 100) + "%" : "0%"; };
+    // This admin's own device — shown as "This device" and can't be blocked (it would lock them out).
+    var me = window.VISIT ? VISIT.self() : {};
+    var isMe = function (v) { return (me.vid && v.visitorId === me.vid) || (me.ip && v.ip === me.ip && v.userAgent === me.ua && v.screen === me.screen); };
+    var AREA_CLS = { "Website": "web", "Seller panel": "seller", "Admin panel": "admin" };
     function draw() {
       var q = vf.q.trim().toLowerCase();
       var list = all.filter(function (v) {
         if (vf.device && v.device !== vf.device) return false;
         if (vf.status === "blocked" && !v.blocked) return false;
         if (vf.status === "active" && v.blocked) return false;
+        if (vf.area && v.area !== vf.area) return false;
         if (vf.day === "today" && dayKey(v.lastSeen) !== todayKey) return false;
         if (vf.day === "week" && dayKey(v.lastSeen) < weekKey) return false;
-        return !q || [v.ip, v.city, v.region, v.country, v.isp, v.os, v.browser, v.model, v.page, v.referrer, v.user].join(" ").toLowerCase().indexOf(q) > -1;
+        return !q || [v.ip, v.city, v.region, v.country, v.isp, v.os, v.browser, v.model, v.area, v.page, v.referrer, v.user].join(" ").toLowerCase().indexOf(q) > -1;
       });
       var pages = Math.max(1, Math.ceil(list.length / VISITS_PER_PAGE));
       visPage = Math.min(Math.max(1, visPage), pages);
@@ -1533,14 +1538,15 @@ window.ADMIN = (function () {
         pageList.map(function (v) {
           var dev = (v.device || "—") + (v.model ? " · " + v.model : "");
           return '<tr'+(v.blocked ? ' class="is-blocked"' : '')+'>'+
-            '<td>'+fmtDateTime(v.lastSeen)+'<div class="adm-cell-sub"><span class="adm-vis-n">'+v.visits+' visit'+(v.visits === 1 ? '' : 's')+'</span>'+(v.blocked ? ' <span class="adm-vis-blk">Blocked</span>' : '')+'</div></td>'+
+            '<td>'+fmtDateTime(v.lastSeen)+'<div class="adm-cell-sub"><span class="adm-vis-n">'+v.visits+' visit'+(v.visits === 1 ? '' : 's')+'</span>'+(v.blocked ? ' <span class="adm-vis-blk">Blocked</span>' : '')+(isMe(v) ? ' <span class="adm-vis-me">This device</span>' : '')+'</div></td>'+
             '<td><span class="adm-code">'+esc(v.ip || "Unknown")+'</span>'+(v.isp ? '<div class="adm-cell-sub adm-clip" title="'+esc(v.isp)+'">'+esc(v.isp)+'</div>' : '')+'</td>'+
             '<td><div class="adm-cell-main">'+esc(place(v) || "Unknown")+'</div>'+(v.timezone ? '<div class="adm-cell-sub">'+esc(v.timezone)+'</div>' : '')+'</td>'+
             '<td><span class="adm-pill dev-'+esc(String(v.device || "").toLowerCase())+'">'+esc(dev)+'</span><div class="adm-cell-sub">'+esc(v.os || "")+(v.screen ? ' · '+esc(v.screen) : '')+'</div></td>'+
             '<td>'+esc(v.browser || "—")+'<div class="adm-cell-sub">'+esc(v.language || "")+'</div></td>'+
-            '<td><div class="adm-cell-main adm-clip" title="'+esc(v.page)+'">'+esc(v.page || "—")+'</div><div class="adm-cell-sub">'+(v.referrer ? 'from '+esc(v.referrer) : 'Direct')+(v.user ? ' · '+esc(v.user) : '')+'</div></td>'+
+            '<td><span class="adm-area '+(AREA_CLS[v.area] || "web")+'">'+esc(v.area || "Website")+'</span><div class="adm-cell-main adm-clip" title="'+esc(v.page)+'">'+esc(v.page || "—")+'</div><div class="adm-cell-sub">'+(v.referrer ? 'from '+esc(v.referrer) : 'Direct')+(v.user ? ' · '+esc(v.user) : '')+'</div></td>'+
             '<td class="r"><div class="adm-actions"><button type="button" class="adm-icon-btn" data-vis="'+esc(v.id)+'" title="Details" aria-label="Visitor details">'+svg("eye")+'</button>'+
               (v.blocked ? '<button type="button" class="adm-icon-btn" data-unblock="'+esc(v.id)+'" title="Unblock device" aria-label="Unblock device">'+svg("unlock")+'</button>'
+                         : isMe(v) ? '<button type="button" class="adm-icon-btn" disabled title="This is the device you\'re using — you can\'t block yourself" aria-label="Can\'t block your own device">'+svg("ban")+'</button>'
                          : '<button type="button" class="adm-icon-btn danger" data-block="'+esc(v.id)+'" title="Block device" aria-label="Block device">'+svg("ban")+'</button>')+'</div></td>'+
           '</tr>';
         }).join("")+'</tbody></table></div>' + pager(visPage, pages, from + 1, from + pageList.length, list.length)
@@ -1557,10 +1563,12 @@ window.ADMIN = (function () {
       ((s.countries || []).length ? '<div class="adm-vis-top"><span>Top countries</span>'+s.countries.map(function (c) {
         return '<b>'+esc(c.country)+' <em>'+c.visits+'</em></b>'; }).join("")+'</div>' : '')+
       '<div class="adm-toolbar">'+
-        '<label class="adm-search">'+svg("search")+'<input id="vfQ" type="search" placeholder="Search IP, city, ISP, browser…" value="'+esc(vf.q)+'"></label>'+
+        '<label class="adm-search">'+svg("search")+'<input id="vfQ" type="search" placeholder="Search IP, city, user, browser…" value="'+esc(vf.q)+'"></label>'+
         '<select id="vfDay" aria-label="Date"><option value="">All dates</option><option value="today"'+(vf.day === "today" ? " selected" : "")+'>Today</option><option value="week"'+(vf.day === "week" ? " selected" : "")+'>Last 7 days</option></select>'+
         '<select id="vfDev" aria-label="Device"><option value="">All devices</option>'+["Mobile", "Desktop", "Tablet"].map(function (d) {
           return '<option'+(vf.device === d ? " selected" : "")+'>'+d+'</option>'; }).join("")+'</select>'+
+        '<select id="vfArea" aria-label="Area"><option value="">All areas</option>'+["Website", "Seller panel", "Admin panel"].map(function (a) {
+          return '<option'+(vf.area === a ? " selected" : "")+'>'+a+'</option>'; }).join("")+'</select>'+
         '<select id="vfSt" aria-label="Status"><option value="">All status</option><option value="active"'+(vf.status === "active" ? " selected" : "")+'>Allowed</option><option value="blocked"'+(vf.status === "blocked" ? " selected" : "")+'>Blocked</option></select>'+
         '<span class="adm-count" id="visCount"></span>'+
         '<button class="btn adm-btn btn-ghost" type="button" id="visRefresh">'+svg("refresh")+' Refresh</button>'+
@@ -1572,6 +1580,7 @@ window.ADMIN = (function () {
     $("vfDay").onchange = function () { vf.day = this.value; visPage = 1; draw(); };
     $("vfDev").onchange = function () { vf.device = this.value; visPage = 1; draw(); };
     $("vfSt").onchange = function () { vf.status = this.value; visPage = 1; draw(); };
+    $("vfArea").onchange = function () { vf.area = this.value; visPage = 1; draw(); };
     $("visRefresh").onclick = function () { route(); };
     if ($("visClear")) $("visClear").onclick = async function () {
       if (!(await confirmDialog({ title: "Clear the visitor log?", confirmLabel: "Clear all",
@@ -1592,7 +1601,7 @@ window.ADMIN = (function () {
             '<div><span class="adm-code">'+esc(t.ip || "Unknown IP")+'</span>'+(place(t) ? ' · '+esc(place(t)) : '')+'</div>'+
             '<div class="adm-cell-sub">'+esc([t.os, t.browser].filter(Boolean).join(" · "))+' · '+t.visits+' visit'+(t.visits === 1 ? '' : 's')+'</div></div>' }))) return;
         b.disabled = true;
-        var r = await api("blockVisitor", { id: t.id, blocked: on });
+        var r = await api("blockVisitor", { id: t.id, blocked: on, self: me });
         if (!r.ok) { b.disabled = false; toast(r.error, true); return; }
         t.blocked = on; t.blockedAt = r.blockedAt || "";
         s.blocked = Math.max(0, (s.blocked || 0) + (on ? 1 : -1));
@@ -1603,7 +1612,7 @@ window.ADMIN = (function () {
       modal("Visitor details",
         '<div class="adm-kvs">'+row("Status", v.blocked ? "Blocked" + (v.blockedAt ? " since " + fmtDateTimeInline(v.blockedAt) : "") : "Allowed")+row("Last seen", fmtDateTimeInline(v.lastSeen))+row("First seen", fmtDateTimeInline(v.createdAt))+row("Visits", String(v.visits))+row("IP address", v.ip)+row("Location", place(v))+row("ISP / network", v.isp)+
           row("Time zone", v.timezone)+row("Device", (v.device || "") + (v.model ? " · " + v.model : ""))+row("Operating system", v.os)+row("Browser", v.browser)+
-          row("Screen", v.screen)+row("Language", v.language)+row("Last page", v.page)+row("Came from", v.referrer || "Direct")+row("Signed in as", v.user || "Guest")+
+          row("Screen", v.screen)+row("Language", v.language)+row("Area", v.area)+row("Last page", v.page)+row("Came from", v.referrer || "Direct")+row("Signed in as", v.user || "Guest")+
           row("Visitor ID", v.visitorId)+'</div>'+
         '<div class="adm-kv adm-kv-ua"><span>User agent</span><code>'+esc(v.userAgent || "—")+'</code></div>',
         null, { readOnly: true });

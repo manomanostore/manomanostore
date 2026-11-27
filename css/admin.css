@@ -415,6 +415,10 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-vis-n{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;background:#eef2ff;color:#3b4bb8;font-weight:600;font-size:12px}
 .adm-vis-blk{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;background:#fdecec;color:#c62828;font-weight:700;font-size:12px}
 .adm-vis tr.is-blocked td{background:#fff7f7}
+.adm-vis-me{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;background:#e6f6ee;color:#13734a;font-weight:700;font-size:12px}
+.adm-area{display:inline-block;margin-bottom:4px;padding:1px 8px;border-radius:6px;font-size:11.5px;font-weight:700;letter-spacing:.2px}
+.adm-area.web{background:#eef2ff;color:#3b4bb8}.adm-area.seller{background:#fff4e0;color:#9a5b00}.adm-area.admin{background:#f3e8ff;color:#7a2fb8}
+.adm-icon-btn:disabled{opacity:.4;cursor:not-allowed}
 .adm-pill.dev-mobile{background:#e3f7f3;color:#0c6b5a}
 .adm-pill.dev-desktop{background:#eaf0fb;color:var(--navy)}
 .adm-pill.dev-tablet{background:#fff3dc;color:#8a5a00}

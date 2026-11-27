@@ -1,9 +1,9 @@
 /* Service worker — app-shell cache for an app-like, offline-capable PWA */
-var CACHE = "manomano-v98";
+var CACHE = "manomano-v100";
 var SHELL = [
   "index.html", "category.html", "product.html", "cart.html", "login.html", "account.html", "blog.html", "brands.html", "sell.html", "seller-dashboard.html",
   "css/styles.css",
-  "js/config.js", "data/catalog.js", "js/data.js", "js/cart.js", "js/auth.js", "js/ui.js", "js/render.js",
+  "js/config.js", "js/visit.js", "data/catalog.js", "js/data.js", "js/cart.js", "js/auth.js", "js/ui.js", "js/render.js",
   "js/home.js", "js/category.js", "js/product.js", "js/cart-page.js", "js/login.js", "js/account.js", "js/seller-dashboard.js",
   "js/blog.js", "js/chat.js", "css/chat.css", "images/support-agent.svg", "images/support-agent-site.svg",
   "data/products.json", "images/logo-64.png", "images/logo-192.png", "images/logo-512.png",
