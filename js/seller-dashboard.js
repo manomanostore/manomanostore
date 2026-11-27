@@ -480,8 +480,10 @@
       : '<span class="sd-tthumb" style="display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c7cedd" stroke-width="1.5"><path d="M3 9l9-5 9 5v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span>';
     var hidden = String(p.status) === "hidden";
     var statusPill = '<span class="sd-status ' + (hidden ? 'hidden' : 'active') + '">' + T(hidden ? 'sd.hidden' : 'sd.active') + '</span>';
+    // Show at most 60 characters of the name, then "..." (full name on hover).
+    var full = String(p.name || ""), short = full.length > 60 ? full.slice(0, 60).replace(/\s+$/, "") + "..." : full;
     return '<tr>' +
-      '<td><div class="sd-tprod">' + thumb + '<span class="sd-tname">' + esc(p.name) + '</span></div></td>' +
+      '<td><div class="sd-tprod">' + thumb + '<span class="sd-tname" title="' + esc(full) + '">' + esc(short) + '</span></div></td>' +
       '<td class="sd-tprice">$' + Number(p.price).toFixed(2) + '</td>' +
       '<td class="sd-tprofit">$' + Number(p.profit || 0).toFixed(2) + '</td>' +
       '<td><span class="sd-tqty">× ' + Math.max(1, Math.floor(Number(p.qty) || 1)) + '</span></td>' +
