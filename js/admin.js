@@ -12,7 +12,7 @@ window.ADMIN = (function () {
   // Mirror of PERMS in Code.gs (the server enforces these; here we just hide UI).
   var OP_PERM = {
     deleteProduct: ["superadmin", "manager"], saveCategory: ["superadmin", "manager"],
-    deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
+    deleteCategory: ["superadmin", "manager"], saveVendor: ADMIN_ROLES,
     deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
     saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
     addTx: ["superadmin", "manager", "staff"], updateTx: ["superadmin", "manager"], setGuarantee: ["superadmin", "manager", "staff"],
@@ -20,6 +20,7 @@ window.ADMIN = (function () {
   };
   function role() { return (session && session.admin && session.admin.role) || "superadmin"; }
   function can(op) { return !OP_PERM[op] || OP_PERM[op].indexOf(role()) > -1; }
+  function myStaffCode() { return String((session && session.admin && session.admin.staffCode) || ""); }
   function roleLabel(r) { return { superadmin: "Super admin", manager: "Manager", staff: "Staff" }[r] || cap(r); }
 
   var ic = {
@@ -93,6 +94,7 @@ window.ADMIN = (function () {
   async function api(op, payload) {
     var res = await post({ action: "admin", token: session && session.token, op: op, payload: payload || {} });
     if (res.auth) { logout(res.error); throw new Error(res.error); }
+    if (res.ok && (op === "updateTx" || op === "addTx")) refreshTxBadge();
     return res;
   }
 
@@ -144,8 +146,9 @@ window.ADMIN = (function () {
   /* -------------------------------- shell --------------------------------- */
   var NAV = [
     ["dashboard", "Dashboard", "dash", ADMIN_ROLES], ["orders", "Orders", "orders", ADMIN_ROLES], ["products", "Products", "box", ADMIN_ROLES],
+    // staff see (and add) only the sellers registered with their staff code
+    ["vendors", "Sellers", "store", ADMIN_ROLES],
     ["categories", "Categories", "tag", ["superadmin", "manager"]], ["banners", "Banners", "image", ["superadmin", "manager"]],
-    ["vendors", "Sellers", "store", ["superadmin", "manager"]],
     ["wallet", "Wallet Transaction", "wallet", ["superadmin", "manager", "staff"]],
     ["chat", "Support Chat", "chat", ADMIN_ROLES],
     ["admins", "Admins", "shield", ["superadmin"]]
@@ -197,9 +200,13 @@ window.ADMIN = (function () {
           '<button type="button" class="adm-tab" id="admTabMore">'+svg("menu", 22)+'<span>More</span></button>'+
         '</nav>'+
       '</div>'+
-      '<div class="adm-toast" id="admToast" role="status"></div>';
+      '<div class="adm-toast" id="admToast" role="status"></div>'+
+      // Floating support button → Support Chat (hidden while on that page)
+      '<button type="button" class="sp-fab on-admin" id="admFab" aria-label="Support chat"><img src="images/support-agent.svg" alt="">'+
+        '<span class="sp-dot"></span><span class="sp-badge" hidden>0</span><span class="sp-tip">Support chat</span></button>';
 
     $("admLogout").onclick = function () { logout(); };
+    $("admFab").onclick = function () { location.hash = "#chat"; };
     $("admRefresh").onclick = function () { location.reload(); };
     $("admBell").onclick = function (e) { e.stopPropagation(); setMeMenu(false); toggleBell(); };
     $("admMe").onclick = function (e) { e.stopPropagation(); var m = $("admBellMenu"); if (m) m.hidden = true; setMeMenu($("admMeMenu").hidden); };
@@ -295,6 +302,20 @@ window.ADMIN = (function () {
     speakLoud(text);
     toast(text);
   }
+  // Red count on the "Wallet Transaction" menu item: requests new today or still pending.
+  var _txBadge = 0;
+  function paintTxBadge(n) {
+    _txBadge = n;
+    document.querySelectorAll('.adm-nav a[data-route="wallet"], .adm-tab[data-route="wallet"]').forEach(function (a) {
+      var b = a.querySelector(".adm-navbadge");
+      if (!b) { b = document.createElement("b"); b.className = "adm-navbadge"; a.appendChild(b); }
+      b.hidden = !(n > 0); b.textContent = n > 99 ? "99+" : String(n);
+    });
+  }
+  // After approving/rejecting, refresh the count right away instead of waiting for the next poll.
+  async function refreshTxBadge() {
+    try { var r = await api("walletFeed", { sinceId: 1e15 }); if (r && r.ok && r.badge != null) paintTxBadge(Number(r.badge) || 0); } catch (e) {}
+  }
   function startTxAlerts() {
     if (!session || _txTimer) return;
     var KEY = "mm_adm_tx_seen_" + ((session.admin && session.admin.username) || "");
@@ -305,6 +326,7 @@ window.ADMIN = (function () {
       try {
         var r = await api("walletFeed", { sinceId: seen });
         if (!r || !r.ok) return;
+        if (r.badge != null) paintTxBadge(Number(r.badge) || 0);
         if (!baselined) { seen = r.maxId || 0; try { localStorage.setItem(KEY, seen); } catch (e) {} baselined = true; return; }
         if (r.transactions && r.transactions.length) {
           r.transactions.forEach(announceTx);
@@ -322,6 +344,7 @@ window.ADMIN = (function () {
     var r = (location.hash || "#dashboard").slice(1);
     if (!canRoute(r)) r = "dashboard";
     document.body.classList.remove("adm-nav-open");
+    if ($("admFab")) $("admFab").hidden = r === "chat";
     // Leaving a view (nav click, Back button) closes any open dialog.
     document.querySelectorAll(".adm-modal-back").forEach(function (m) { m.remove(); });
     document.documentElement.classList.remove("no-scroll");
@@ -348,7 +371,7 @@ window.ADMIN = (function () {
     if (catalog && !force) return catalog;
     var res = await api("listCatalog");
     if (!res.ok) throw new Error(res.error);
-    catalog = { categories: res.categories || [], vendors: res.vendors || [], products: res.products || [], banners: res.banners || [] };
+    catalog = { categories: res.categories || [], vendors: res.vendors || [], products: res.products || [], banners: res.banners || [], staff: res.staff || [] };
     return catalog;
   }
   // After catalog edits, make sure this browser's shop shows them straight away.
@@ -383,7 +406,7 @@ window.ADMIN = (function () {
     $("admView").innerHTML =
       '<div class="adm-kpis">'+
         kpi("Revenue", money(s.revenue), "Excludes cancelled orders") +
-        kpi("Orders", s.orders, (s.byStatus.received || 0) + " awaiting processing", "#orders") +
+        kpi("Orders", s.orders, ((s.byStatus.pending || 0) + (s.byStatus.received || 0)) + " awaiting processing", "#orders") +
         kpi("Products", s.products, s.hiddenProducts ? s.hiddenProducts + " hidden" : "All visible", "#products") +
         (canRoute("vendors") ? kpi("Sellers", s.vendors, s.pendingVendors ? s.pendingVendors + " pending approval" : "Manage shops", "#vendors") : "") +
       '</div>'+
@@ -639,7 +662,7 @@ window.ADMIN = (function () {
   }
 
   /* ------------------------------- products ------------------------------- */
-  var pf = { q: "", cat: "", status: "" };
+  var pf = { q: "", cat: "", status: "" }, prodPage = 1, PRODUCTS_PER_PAGE = 10;
   async function viewProducts() {
     var cat = await getCatalog();
     var catName = {}, venName = {};
@@ -671,9 +694,13 @@ window.ADMIN = (function () {
         return (!q || p.name.toLowerCase().indexOf(q) > -1) && (!pf.cat || String(p.cat_id) === pf.cat) &&
           (!pf.status || p.status === pf.status);
       });
+      // 10 products per page
+      var pages = Math.max(1, Math.ceil(list.length / PRODUCTS_PER_PAGE));
+      prodPage = Math.min(Math.max(1, prodPage), pages);
+      var from = (prodPage - 1) * PRODUCTS_PER_PAGE, pageList = list.slice(from, from + PRODUCTS_PER_PAGE);
       $("prodBox").innerHTML = list.length ?
         '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Profit</th><th>Stock</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+
-        list.map(function (p) {
+        pageList.map(function (p) {
           var hidden = p.status === "hidden";
           return '<tr'+(hidden ? ' class="adm-dim"' : '')+'>'+
             '<td><div class="adm-prod"><img src="'+DATA.productImage(p, 96)+'" alt="" loading="lazy"><div><div class="adm-cell-main">'+esc(p.name)+'</div>'+
@@ -684,11 +711,10 @@ window.ADMIN = (function () {
             '<td>'+(p.quantity === "" || p.quantity == null ? "—" : esc(p.quantity))+'</td>'+
             '<td>'+pill(hidden ? "hidden" : "active", hidden ? "blocked" : "active")+'</td>'+
             '<td class="r"><div class="adm-actions">'+
-              '<button type="button" class="btn btn-ghost adm-mini" data-toggle="'+esc(p.id)+'">'+(hidden ? "Show" : "Hide")+'</button>'+
               '<button type="button" class="adm-icon-btn" data-edit="'+esc(p.id)+'" title="Edit" aria-label="Edit '+esc(p.name)+'">'+svg("edit")+'</button>'+
               (can("deleteProduct") ? '<button type="button" class="adm-icon-btn danger" data-del="'+esc(p.id)+'" title="Delete" aria-label="Delete '+esc(p.name)+'">'+svg("trash")+'</button>' : '')+
             '</div></td></tr>';
-        }).join("")+'</tbody></table></div>'
+        }).join("")+'</tbody></table></div>' + pager(prodPage, pages, from + 1, from + pageList.length, list.length)
         : empty("No products match", "Try a different search or filter.");
       $("prodCount").textContent = list.length + " of " + cat.products.length;
     }
@@ -704,24 +730,18 @@ window.ADMIN = (function () {
       '</div>'+
       '<section class="adm-card adm-flush" id="prodBox"></section>';
     draw();
-    $("pfQ").oninput = function () { pf.q = this.value; draw(); };
-    $("pfCat").onchange = function () { pf.cat = this.value; draw(); };
-    $("pfStatus").onchange = function () { pf.status = this.value; draw(); };
+    $("pfQ").oninput = function () { pf.q = this.value; prodPage = 1; draw(); };
+    $("pfCat").onchange = function () { pf.cat = this.value; prodPage = 1; draw(); };
+    $("pfStatus").onchange = function () { pf.status = this.value; prodPage = 1; draw(); };
     $("addProd").onclick = function () { productForm(null); };
     $("prodBox").addEventListener("click", async function (e) {
       var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.opage) { if (!b.disabled) { prodPage = Number(b.dataset.opage) || 1; draw(); $("prodBox").scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
       var find = function (id) { return cat.products.filter(function (p) { return String(p.id) === id; })[0]; };
       if (b.dataset.edit) productForm(find(b.dataset.edit));
-      if (b.dataset.toggle) {
-        var tp = find(b.dataset.toggle), tnext = tp.status === "hidden" ? "active" : "hidden";
-        b.disabled = true;
-        var tr = await api("saveProduct", { id: tp.id, status: tnext });
-        if (!tr.ok) { b.disabled = false; toast(tr.error, true); return; }
-        catalogChanged(); toast(tnext === "hidden" ? "Hidden from the shop" : "Visible in the shop"); route();
-      }
       if (b.dataset.del) {
         var d = find(b.dataset.del);
-        if (!confirm('Delete "' + d.name + '"? This can\'t be undone. (Tip: hide it instead to keep it.)')) return;
+        if (!confirm('Delete "' + d.name + '"? This can\'t be undone. (Tip: set its status to Hide in Edit instead to keep it.)')) return;
         b.disabled = true;
         var rr = await api("deleteProduct", { id: d.id });
         if (!rr.ok) { b.disabled = false; toast(rr.error, true); return; }
@@ -769,7 +789,7 @@ window.ADMIN = (function () {
         '<div class="adm-form-cols">'+
           f("pName", "Product name", '<input id="pName" required maxlength="140" value="'+esc(p.name)+'">', "full") +
           f("pCat", "Category", '<select id="pCat" required>'+opt(cat.categories, p.cat_id)+'</select>') +
-          f("pStatus", "Status", '<select id="pStatus"><option value="active"'+(p.status !== "hidden" ? " selected" : "")+'>Active (visible)</option><option value="hidden"'+(p.status === "hidden" ? " selected" : "")+'>Hidden</option></select>') +
+          f("pStatus", "Status", '<select id="pStatus"><option value="active"'+(p.status !== "hidden" ? " selected" : "")+'>Active</option><option value="hidden"'+(p.status === "hidden" ? " selected" : "")+'>Hide</option></select>') +
           f("pBadge", "Badge", '<select id="pBadge"><option value="">None</option><option value="deal"'+(p.badge === "deal" ? " selected" : "")+'>Deal</option><option value="bestseller"'+(p.badge === "bestseller" ? " selected" : "")+'>#1 in sales</option></select>') +
           f("pPrice", "Price ("+esc(C.CURRENCY_CODE)+")", '<input id="pPrice" type="number" min="0.01" step="0.01" required value="'+esc(p.price)+'">') +
           f("pProfit", "Seller profit <span class=\"opt\" id=\"pProfitHint\">(auto from category %)</span>", '<input id="pProfit" type="number" min="0" step="0.01" value="'+esc(p.sellerProfit == null ? '' : p.sellerProfit)+'">') +
@@ -1043,17 +1063,34 @@ window.ADMIN = (function () {
   }
 
   /* -------------------------------- vendors ------------------------------- */
+  var venStaff = "";   // Sellers page filter (superadmin/manager): a staff code, "-" = no staff, "" = all
+  function staffName(code) {
+    var s = ((catalog && catalog.staff) || []).filter(function (x) { return x.code === String(code || "").toUpperCase(); })[0];
+    return s ? s.name || s.username : "";
+  }
   async function viewVendors() {
     var cat = await getCatalog();
     var count = {}; cat.products.forEach(function (p) { if (p.vendor_id !== "") count[String(p.vendor_id)] = (count[String(p.vendor_id)] || 0) + 1; });
+    var codeOf = function (v) { return String(v.staffCode || v.invite || "").trim().toUpperCase(); };
+    var staffList = role() === "staff" ? [] : (cat.staff || []);
+    if (venStaff && venStaff !== "-" && !staffList.some(function (x) { return x.code === venStaff; })) venStaff = "";
+    var list = cat.vendors.filter(function (v) { return !venStaff || (venStaff === "-" ? !codeOf(v) : codeOf(v) === venStaff); });
+    var nBy = {}; cat.vendors.forEach(function (v) { var c = codeOf(v) || "-"; nBy[c] = (nBy[c] || 0) + 1; });
+    var staffPick = staffList.length ? '<label class="adm-seller-pick">'+svg("users", 18)+'<select id="venStaff" aria-label="Show sellers of staff member">'+
+        '<option value="">All staff ('+cat.vendors.length+')</option>'+
+        staffList.map(function (x) { return '<option value="'+esc(x.code)+'"'+(venStaff === x.code ? " selected" : "")+'>'+esc(x.name || x.username)+' · '+esc(x.code)+' ('+(nBy[x.code] || 0)+')'+(x.role !== "staff" ? ' — '+esc(roleLabel(x.role)) : '')+'</option>'; }).join("")+
+        (nBy["-"] ? '<option value="-"'+(venStaff === "-" ? " selected" : "")+'>No staff code ('+nBy["-"]+')</option>' : '')+
+      '</select></label>' : '';
     $("admView").innerHTML =
-      '<div class="adm-toolbar"><span class="adm-count">'+cat.vendors.length+(cat.vendors.length===1?' seller':' sellers')+'</span>'+
+      '<div class="adm-toolbar">'+staffPick+'<span class="adm-count">'+list.length+(list.length===1?' seller':' sellers')+
+        (role() === "staff" && myStaffCode() ? ' · registered with your code <b class="adm-okey">'+esc(myStaffCode())+'</b>' : '')+'</span>'+
         '<button class="btn btn-primary adm-btn" type="button" id="addVen">'+svg("plus")+' Add seller</button></div>'+
-      '<section class="adm-card adm-flush">'+(cat.vendors.length ?
+      '<section class="adm-card adm-flush">'+(list.length ?
         '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Shop</th><th>Contact</th><th>Products</th><th>Login</th><th>Shop</th><th class="r">Actions</th></tr></thead><tbody>'+
-        cat.vendors.map(function (v) {
-          var canLogin = v.status === "active", shopOk = v.shopStatus === "verified";
-          return '<tr><td><div class="adm-cell-main">'+esc(v.shopName || v.name)+'</div><div class="adm-cell-sub">#'+esc(v.id)+(v.staffCode?' · code '+esc(v.staffCode):'')+'</div></td>'+
+        list.map(function (v) {
+          var canLogin = v.status === "active", shopOk = v.shopStatus === "verified", sc = codeOf(v), sn = sc ? staffName(sc) : "";
+          return '<tr><td><div class="adm-cell-main">'+esc(v.shopName || v.name)+'</div><div class="adm-cell-sub">#'+esc(v.id)+(sc ? ' · '+(sn ? esc(sn)+' · ' : 'code ')+esc(sc) : ' · no staff')+'</div>'+
+              (v.hasPassword === false ? '<div class="adm-cell-sub" style="color:#b45309">No password — can\'t sign in yet</div>' : '')+'</td>'+
             '<td><div class="adm-cell-main">'+esc(v.name || '—')+'</div>'+(v.email ? '<div class="adm-cell-sub"><a class="adm-link" href="mailto:'+esc(v.email)+'">'+esc(v.email)+'</a></div>' : '')+(v.phone?'<div class="adm-cell-sub">'+esc(v.phone)+'</div>':'')+'</td>'+
             '<td>'+(count[String(v.id)] || 0)+'</td>'+
             '<td>'+pill(canLogin ? "active" : "pending")+'</td>'+
@@ -1062,11 +1099,15 @@ window.ADMIN = (function () {
               '<button type="button" class="btn btn-ghost adm-mini" data-login="'+esc(v.id)+'" data-to="'+(canLogin?'0':'1')+'">'+(canLogin?'Revoke':'Approve')+'</button>'+
               '<button type="button" class="btn btn-ghost adm-mini" data-shop="'+esc(v.id)+'" data-to="'+(shopOk?'0':'1')+'">'+(shopOk?'Unverify':'Verify')+'</button>'+
               '<button type="button" class="adm-icon-btn" data-edit="'+esc(v.id)+'" aria-label="Edit '+esc(v.shopName||v.name)+'">'+svg("edit")+'</button>'+
-              '<button type="button" class="adm-icon-btn danger" data-del="'+esc(v.id)+'" aria-label="Delete '+esc(v.shopName||v.name)+'">'+svg("trash")+'</button></div></td></tr>';
+              (can("deleteVendor") ? '<button type="button" class="adm-icon-btn danger" data-del="'+esc(v.id)+'" aria-label="Delete '+esc(v.shopName||v.name)+'">'+svg("trash")+'</button>' : '')+'</div></td></tr>';
         }).join("")+'</tbody></table></div>'
-        : empty("No sellers yet", "Sellers who register from “Become a seller” appear here for approval. You can also add one manually.", '<button class="btn btn-primary" type="button" id="addVen2">Add a seller</button>'))+
+        : venStaff ? empty("No sellers", "No sellers are registered under this staff member yet.")
+        : empty("No sellers yet", role() === "staff"
+            ? "Sellers who register with your staff code " + (myStaffCode() || "") + " appear here for approval. You can also add one yourself."
+            : "Sellers who register from “Become a seller” appear here for approval. You can also add one manually.", '<button class="btn btn-primary" type="button" id="addVen2">Add a seller</button>'))+
       '</section>';
     $("addVen").onclick = function () { vendorForm(null); };
+    if ($("venStaff")) $("venStaff").onchange = function () { venStaff = this.value; route(); };
     if ($("addVen2")) $("addVen2").onclick = function () { vendorForm(null); };
     $("admView").onclick = async function (e) {
       var b = e.target.closest("button[data-edit],button[data-del],button[data-login],button[data-shop]"); if (!b) return;
@@ -1086,11 +1127,19 @@ window.ADMIN = (function () {
     var isNew = !v; v = v || { shopName: "", name: "", email: "", phone: "", status: "pending", shopStatus: "unverified" };
     var loginSel = '<select id="vStatus"><option value="active"'+(v.status==="active"?" selected":"")+'>Approved — can sign in</option><option value="pending"'+(v.status!=="active"?" selected":"")+'>Pending — sign-in blocked</option></select>';
     var shopSel = '<select id="vShopStatus"><option value="1"'+(v.shopStatus==="verified"?" selected":"")+'>Verified</option><option value="0"'+(v.shopStatus!=="verified"?" selected":"")+'>Unverified</option></select>';
-    var extra = isNew ? "" :
-      f("vCode", "Invitation / staff code", '<input value="'+esc(v.staffCode || v.invite || "")+'" readonly>') +
+    var codeNote = isNew && role() === "staff"
+      ? f("vCode", "Staff code", '<input value="'+esc(myStaffCode())+'" readonly><small class="adm-hint-sm">The seller is added under your code.</small>') : "";
+    var pwField = f("vPw", (isNew ? "Password" : "New password") + ' <span class="opt">(' + (isNew ? "needed to sign in" : "leave blank to keep") + ')</span>',
+      '<input id="vPw" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters">');
+    var cur = String(v.staffCode || v.invite || (isNew && venStaff !== "-" ? venStaff : "") || "").toUpperCase();
+    var staffSel = role() !== "staff" && (catalog && catalog.staff || []).length
+      ? f("vStaff", "Staff member", '<select id="vStaff"><option value="">— None —</option>'+catalog.staff.map(function (x) {
+          return '<option value="'+esc(x.code)+'"'+(x.code === cur ? " selected" : "")+'>'+esc(x.name || x.username)+' · '+esc(x.code)+'</option>'; }).join("")+'</select>') : "";
+    var extra = staffSel + (isNew ? codeNote :
+      (staffSel ? "" : f("vCode", "Invitation / staff code", '<input value="'+esc(v.staffCode || v.invite || "")+'" readonly>')) +
       f("vDocs", "Certificates", '<div class="adm-doclinks">'+
         (v.certFront ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(v.certFront)+'">View front</a>' : '<span class="adm-cell-sub">No front</span>')+' · '+
-        (v.certBack ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(v.certBack)+'">View back</a>' : '<span class="adm-cell-sub">No back</span>')+'</div>');
+        (v.certBack ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(v.certBack)+'">View back</a>' : '<span class="adm-cell-sub">No back</span>')+'</div>'));
     modal(isNew ? "Add seller" : "Edit seller #" + v.id,
       '<div class="adm-form-cols">'+
         f("vShop", "Shop name", '<input id="vShop" required maxlength="100" value="'+esc(v.shopName||'')+'">', "full") +
@@ -1100,15 +1149,27 @@ window.ADMIN = (function () {
         f("vStatus", "Login access", loginSel) +
         f("vShopStatus", "Shop status", shopSel) +
         f("vRating", "Rating <span class=\"opt\">(0–5)</span>", '<input id="vRating" type="number" min="0" max="5" step="0.5" value="'+esc(v.rating == null ? '' : v.rating)+'" placeholder="0–5">') +
-        extra +
+        pwField + extra +
       '</div>',
       async function () {
         if (!$("vShop").value.trim()) return "Shop name is required.";
         var rating = Math.min(5, Math.max(0, Number($("vRating").value) || 0));
-        var r = await api("saveVendor", { id: isNew ? undefined : v.id, shopName: $("vShop").value.trim(), name: $("vName").value.trim(), email: $("vEmail").value.trim(), phone: $("vPhone").value.trim(), status: $("vStatus").value, shop_status: $("vShopStatus").value, rating: rating });
+        var email = $("vEmail").value.trim(), phone = $("vPhone").value.trim(), pw = $("vPw").value;
+        if (email && !AUTH.isEmail(email)) return "Enter a valid email address.";
+        var payload = { id: isNew ? undefined : v.id, shopName: $("vShop").value.trim(), name: $("vName").value.trim(), email: email, phone: phone, status: $("vStatus").value, shop_status: $("vShopStatus").value, rating: rating };
+        if (pw) {
+          if (pw.length < 8) return "Password must be at least 8 characters.";
+          // same hash the seller sign-in page makes: salt "seller:<email, or mobile digits>"
+          var ident = email ? AUTH.loginId(email) : AUTH.loginId(phone);
+          if (!ident || (!email && ident.length < 6)) return "Add an email or mobile number so the seller can sign in.";
+          payload.passwordHash = await AUTH.hash("seller:" + ident, pw);
+        }
+        if ($("vStaff")) payload.invite = $("vStaff").value;
+        var r = await api("saveVendor", payload);
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Seller added" : "Seller saved"); route();
       });
+    enhancePasswords(document.querySelector(".adm-modal"));
   }
 
   /* -------------------------------- wallet -------------------------------- */
@@ -1295,6 +1356,8 @@ window.ADMIN = (function () {
   function phoneLayout() { return window.matchMedia("(max-width: 900px)").matches; }
 
   function paintChatBadge(n) {
+    var fb = document.querySelector("#admFab .sp-badge");
+    if (fb) { fb.hidden = !(n > 0); fb.textContent = n > 99 ? "99+" : String(n); }
     document.querySelectorAll('.adm-nav a[data-route="chat"], .adm-tab[data-route="chat"]').forEach(function (a) {
       var b = a.querySelector(".adm-navbadge");
       if (!b) { b = document.createElement("b"); b.className = "adm-navbadge"; a.appendChild(b); }

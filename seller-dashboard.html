@@ -6,7 +6,7 @@
 <title>Dashboard — ManoMano Seller</title>
 <meta name="theme-color" content="#2f6df6">
 <link rel="icon" href="images/logo-64.png" type="image/png">
-<link rel="stylesheet" href="css/chat.css?v=20261127g">
+<link rel="stylesheet" href="css/chat.css?v=20261127za">
 <style>
   :root{
     --blue:#2f6df6; --blue-d:#1e5fe0; --ink:#17203a; --muted:#8792a6;
@@ -79,6 +79,7 @@
   .sd-pbtn.on{background:var(--blue);border-color:var(--blue);color:#fff}
   .sd-pbtn:disabled{opacity:.4;cursor:default}
   .sd-pgap{color:var(--muted);padding:0 2px}
+  .sd-pmore{margin-left:4px;height:36px;display:inline-flex;align-items:center;padding:0 12px;border-radius:10px;background:#eef3ff;color:var(--blue);font-weight:800;font-size:14px;white-space:nowrap}
   .sd-ost{white-space:nowrap;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef3ff;color:#2f6df6}
   .sd-ost.st-pending{background:#fdf1dc;color:#9a6700}
   .sd-ost.st-processing{background:#fff4e3;color:#b26a00}.sd-ost.st-shipped{background:#efe9ff;color:#6d3fd8}
@@ -363,6 +364,33 @@
   .sd-seltotals{display:flex;flex-wrap:wrap;gap:8px 22px;padding:12px 16px;border-top:1px solid var(--line);background:#fafbfe}
   .sd-seltotals>div{display:flex;flex-direction:column;font-size:12px;color:var(--muted);font-weight:600}
   .sd-seltotals>div b{font-size:16px;color:var(--ink);font-weight:800}
+  .sd-selwarn{margin:0;padding:10px 16px;background:#fdecee;color:#b4121f;font-size:13px;font-weight:600;border-top:1px solid #f7cdd2}
+  .sd-selwarn[hidden]{display:none}
+  .sd-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  .sd-txsub{display:block;color:var(--muted);font-size:12px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Photo upload box (recharge voucher) */
+  .sd-field label.sd-upload,.sd-upload{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+    margin:0;padding:22px 16px;border:2px dashed #c9d6f2;border-radius:14px;background:#f7f9ff;cursor:pointer;font-weight:400;transition:border-color .15s,background .15s,box-shadow .15s}
+  .sd-field label.sd-upload[hidden]{display:none}
+  .sd-up-t,.sd-up-s{display:block}
+  .sd-upload:hover,.sd-upload.drag{border-color:var(--blue);background:#eef3ff}
+  .sd-upload input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .sd-upload[hidden]{display:none}
+  .sd-up-ic{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#fff;color:var(--blue);box-shadow:0 4px 12px rgba(47,109,246,.15);margin-bottom:4px}
+  .sd-up-t{font-size:14px;color:#43506b}.sd-up-t b{color:var(--blue)}
+  .sd-up-s{font-size:12px;color:var(--muted)}
+  .sd-upload.sd-invalid{border-color:var(--no);background:#fff6f7;box-shadow:0 0 0 3px rgba(226,59,78,.12)}
+  .sd-upfile{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:var(--shadow)}
+  .sd-upfile[hidden]{display:none}
+  .sd-upfile img{width:64px;height:64px;border-radius:10px;object-fit:cover;flex:0 0 auto;border:1px solid var(--line);background:#f1f4fa}
+  .sd-upmeta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .sd-upmeta b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sd-upmeta small{color:var(--muted);font-size:12px}
+  .sd-upok{color:var(--ok);font-size:12px;font-weight:700}
+  .sd-upact{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+  .sd-upact button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer}
+  .sd-upact button:hover{border-color:var(--blue);color:var(--blue)}
+  .sd-upact button.rm:hover{border-color:var(--no);color:var(--no)}
   .sd-seltotal{margin-left:auto;text-align:right}
   .sd-seltotal b{color:var(--blue) !important}
   .sd-selbtns{display:flex;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}
@@ -393,6 +421,15 @@
   .sd-browse:hover{background:#e3e8ef}
   .sd-browse input{display:none}
   .sd-filename{flex:1;min-width:0;display:flex;align-items:center;padding:0 14px;color:#8792a6;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sd-field label.sd-browse{display:flex;margin:0;font-size:13px;color:#43506b}
+  .sd-filepick.sd-invalid{border-color:var(--no);box-shadow:0 0 0 3px rgba(226,59,78,.12)}
+  .sd-filepick.drag{border-color:var(--blue);background:#eef3ff}
+  .sd-filename.has{color:var(--ink);font-weight:600}
+  .sd-vbox{position:relative;margin-top:12px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#f6f8fc;display:flex;justify-content:center}
+  .sd-vbox[hidden]{display:none}
+  .sd-vbox img{display:block;max-width:100%;max-height:220px;border-radius:8px;object-fit:contain}
+  .sd-vrm{position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(23,32,58,.75);color:#fff;font-size:18px;line-height:1;cursor:pointer}
+  .sd-vrm:hover{background:var(--no)}
   .sd-vprev{margin-top:12px;max-width:100%;max-height:180px;border-radius:10px;border:1px solid var(--line);display:block;object-fit:contain}
   .sd-field{margin-bottom:14px}
   .sd-field label{display:block;font-size:12px;font-weight:700;color:#56617a;margin-bottom:6px}
@@ -405,6 +442,9 @@
   .sd-wbalrow{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px}
   .sd-wbalrow b{color:var(--blue)}
   .sd-wbalrow.last{margin-bottom:16px}
+  .sd-wdblock{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#fdecee;color:#b4121f;font-size:13.5px;font-weight:600;line-height:1.45;border:1px solid #f7cdd2}
+  .sd-wdblock[hidden]{display:none}
+  .sd-disabled{opacity:.5;pointer-events:none}
   /* payment-settings toggle switch */
   .sd-swrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
   .sd-swrow>span:first-child{font-size:13px;font-weight:700;color:#43506b}
@@ -705,6 +745,7 @@
           <span class="sd-stcount" id="stCount"></span>
         </div>
         <div class="sd-pgrid" id="stGrid"></div>
+        <div id="stPager"></div>
         <p class="sd-empty" id="stEmpty" hidden></p>
 
         <!-- selected cart -->
@@ -718,7 +759,9 @@
             <div><span data-i18n="sd.subtotal">Subtotal</span><b id="stSub">$0.00</b></div>
             <div><span data-i18n="sd.totalprofit">Total profit</span><b id="stProfit" class="sd-green">$0.00</b></div>
             <div class="sd-seltotal"><span data-i18n="sd.total">Total</span><b id="stTotal">$0.00</b></div>
+            <div><span data-i18n="sd.walletbalance">Your wallet balance</span><b id="stWallet">—</b></div>
           </div>
+          <p class="sd-selwarn" id="stWarn" hidden></p>
           <div class="sd-selbtns">
             <button type="button" class="sd-btn sd-btn-ghost" id="stAddAll" data-i18n="sd.addall">Add all to My Product</button>
             <button type="button" class="sd-btn" id="stAdd" data-i18n="sd.addmy">Add to My Product</button>
@@ -737,6 +780,7 @@
           <button type="button" class="sd-btn" id="mpAdd" data-view="storehouse"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px"><path d="M12 5v14M5 12h14"/></svg> <span data-i18n="sd.addmore">Add products</span></button>
         </div>
         <div id="mpGrid"></div>
+        <div id="mpPager"></div>
         <p class="sd-empty" id="mpEmpty" hidden></p>
       </section>
 
@@ -828,11 +872,11 @@
 
 <div class="sd-toast" id="sdToast"></div>
 
-<script src="js/config.js?v=20261127g"></script>
-<script src="js/ui.js?v=20261127g"></script>
-<script src="js/auth.js?v=20261127g"></script>
-<script src="js/login.js?v=20261127g"></script>
-<script src="js/chat.js?v=20261127g"></script>
-<script src="js/seller-dashboard.js?v=20261127g"></script>
+<script src="js/config.js?v=20261127za"></script>
+<script src="js/ui.js?v=20261127za"></script>
+<script src="js/auth.js?v=20261127za"></script>
+<script src="js/login.js?v=20261127za"></script>
+<script src="js/chat.js?v=20261127za"></script>
+<script src="js/seller-dashboard.js?v=20261127za"></script>
 </body>
 </html>

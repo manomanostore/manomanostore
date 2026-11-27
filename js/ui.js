@@ -20,7 +20,8 @@ window.I18N = (function () {
       "bn.home": "Home", "bn.cats": "Categories", "bn.deals": "Deals", "bn.basket": "Basket", "bn.account": "Account",
       "home.today": "Today's Deals", "home.hot": "Hot", "home.seeall": "See all deals ›", "home.topsel": "Our top selection",
       "home.best": "Our best sellers", "home.seeall2": "See all", "home.shopcat": "Shop by category", "home.finds": "Today's best finds",
-      "home.sponsored": "Sponsored", "home.brands": "Our biggest brands", "cta.add": "Add",
+      "home.sponsored": "Sponsored", "home.viewmore": "View more",
+      "sp.guesttitle": "Chat with our support team", "sp.guesttext": "Sign in to your seller account to chat with us — we usually reply within a few minutes.", "sp.signin": "Sign in to chat", "sp.become": "Become a seller", "home.brands": "Our biggest brands", "cta.add": "Add",
       "sd.dashboard": "Dashboard", "sd.products": "Products", "sd.storehouse": "Product Storehouse", "sd.orders": "Orders",
       "sd.package": "Package", "sd.spread": "Spread Packages", "sd.affiliate": "Affiliate System", "sd.withdraw": "Money Withdraw",
       "sd.conversations": "Conversations", "sd.support": "Support", "sd.chatsub": "Support team · usually replies within a few minutes", "sd.newchat": "New message from Support", "sd.shopsetting": "Shop Setting", "sd.refund": "Received Refund Request",
@@ -57,6 +58,10 @@ window.I18N = (function () {
       "sd.st.pending": "Pending", "sd.st.received": "Received", "sd.st.processing": "Processing", "sd.st.shipped": "Shipped", "sd.st.delivered": "Delivered", "sd.st.cancelled": "Cancelled", "sd.viewshop": "View your shop", "sd.mywallet": "My Wallet", "sd.sellerdash": "Seller Dashboard", "sd.orderssub": "Orders from your customers.",
       "sd.uploadvoucher": "After payment, please upload the transaction voucher.", "sd.method": "Method", "sd.bank": "Bank", "sd.usdt": "USDT-TRC20",
       "sd.account": "Payout account details", "sd.accountph": "Bank account / USDT address", "sd.date": "Date", "sd.type": "Type",
+      "sd.photoreq": "Please upload the payment screenshot (photo) before confirming.", "sd.chatwithus": "Chat with support",
+      "sd.clickupload": "Click to upload", "sd.ordrag": "or drag & drop", "sd.uploadhint": "Payment screenshot · PNG or JPG", "sd.readyupload": "Ready to upload", "sd.change": "Change", "sd.removebtn": "Remove", "sd.withdrawable": "Withdrawable", "sd.nowithdrawpop": "You don't have enough money in your wallet to withdraw. Your wallet money must be above your guarantee money — recharge your wallet first.",
+      "sd.purchase": "Product purchase", "sd.notenough": "Not enough wallet balance — recharge {x} more to add these products.",
+      "sd.charged": "Products added. {x} was deducted from your wallet.",
       "sd.deposit": "Deposit", "sd.withdraw2": "Withdraw", "sd.guaranteet": "Guarantee", "sd.pending": "Pending", "sd.approved": "Approved", "sd.rejected": "Rejected",
       "sd.notx": "No transactions yet.", "sd.reqsent": "Request submitted for review.", "sd.view": "View", "sd.amountreq": "Enter a valid amount.",
       "sd.guarbystaff": "Guarantee money is managed by our team.", "sd.browse": "Browse", "sd.chooseimg": "Choose image",
@@ -81,7 +86,8 @@ window.I18N = (function () {
       "bn.home": "होम", "bn.cats": "श्रेणियाँ", "bn.deals": "ऑफ़र", "bn.basket": "बास्केट", "bn.account": "खाता",
       "home.today": "आज के ऑफ़र", "home.hot": "हॉट", "home.seeall": "सभी ऑफ़र देखें ›", "home.topsel": "हमारा शीर्ष चयन",
       "home.best": "हमारे बेस्ट सेलर", "home.seeall2": "सभी देखें", "home.shopcat": "श्रेणी अनुसार खरीदें", "home.finds": "आज की बेहतरीन खोज",
-      "home.sponsored": "प्रायोजित", "home.brands": "हमारे सबसे बड़े ब्रांड", "cta.add": "जोड़ें",
+      "home.sponsored": "प्रायोजित", "home.viewmore": "और देखें",
+      "sp.guesttitle": "हमारी सपोर्ट टीम से चैट करें", "sp.guesttext": "हमसे चैट करने के लिए अपने सेलर खाते में साइन इन करें — हम आमतौर पर कुछ ही मिनटों में जवाब देते हैं।", "sp.signin": "चैट के लिए साइन इन करें", "sp.become": "सेलर बनें", "home.brands": "हमारे सबसे बड़े ब्रांड", "cta.add": "जोड़ें",
       "sd.dashboard": "डैशबोर्ड", "sd.products": "प्रोडक्ट्स", "sd.storehouse": "प्रोडक्ट स्टोरहाउस", "sd.orders": "ऑर्डर",
       "sd.package": "पैकेज", "sd.spread": "स्प्रेड पैकेज", "sd.affiliate": "एफिलिएट सिस्टम", "sd.withdraw": "पैसे निकालें",
       "sd.conversations": "बातचीत", "sd.support": "सपोर्ट", "sd.chatsub": "सपोर्ट टीम · आमतौर पर कुछ ही मिनटों में जवाब देती है", "sd.newchat": "सपोर्ट से नया संदेश", "sd.shopsetting": "शॉप सेटिंग", "sd.refund": "रिफंड अनुरोध",
@@ -118,6 +124,10 @@ window.I18N = (function () {
       "sd.st.pending": "लंबित", "sd.st.received": "प्राप्त", "sd.st.processing": "प्रोसेसिंग", "sd.st.shipped": "भेजा गया", "sd.st.delivered": "डिलीवर", "sd.st.cancelled": "रद्द", "sd.viewshop": "अपनी दुकान देखें", "sd.mywallet": "मेरा वॉलेट", "sd.sellerdash": "सेलर डैशबोर्ड", "sd.orderssub": "आपके ग्राहकों के ऑर्डर।",
       "sd.uploadvoucher": "भुगतान के बाद, कृपया लेन-देन रसीद अपलोड करें।", "sd.method": "माध्यम", "sd.bank": "बैंक", "sd.usdt": "USDT-TRC20",
       "sd.account": "भुगतान खाता विवरण", "sd.accountph": "बैंक खाता / USDT पता", "sd.date": "तारीख", "sd.type": "प्रकार",
+      "sd.photoreq": "पुष्टि करने से पहले कृपया भुगतान का स्क्रीनशॉट (फ़ोटो) अपलोड करें।", "sd.chatwithus": "सपोर्ट से चैट करें",
+      "sd.clickupload": "अपलोड करने के लिए क्लिक करें", "sd.ordrag": "या ड्रैग और ड्रॉप करें", "sd.uploadhint": "भुगतान स्क्रीनशॉट · PNG या JPG", "sd.readyupload": "अपलोड के लिए तैयार", "sd.change": "बदलें", "sd.removebtn": "हटाएँ", "sd.withdrawable": "निकासी योग्य", "sd.nowithdrawpop": "निकासी के लिए आपके वॉलेट में पर्याप्त राशि नहीं है। आपकी वॉलेट राशि गारंटी राशि से अधिक होनी चाहिए — पहले वॉलेट रिचार्ज करें।",
+      "sd.purchase": "उत्पाद खरीद", "sd.notenough": "वॉलेट बैलेंस कम है — ये प्रोडक्ट जोड़ने के लिए {x} और रिचार्ज करें।",
+      "sd.charged": "प्रोडक्ट जोड़ दिए गए। आपके वॉलेट से {x} काटे गए।",
       "sd.deposit": "जमा", "sd.withdraw2": "निकासी", "sd.guaranteet": "गारंटी", "sd.pending": "लंबित", "sd.approved": "स्वीकृत", "sd.rejected": "अस्वीकृत",
       "sd.notx": "अभी कोई लेन-देन नहीं।", "sd.reqsent": "अनुरोध समीक्षा हेतु भेजा गया।", "sd.view": "देखें", "sd.amountreq": "मान्य राशि दर्ज करें।",
       "sd.guarbystaff": "गारंटी राशि हमारी टीम द्वारा प्रबंधित की जाती है।", "sd.browse": "ब्राउज़ करें", "sd.chooseimg": "इमेज चुनें",
@@ -370,6 +380,7 @@ window.I18N = (function () {
       var onScroll = function () { st.classList.toggle("show", (window.scrollY || document.documentElement.scrollTop) > 400); };
       window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
     }
+    supportWidget();
     document.body.insertAdjacentHTML("beforeend", bottomNav(opts.active));
     document.body.insertAdjacentHTML("beforeend", drawer());
     DATA.categories().then(function (cats) {
@@ -503,6 +514,85 @@ window.I18N = (function () {
     if (input) input.addEventListener("focus", function () { wrap.classList.remove("compact"); setVisible(); });
     setVisible(); update();
   }
+
+  /* ---------------- Floating support chat (every shop page) ----------------
+     Bottom-right button → chat popup. Signed-in sellers chat live with the
+     support team (same conversation as Conversations in their dashboard);
+     anyone else is asked to sign in / become a seller. chat.js only loads
+     the first time the popup opens. */
+  var CHAT_V = "20261127zb", spPanel = null, spChat = null;
+  function tr(k, fb) { var v = window.I18N ? I18N.t(k) : k; return v && v !== k ? v : fb; }
+  function chatPost(body) {
+    return fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); });
+  }
+  function loadScript(src) {
+    return new Promise(function (res, rej) {
+      if (window.CHAT) return res();
+      var s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s);
+    });
+  }
+  function spSetBadge(n) {
+    var b = document.querySelector("#spFab .sp-badge"); if (!b) return;
+    b.hidden = !(n > 0); b.textContent = n > 99 ? "99+" : String(n);
+  }
+  function supportWidget() {
+    if (document.getElementById("spFab")) return;
+    if (!document.querySelector("link[data-chatcss]")) {
+      var l = document.createElement("link"); l.rel = "stylesheet"; l.href = "css/chat.css?v=" + CHAT_V; l.setAttribute("data-chatcss", "");
+      document.head.appendChild(l);
+    }
+    var label = tr("sd.chatwithus", "Chat with support");
+    var fab = document.createElement("button");
+    fab.type = "button"; fab.id = "spFab"; fab.className = "sp-fab on-site sp-site"; fab.setAttribute("aria-label", label);
+    fab.innerHTML = '<img src="images/support-agent-site.svg" alt=""><span class="sp-dot"></span><span class="sp-badge" hidden>0</span><span class="sp-tip">' + esc(label) + "</span>";
+    fab.addEventListener("click", function () { if (spPanel && !spPanel.hidden) spClose(); else spOpen(); });
+    document.body.appendChild(fab);
+    document.body.classList.add("has-sp-fab");
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && spPanel && !spPanel.hidden) spClose(); });
+    // unread replies for a signed-in seller (one quick check per page)
+    var s = sellerSess();
+    if (s && s.token && CONFIG.API_URL)
+      chatPost({ action: "sellerChat", token: s.token, sinceId: 1e15, mark: "delivered" }).then(function (j) { if (j && j.ok) spSetBadge(Number(j.unread) || 0); }, function () {});
+  }
+  function spGuest() {
+    var next = encodeURIComponent((location.pathname.split("/").pop() || "index.html") + location.search);
+    spChat = null;
+    spPanel.innerHTML = '<div class="sp-guest">' +
+      '<div class="sp-ghead"><img src="images/support-agent-site.svg" alt=""><div><b>' + esc(CONFIG.BRAND_NAME + " " + tr("sd.support", "Support")) + "</b>" +
+        "<small>" + esc(tr("sd.chatsub", "Support team · usually replies within a few minutes")) + "</small></div></div>" +
+      '<button type="button" class="sp-close" aria-label="Close">' + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>' +
+      '<div class="sp-gbody"><div class="sp-gic">💬</div><h4>' + esc(tr("sp.guesttitle", "Chat with our support team")) + "</h4>" +
+        "<p>" + esc(tr("sp.guesttext", "Sign in to your seller account to chat with us — we usually reply within a few minutes.")) + "</p>" +
+        '<div class="sp-gbtns"><a class="pri" href="login.html?next=' + next + '">' + esc(tr("sp.signin", "Sign in to chat")) + "</a>" +
+        '<a class="sec" href="sell.html">' + esc(tr("sp.become", "Become a seller")) + "</a></div></div></div>";
+  }
+  async function spOpen() {
+    if (!spPanel) {
+      spPanel = document.createElement("div"); spPanel.className = "sp-panel sp-site"; spPanel.setAttribute("role", "dialog"); spPanel.setAttribute("aria-label", tr("sd.chatwithus", "Chat with support"));
+      spPanel.addEventListener("click", function (e) { if (e.target.closest(".sp-close")) spClose(); });
+      document.body.appendChild(spPanel);
+    }
+    spPanel.hidden = false;
+    var s = sellerSess();
+    if (!(s && s.token && CONFIG.API_URL)) { spGuest(); return; }
+    if (spChat) { spChat.refresh(); return; }
+    spPanel.innerHTML = '<div class="ct-loading" style="margin:auto;padding:40px;font:500 14px system-ui;color:#8792a6">…</div>';
+    try { await loadScript("js/chat.js?v=" + CHAT_V); } catch (e) { spPanel.innerHTML = '<p style="margin:auto;padding:30px">Chat is unavailable right now.</p>'; return; }
+    spPanel.innerHTML = '<button type="button" class="sp-close" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="spChatRoot"></div>';
+    spChat = CHAT.create({
+      root: document.getElementById("spChatRoot"), me: "seller", lang: (window.I18N && I18N.get()) || "en",
+      header: { title: CONFIG.BRAND_NAME + " " + tr("sd.support", "Support"), avatar: "images/support-agent-site.svg", online: true,
+                subtitle: '<span class="ct-live"></span>' + esc(tr("sd.chatsub", "Support team · usually replies within a few minutes")) },
+      their: { avatar: "images/support-agent-site.svg" },
+      fetch: function (sinceId, mark) { return chatPost({ action: "sellerChat", token: s.token, sinceId: sinceId, mark: mark }); },
+      send: function (m) { return chatPost({ action: "sellerChatSend", token: s.token, text: m.text, images: m.images }); },
+      onBack: spClose,
+      onAuth: function () { try { localStorage.removeItem("mm_seller"); } catch (e) {} if (spChat) spChat.destroy(); spGuest(); }
+    });
+    spSetBadge(0);
+  }
+  function spClose() { if (spPanel) spPanel.hidden = true; }
 
   window.UI = { mount: mount, toast: toast, icons: ic, esc: esc, updateCartBadges: updateCartBadges };
 })();

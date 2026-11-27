@@ -86,7 +86,7 @@ var PERMS = {
   stats: ADMIN_ROLES, listOrders: ADMIN_ROLES, updateOrder: ADMIN_ROLES,
   listCatalog: ADMIN_ROLES, saveProduct: ADMIN_ROLES, changePassword: ADMIN_ROLES,
   deleteProduct: ["superadmin", "manager"], saveCategory: ["superadmin", "manager"],
-  deleteCategory: ["superadmin", "manager"], saveVendor: ["superadmin", "manager"],
+  deleteCategory: ["superadmin", "manager"], saveVendor: ADMIN_ROLES,
   deleteVendor: ["superadmin", "manager"], importCatalog: ["superadmin", "manager"],
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
   listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
@@ -330,9 +330,12 @@ function sellerProductList(sellerId) {
   });
 }
 
-// Add (or update the quantity of) catalog products in the seller's shop. Items:
-// [{ productId, qty }]. Existing picks are updated; new ones appended — so a
-// seller can keep adding more products over time.
+// Buy catalog products into the seller's shop, paid from their wallet.
+// Items: [{ productId, qty }]. The cost (price × qty) is deducted from the
+// seller's wallet money as an approved "purchase" transaction, so it shows in
+// their transaction history. A product already in the shop gets the new units
+// ADDED to its quantity (and only those units are charged). Refused when the
+// wallet doesn't cover the total.
 function sellerAddProducts(b) {
   try {
     var me = requireSeller(b.token);
@@ -343,25 +346,41 @@ function sellerAddProducts(b) {
     if (!pids.length) return { ok: false, error: "No products selected." };
 
     var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
+    var buy = pids.filter(function (pid) { return cat[pid]; });
+    if (!buy.length) return { ok: false, error: "Those products are no longer available." };
+
+    var cost = round2(buy.reduce(function (n, pid) { return n + (Number(cat[pid].price) || 0) * want[pid]; }, 0));
+    var wallet = sellerBalances(me.id).walletMoney;
+    if (cost > wallet + 0.0001)
+      return { ok: false, error: "Not enough wallet balance. These products cost $" + cost.toFixed(2) +
+        " but your wallet has $" + Math.max(0, wallet).toFixed(2) + ". Recharge your wallet and try again." };
+
     var mineRows = readRows("sellerproducts").filter(function (r) { return String(r.seller_id) === String(me.id); });
     var byPid = {}; mineRows.forEach(function (r) { byPid[String(r.product_id)] = r; });
 
     var sh = sheet("sellerproducts"), now = new Date().toISOString(), added = 0, updated = 0;
-    pids.forEach(function (pid) {
-      var p = cat[pid]; if (!p) return;
-      var qty = want[pid], cur = byPid[pid];
+    buy.forEach(function (pid) {
+      var p = cat[pid], qty = want[pid], cur = byPid[pid];
       if (cur) {
-        saveRecord("sellerproducts", { id: cur.id, qty: qty, name: p.name, price: p.price, profit: p.sellerProfit, status: "active" }, function () { return ""; });
+        var total = Math.max(1, Math.floor(Number(cur.qty) || 0)) + qty;
+        saveRecord("sellerproducts", { id: cur.id, qty: total, name: p.name, price: p.price, profit: p.sellerProfit, status: "active" }, function () { return ""; });
         updated++;
       } else {
         appendNamed("sellerproducts", {
           id: nextId(sh), seller_id: me.id, product_id: p.id, name: p.name, price: p.price,
           profit: p.sellerProfit, qty: qty, status: "active", createdAt: now, updatedAt: now
         });
-        updated = updated; added++;
+        added++;
       }
     });
-    return { ok: true, added: added, updated: updated };
+
+    // Record the payment (approved straight away: it's paid from the wallet).
+    var note = buy.map(function (pid) { return cat[pid].name + " ×" + want[pid]; }).join(", ");
+    appendNamed("transactions", { id: nextId(sheet("transactions")), seller_id: me.id, type: "purchase", method: "wallet",
+      amount: cost, currency: "$", account: "", voucher: "", status: "approved",
+      note: note.length > 300 ? note.slice(0, 297) + "…" : note, createdAt: now, updatedAt: now });
+
+    return { ok: true, added: added, updated: updated, charged: cost, walletMoney: round2(wallet - cost) };
   } catch (err) {
     var m = String(err && err.message || err);
     return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
@@ -384,8 +403,8 @@ function sellerRemoveProduct(b) {
 /* ------------------------------ Wallet / money --------------------------- */
 // Balances are AUTO-COMPUTED from the Transactions + SellerProducts + Wallet
 // sheets, so nothing drifts:
-//   walletMoney    = Σ approved deposits − Σ approved withdrawals (+ delivered
-//                    earnings, once Orders are wired)
+//   walletMoney    = Σ approved deposits − Σ approved withdrawals − Σ product
+//                    purchases (+ delivered earnings, once Orders are wired)
 //   pendingBalance = Σ (price × qty) of the products the seller stocks
 //   guaranteeMoney = staff-set base (Wallet sheet) + approved guarantee recharges
 // Current time in Indian Standard Time as ISO-8601 with its offset, e.g.
@@ -396,19 +415,20 @@ function istNow() { return Utilities.formatDate(new Date(), "Asia/Kolkata", "yyy
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
 function sellerBalances(sellerId) {
-  var deposits = 0, withdraws = 0, guaranteeAdds = 0;
+  var deposits = 0, withdraws = 0, guaranteeAdds = 0, purchases = 0;
   readRows("transactions").forEach(function (t) {
     if (String(t.seller_id) !== String(sellerId) || String(t.status) !== "approved") return;
     var amt = Number(t.amount) || 0, ty = String(t.type);
     if (ty === "deposit") deposits += amt;
     else if (ty === "withdraw") withdraws += amt;
     else if (ty === "guarantee") guaranteeAdds += amt;
+    else if (ty === "purchase") purchases += amt;    // products bought into the shop
   });
   var w = readRows("wallet").filter(function (r) { return String(r.seller_id) === String(sellerId); })[0];
   var guaranteeBase = w ? Number(w.guarantee) || 0 : 0;
   var deliveredEarnings = 0, deliveredProfit = 0;   // Orders not wired yet
   return {
-    walletMoney: round2(deposits - withdraws + deliveredEarnings),
+    walletMoney: round2(deposits - withdraws - purchases + deliveredEarnings),
     pendingBalance: round2(sellerProductsValue(sellerId)),
     guaranteeMoney: round2(guaranteeBase + guaranteeAdds),
     totalProfit: round2(deliveredProfit),
@@ -508,11 +528,12 @@ function sellerDeposit(b) {
     var amount = Number(b.amount) || 0;
     if (!(amount > 0)) return { ok: false, error: "Enter a valid amount." };
     var type = (b.purpose === "guarantee") ? "guarantee" : "deposit", voucher = "";
+    // The payment screenshot (voucher) is required.
+    if (!/^data:image\//.test(String(b.voucher || ""))) return { ok: false, error: "Please upload the payment screenshot (photo)." };
     // Vouchers live in  seller/images/<sellerId>/transaction/
-    if (b.voucher) {
-      var folder = driveChild(driveChild(driveImagesFolder("seller"), String(me.id)), "transaction");
-      voucher = uploadImageTo(b.voucher, type + "-" + me.id, folder, 1200);
-    }
+    var folder = driveChild(driveChild(driveImagesFolder("seller"), String(me.id)), "transaction");
+    voucher = uploadImageTo(b.voucher, type + "-" + me.id, folder, 1200);
+    if (!voucher) return { ok: false, error: "Couldn't upload the photo. Please try again." };
     var now = new Date().toISOString(), sh = sheet("transactions");
     appendNamed("transactions", { id: nextId(sh), seller_id: me.id, type: type, method: "usdt", amount: round2(amount),
       currency: CURRENCY_SYMBOL, account: "", voucher: voucher, status: "pending", note: "", createdAt: now, updatedAt: now });
@@ -580,17 +601,24 @@ function adminWallet(meData) {
 // `sinceId` (scoped to the admin's sellers) plus the current maxId. Staff only
 // ever get their own sellers' transactions; admin/manager get everyone's.
 function walletFeed(meData, sinceId) {
-  var sc = walletScope(meData), since = Number(sinceId) || 0, maxId = since, out = [];
+  var sc = walletScope(meData), since = Number(sinceId) || 0, maxId = since, out = [], badge = 0;
+  var today = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd");
   readRows("transactions").forEach(function (r) {
     if (r.id === "" || !sc.allowed[String(r.seller_id)]) return;
     var id = Number(r.id) || 0;
     if (id > maxId) maxId = id;
-    if (id > since) {
+    // Menu badge: requests that are new today (IST) or still pending.
+    if (String(r.type) !== "purchase") {
+      var d = r.createdAt ? new Date(r.createdAt) : null;
+      var isToday = d && !isNaN(d) && Utilities.formatDate(d, "Asia/Kolkata", "yyyy-MM-dd") === today;
+      if (isToday || String(r.status || "pending") === "pending") badge++;
+    }
+    if (id > since && String(r.type) !== "purchase") {   // purchases are automatic, not requests
       var pub = txPublic(r); pub.sellerId = Number(r.seller_id) || r.seller_id;
       pub.sellerName = sc.nameOf[String(r.seller_id)] || ("#" + r.seller_id); out.push(pub);
     }
   });
-  return { transactions: out, maxId: maxId };
+  return { transactions: out, maxId: maxId, badge: badge };
 }
 function adminUpdateTx(p) {
   if (["approved", "rejected", "pending"].indexOf(p.status) < 0) return { ok: false, error: "Invalid status." };
@@ -653,6 +681,73 @@ function adminSetGuarantee(p, meData) {
   if (cur) saveRecord("wallet", { id: cur.id, guarantee: round2(amount), updatedAt: now }, function () { return ""; });
   else appendNamed("wallet", { id: nextId(sheet("wallet")), seller_id: sid, guarantee: round2(amount), updatedAt: now });
   return { ok: true };
+}
+
+// Sellers for the admin panel: staff only get the sellers who registered with
+// their own staff code. Secrets (password / sign-in token hashes) never leave
+// the server — just whether a password is set.
+function adminSellerList(meData) {
+  return walletScope(meData).sellers.map(function (v) {
+    var out = {};
+    Object.keys(v).forEach(function (k) { if (k !== "passwordHash" && k !== "tokenHash" && k !== "tokenExpires") out[k] = v[k]; });
+    out.hasPassword = !!String(v.passwordHash || "");
+    return out;
+  });
+}
+
+// Admin users who own a staff code (the code sellers register with) — used by
+// superadmins/managers to filter the Sellers page by staff and to assign a
+// seller to a staff member. Never includes password/token data.
+function staffDirectory() {
+  return readRows("users").filter(function (u) { return u.id !== "" && String(u.staff_code || "").trim(); }).map(function (u) {
+    return { code: String(u.staff_code).trim().toUpperCase(), name: String(u.name || u.username || ""), username: String(u.username || ""),
+             role: String(u.role || "superadmin"), status: String(u.status || "active") };
+  });
+}
+
+// Add or edit a seller from the admin panel.
+//  - Staff: may edit only their own sellers; a seller they ADD is tied to their
+//    staff code (invite + staff_code), so it shows up in their lists.
+//  - superadmin/manager: any seller.
+//  - passwordHash (optional) is hashed in the browser like the sign-in page
+//    does: salt "seller:<email, or mobile digits>".
+//  - email / mobile must be unique (they're the sign-in id).
+function adminSaveVendor(p, meData) {
+  var staff = adminRole(meData) === "staff";
+  var myCode = String(meData[A.staffCode] || "").trim().toUpperCase();
+  if (p.id) { var deny = ownsSellerCheck(p.id, meData); if (deny) return deny; }
+  else if (staff && !myCode) return { ok: false, error: "Your account has no staff code yet. Ask an admin to run initSheets." };
+
+  var rec = {};
+  ["id", "shopName", "name", "email", "phone", "status", "shop_status", "rating"].forEach(function (k) { if (p[k] !== undefined) rec[k] = p[k]; });
+  if (rec.email !== undefined) rec.email = normId(rec.email);
+  if (rec.phone !== undefined) rec.phone = String(rec.phone).trim().slice(0, 30);
+  if (p.passwordHash) rec.passwordHash = String(p.passwordHash);
+
+  if (!staff && p.invite !== undefined) {          // superadmin/manager: assign to a staff member ("" = none)
+    var code = String(p.invite || "").trim().toUpperCase();
+    if (code && !staffDirectory().some(function (s) { return s.code === code; })) return { ok: false, error: "Unknown staff code." };
+    rec.invite = code; rec.staff_code = code;
+  }
+  if (!p.id) {
+    if (staff) { rec.invite = myCode; rec.staff_code = myCode; }
+    if (rec.status === undefined) rec.status = 0;
+    if (rec.shop_status === undefined) rec.shop_status = 0;
+  }
+  // The sign-in id (email or mobile) must belong to one seller only.
+  var em = rec.email, ph = rec.phone !== undefined ? loginId(rec.phone) : "";
+  if (em || ph) {
+    var clash = readRows("sellers").some(function (v) {
+      if (v.id === "" || String(v.id) === String(p.id || "")) return false;
+      return (em && normId(v.email) === em) || (ph && ph.length >= 6 && loginId(v.phone) === ph);
+    });
+    if (clash) return { ok: false, error: "Another seller already uses that email or mobile number." };
+  }
+  if (!p.id && rec.passwordHash && !em && ph.length < 6) return { ok: false, error: "Add an email or mobile number so the seller can sign in." };
+  ensureColumns("sellers", SHEETS.sellers.headers);
+  var res = saveRecord("sellers", rec, validateVendor);
+  if (!res.ok) return res;
+  return { ok: true, id: res.record.id };
 }
 
 // A seller's shop rating: a number from 0 to 5 (shown as stars on the seller
@@ -1241,7 +1336,7 @@ function adminCall(b) {
     var me = requireAdmin(b.token);
     var p = b.payload || {};
     var ops = {
-      stats:           function () { return adminStats(); },
+      stats:           function () { return adminStats(me.data); },
       listAdmins:      function () { return { admins: adminList(), meId: Number(me.data[A.id]) || me.data[A.id] }; },
       saveAdmin:       function () { return withLock(function () { return adminSave(p, me); }); },
       deleteAdmin:     function () { return withLock(function () { return adminDelete(p, me); }); },
@@ -1252,14 +1347,15 @@ function adminCall(b) {
       updateOrder:     function () { return withLock(function () { return adminUpdateOrder(p, me.data); }); },
       editOrder:       function () { return withLock(function () { return adminEditOrder(p, me.data); }); },
       deleteOrder:     function () { return withLock(function () { return adminDeleteOrder(p, me.data); }); },
-      listCatalog:     function () { return { categories: readCategories(), vendors: readSellers(), products: readProducts(true), banners: readBanners(true) }; },
+      listCatalog:     function () { return { categories: readCategories(), vendors: adminSellerList(me.data), products: readProducts(true), banners: readBanners(true),
+                                                   staff: adminRole(me.data) === "staff" ? [] : staffDirectory() }; },
       saveBanner:      function () { return withLock(function () { return saveBannerRec(p); }); },
       deleteBanner:    function () { return withLock(function () { return deleteBannerRec(p.id, p.matchUrl); }); },
       saveProduct:     function () { return withLock(function () { return saveProductRec(p); }); },
       deleteProduct:   function () { return withLock(function () { return deleteProductRec(p.id); }); },
       saveCategory:    function () { return withLock(function () { return saveCategoryRec(p); }); },
       deleteCategory:  function () { return withLock(function () { return deleteCategoryRec(p.id); }); },
-      saveVendor:      function () { return withLock(function () { return saveRecord("sellers", p, validateVendor); }); },
+      saveVendor:      function () { return withLock(function () { return adminSaveVendor(p, me.data); }); },
       deleteVendor:    function () { return withLock(function () { return deleteSellerRec(p.id); }); },
       listWallet:      function () { return adminWallet(me.data); },
       walletFeed:      function () { return walletFeed(me.data, p.sinceId); },
@@ -1286,8 +1382,15 @@ function adminCall(b) {
   }
 }
 
-function adminStats() {
-  var orders = adminOrders(), products = readRows("products"), sellers = readRows("sellers");
+// Dashboard numbers. Staff only see THEIR sellers: orders of sellers who
+// registered with their staff code (no storefront/other sellers' orders), and
+// only those sellers in the seller counts. Admin/manager see everything.
+function adminStats(meData) {
+  var sc = walletScope(meData), staff = adminRole(meData || []) === "staff";
+  var orders = adminOrders().filter(function (o) { return !staff || (o.sellerId !== "" && sc.allowed[String(o.sellerId)]); })
+    .map(function (o) { o.sellerName = o.sellerId !== "" ? (sc.nameOf[String(o.sellerId)] || "Seller #" + o.sellerId) : ""; return o; });
+  var products = readRows("products");
+  var sellers = staff ? readRows("sellers").filter(function (v) { return sc.allowed[String(v.id)]; }) : readRows("sellers");
   var revenue = 0, byStatus = {};
   ORDER_STATUSES.forEach(function (s) { byStatus[s] = 0; });
   orders.forEach(function (o) {
@@ -1297,7 +1400,7 @@ function adminStats() {
   return {
     stats: {
       revenue: revenue, orders: orders.length,
-      admins: readRows("users").length,
+      admins: staff ? 0 : readRows("users").length,
       products: products.length,
       hiddenProducts: products.filter(function (p) { return String(p.status) === "hidden"; }).length,
       vendors: sellers.length,
@@ -1309,12 +1412,12 @@ function adminStats() {
 }
 
 // Orders page: every order with seller/customer details, plus the sellers this
-// admin may place orders for. Staff don't see other staff members' sellers'
-// orders (storefront orders without a seller stay visible to everyone).
+// admin may place orders for. Staff only see orders of THEIR sellers (not other
+// staff members' sellers, and not storefront orders without a seller).
 function adminOrderList(meData) {
   var sc = walletScope(meData), staff = adminRole(meData) === "staff";
   var orders = readRows("orders").filter(function (o) { return o.id !== ""; }).map(orderRec).filter(function (o) {
-    return !staff || o.sellerId === "" || sc.allowed[String(o.sellerId)];
+    return !staff || (o.sellerId !== "" && sc.allowed[String(o.sellerId)]);
   }).map(function (o) {
     o.customer = o.customerName || (/^ORP\d{13}$/.test(o.identifier) ? "" : o.identifier);
     o.sellerName = o.sellerId !== "" ? (sc.nameOf[String(o.sellerId)] || "Seller #" + o.sellerId) : "";
@@ -1338,6 +1441,7 @@ function adminUpdateOrder(p, meData) {
   var row = readRows("orders").filter(function (o) { return o.id !== "" && String(o.id) === String(p.id); })[0];
   if (!row) return { ok: false, error: "Order not found." };
   if (row.seller_id !== "" && row.seller_id != null) { var deny = ownsSellerCheck(row.seller_id, meData); if (deny) return deny; }
+  else if (adminRole(meData) === "staff") return { ok: false, error: "You can only manage your own sellers' orders." };
   var patch = { id: row.id, status: p.status };
   if (row.total === "" || isNaN(Number(row.total))) patch.total = orderItemsTotal(safeParse(row.itemsJson));
   var res = saveRecord("orders", patch, function () { return ""; });

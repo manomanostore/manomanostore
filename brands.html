@@ -8,45 +8,113 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="images/logo-64.png" type="image/png">
 <link rel="apple-touch-icon" href="images/logo-192.png">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=20261127zb">
 </head>
 <body>
 <div id="site-header"></div>
 
 <main class="wrap">
   <div class="crumbs"><a href="index.html">Home</a> › <span>All Brands</span></div>
-  <div class="block-head"><h2>All brands</h2><span class="tag" id="brandCount"></span></div>
-  <div class="brand-grid" id="brandGrid"><div class="empty"><p>Loading brands…</p></div></div>
+  <div class="block-head"><h2>All brands</h2></div>
+  <div class="brand-grid" id="brandGrid" hidden></div>
+
+  <!-- Popular products: top 20 per category from the catalogue sheet -->
+  <section class="block" id="popular">
+    <div class="block-head"><h2>Popular products</h2></div>
+    <div class="chips pop-chips" id="popChips" role="tablist" aria-label="Category"></div>
+    <div class="grid" id="popGrid"><div class="empty"><p>Loading products…</p></div></div>
+    <div id="popPager"></div>
+  </section>
 </main>
 
 <div id="site-footer"></div>
 
 <script src="js/config.js"></script>
 <script src="data/catalog.js"></script>
-<script src="js/data.js"></script>
+<script src="js/data.js?v=20261127zb"></script>
 <script src="js/cart.js"></script>
 <script src="js/auth.js"></script>
-<script src="js/ui.js"></script>
+<script src="js/ui.js?v=20261127zb"></script>
 <script src="js/render.js"></script>
 <script>
   UI.mount({ active: "brands" }).then(async function () {
     var grid = document.getElementById("brandGrid");
+    var PER_PAGE = 20, PER_CATEGORY = 20;
+    var st = { groups: [], sel: "", page: 1, size: 0 };
+    // Buttons are wired once; paint() re-runs when the Sheet catalog arrives.
+    document.getElementById("popChips").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-cat]"); if (!b) return;
+      st.sel = b.getAttribute("data-cat"); st.page = 1;
+      this.querySelectorAll(".chip").forEach(function (c) { c.classList.toggle("on", c === b); });
+      draw();
+    });
+    document.getElementById("popPager").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-page]"); if (!b || b.disabled) return;
+      st.page = Number(b.getAttribute("data-page")) || 1; draw();
+      document.getElementById("popular").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    document.addEventListener("catalog:change", function () { paint(); });
+    paint();
+
+    async function paint() {
     try {
-      var all = await DATA.all();
+      var all = await DATA.all(), cats = await DATA.categories();
+      st.size = all.length;
+
+      // Brand cards (only when products carry a brand — none are shown otherwise)
       var map = {};
       all.forEach(function (p) { if (p.brand) { (map[p.brand] = map[p.brand] || []).push(p); } });
       var brands = Object.keys(map).sort(function (a, b) { return a.localeCompare(b); });
-      document.getElementById("brandCount").textContent = brands.length + (brands.length === 1 ? " brand" : " brands");
-      if (!brands.length) { grid.innerHTML = '<div class="empty"><h3>No brands yet</h3><p>Brands appear here once products are added.</p></div>'; return; }
-      grid.innerHTML = brands.map(function (b) {
-        var n = map[b].length;
-        return '<a class="brand-card" href="category.html?q=' + encodeURIComponent(b) + '">' +
-          '<span class="bc-logo" aria-hidden="true">' + UI.esc(b.charAt(0).toUpperCase()) + '</span>' +
-          '<span class="bc-name">' + UI.esc(b) + '</span>' +
-          '<span class="bc-count">' + n + ' product' + (n === 1 ? "" : "s") + '</span></a>';
-      }).join("");
+      grid.hidden = !brands.length;
+      if (brands.length) {
+        grid.innerHTML = brands.map(function (b) {
+          return '<a class="brand-card" href="category.html?q=' + encodeURIComponent(b) + '">' +
+            '<span class="bc-logo" aria-hidden="true">' + UI.esc(b.charAt(0).toUpperCase()) + '</span>' +
+            '<span class="bc-name">' + UI.esc(b) + '</span></a>';
+        }).join("");
+      }
+
+      // Popular products: up to 20 per category, most popular first
+      // (rating, then number of reviews, then the oldest product).
+      var popular = function (a, b) {
+        return ((Number(b.rating) || 0) - (Number(a.rating) || 0)) || ((Number(b.reviews) || 0) - (Number(a.reviews) || 0)) || ((Number(a.id) || 0) - (Number(b.id) || 0));
+      };
+      var byCat = {};
+      all.forEach(function (p) { var k = String(p.cat_id); (byCat[k] = byCat[k] || []).push(p); });
+      st.groups = cats.map(function (c) { return { id: String(c.id), name: c.name, items: (byCat[String(c.id)] || []).slice().sort(popular).slice(0, PER_CATEGORY) }; })
+        .filter(function (g) { return g.items.length; });
+
+      if (st.sel && !st.groups.some(function (g) { return g.id === st.sel; })) st.sel = "";
+      document.getElementById("popChips").innerHTML = ['<button type="button" class="chip' + (st.sel ? "" : " on") + '" data-cat="">All</button>']
+        .concat(st.groups.map(function (g) { return '<button type="button" class="chip' + (st.sel === g.id ? " on" : "") + '" data-cat="' + UI.esc(g.id) + '">' + UI.esc(g.name) + '</button>'; })).join("");
+      draw();
     } catch (e) {
-      grid.innerHTML = '<div class="empty"><h3>Couldn\'t load brands</h3><p>Please try again.</p></div>';
+      document.getElementById("popGrid").innerHTML = '<div class="empty"><h3>Couldn\'t load products</h3><p>Please try again.</p></div>';
+    }
+    }
+
+    function draw() {
+      var list = st.sel
+        ? ((st.groups.filter(function (g) { return g.id === st.sel; })[0] || {}).items || [])
+        : st.groups.reduce(function (a, g) { return a.concat(g.items); }, []);
+      var pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+      st.page = Math.min(Math.max(1, st.page), pages);
+      var from = (st.page - 1) * PER_PAGE;
+      document.getElementById("popGrid").innerHTML = list.length
+        ? list.slice(from, from + PER_PAGE).map(function (p) { return RENDER.productCard(p); }).join("")
+        : '<div class="empty"><h3>No products yet</h3><p>Products appear here once they are added.</p></div>';
+      var el = document.getElementById("popPager");
+      if (pages <= 1) { el.innerHTML = ""; return; }
+      var nums = [], i, page = st.page;
+      for (i = 1; i <= pages; i++) {
+        if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i);
+        else if (nums[nums.length - 1] !== "…") nums.push("…");
+      }
+      var btn = function (p, label, cls, dis) { return '<button type="button" class="pg-btn' + (cls || "") + '" data-page="' + p + '"' + (dis ? " disabled" : "") + ' aria-label="Page ' + p + '">' + label + "</button>"; };
+      var big = Math.max(500, Math.floor(st.size / 100) * 100) + "+";
+      el.innerHTML = '<nav class="pager" aria-label="Pages">' + btn(page - 1, "‹", "", page === 1) +
+        nums.map(function (n) { return n === "…" ? '<span class="pg-gap">…</span>' : btn(n, n, n === page ? " on" : "", false); }).join("") +
+        btn(page + 1, "›", "", page === pages) + '<span class="pg-more">' + big + "</span></nav>";
     }
   });
 </script>

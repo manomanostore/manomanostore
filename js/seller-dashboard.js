@@ -345,10 +345,22 @@
     });
   }
 
+  // Product lists show 10 per page (no total count shown to sellers).
+  var PRODUCTS_PER_PAGE = 10;
+  function pageSlice(list, state, extra) {
+    var pages = Math.max(1, Math.ceil(list.length / PRODUCTS_PER_PAGE));
+    state.page = Math.min(Math.max(1, state.page || 1), pages);
+    var from = (state.page - 1) * PRODUCTS_PER_PAGE, items = list.slice(from, from + PRODUCTS_PER_PAGE);
+    return { items: items, pager: list.length ? pagerHtml(state.page, pages, from + 1, from + items.length, list.length, true, extra) : "" };
+  }
   function renderStore() {
-    var list = filteredStore();
-    $("stGrid").innerHTML = list.map(productCard).join("");
-    $("stCount").textContent = list.length + " " + T("sd.products.n");
+    // Display-only catalogue size badge beside the page buttons: "500+" at
+    // minimum, then the real size rounded down to hundreds (e.g. 742 → "700+").
+    var big = Math.max(500, Math.floor(store.products.length / 100) * 100) + "+";
+    var list = filteredStore(), pg = pageSlice(list, store, '<span class="sd-pmore" title="' + esc(T("sd.products.n")) + '">' + big + "</span>");
+    $("stGrid").innerHTML = pg.items.map(productCard).join("");
+    $("stPager").innerHTML = pg.pager;
+    $("stCount").textContent = "";
     var empty = $("stEmpty"); empty.hidden = list.length > 0; empty.textContent = T("sd.noresults");
     renderSelPanel();
   }
@@ -378,6 +390,12 @@
     $("stSub").textContent = "$" + sub.toFixed(2);
     $("stProfit").textContent = "$" + prof.toFixed(2);
     $("stTotal").textContent = "$" + sub.toFixed(2);
+    // Products are paid from the wallet: show the balance and warn when short.
+    var bal = wallet.data && wallet.data.balances, warn = $("stWarn"), add = $("stAdd");
+    var have = bal ? Number(bal.walletMoney) || 0 : null, short = have != null && sub > have + 0.0001;
+    if ($("stWallet")) { $("stWallet").textContent = have == null ? "—" : money(have); $("stWallet").style.color = short ? "var(--no)" : ""; }
+    if (warn) { warn.hidden = !short; if (short) warn.textContent = T("sd.notenough").replace("{x}", money(sub - have)); }
+    if (add) add.disabled = short;
   }
 
   function setQty(id, qty) { if (sel[id] == null) return; sel[id] = Math.max(1, Math.floor(Number(qty) || 1)); }
@@ -410,8 +428,9 @@
       var j = await r.json();
       btns.forEach(function (b) { if (b) b.disabled = false; });
       if (!j.ok) { if (j.auth) reloginSoon(); else toast(j.error || "Couldn't add."); return; }
-      sel = {}; mine.loaded = false; renderStore(); loadMyIds();
-      ok(T("sd.addedmsg"));
+      sel = {}; mine.loaded = false; renderStore(); loadMyIds(); renderSelPanel();
+      ok(j.charged ? T("sd.charged").replace("{x}", money(j.charged)) : T("sd.addedmsg"));
+      fetchWallet(false).then(function () { if (!$("viewWallet").hidden) renderWallet(); });
     } catch (x) { btns.forEach(function (b) { if (b) b.disabled = false; }); toast("Can't reach the server right now."); }
   }
 
@@ -427,6 +446,7 @@
       fillCatSelect();
       loadMyIds();
       renderStore();
+      fetchWallet(false).then(renderSelPanel);
     } catch (e) {
       store.loaded = false;
       var empty = $("stEmpty"); empty.hidden = false; empty.textContent = "Can't load products.";
@@ -480,6 +500,7 @@
       amount += (Number(p.price) || 0) * qty;
       profit += (Number(p.profit) || 0) * qty;
     });
+    var pageInfo = pageSlice(list, mine);   // totals above cover ALL matching products; the table shows 10 per page
     var stats = '<div class="sd-mpstats">' +
       '<div class="sd-mpstat"><span class="sd-mpic a"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg></span>' +
         '<div><span>' + esc(T("sd.totalamount")) + '</span><b>$' + amount.toFixed(2) + '</b></div></div>' +
@@ -489,9 +510,10 @@
     var table = list.length ? '<div class="sd-tablewrap"><table class="sd-table"><thead><tr>' +
         '<th>' + esc(T("sd.th.product")) + '</th><th>' + esc(T("sd.th.price")) + '</th>' +
         '<th>' + esc(T("sd.profit")) + '</th><th>' + esc(T("sd.th.qty")) + '</th><th>' + esc(T("sd.status")) + '</th><th></th>' +
-        '</tr></thead><tbody>' + list.map(myRow).join("") + '</tbody></table></div>' : "";
+        '</tr></thead><tbody>' + pageInfo.items.map(myRow).join("") + '</tbody></table></div>' : "";
     $("mpGrid").innerHTML = (list.length ? stats : "") + table;
-    $("mpCount").textContent = list.length + " " + T("sd.products.n");
+    $("mpPager").innerHTML = pageInfo.pager;
+    $("mpCount").textContent = "";
     var empty = $("mpEmpty"); empty.hidden = list.length > 0; empty.textContent = q ? T("sd.noresults") : T("sd.myempty");
   }
 
@@ -536,7 +558,7 @@
   var wallet = { data: null };
   function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
   function fmtDate(iso) { var d = new Date(iso); return isNaN(d) ? "" : IST_DATE.format(d); }   // IST, e.g. 27/11/2026
-  function txTypeLabel(t) { return t === "deposit" ? T("sd.deposit") : t === "withdraw" ? T("sd.withdraw2") : t === "guarantee" ? T("sd.guaranteet") : t; }
+  function txTypeLabel(t) { return t === "deposit" ? T("sd.deposit") : t === "withdraw" ? T("sd.withdraw2") : t === "guarantee" ? T("sd.guaranteet") : t === "purchase" ? T("sd.purchase") : t; }
 
   function paintWalletStats(bal) {
     if (!bal) return;
@@ -586,11 +608,11 @@
     $("wlHist").innerHTML = '<div class="sd-tablewrap"><table class="sd-table"><thead><tr>' +
       '<th>' + esc(T("sd.date")) + '</th><th>' + esc(T("sd.amount")) + '</th><th>' + esc(T("sd.type")) + '</th><th>' + esc(T("sd.method")) + '</th><th>' + esc(T("sd.status")) + '</th>' +
       '</tr></thead><tbody>' + txs.map(function (t) {
-        var wd = t.type === "withdraw";
+        var wd = t.type === "withdraw" || t.type === "purchase";   // money out of the wallet
         return '<tr>' +
           '<td>' + istDateTime(t.createdAt) + '</td>' +
           '<td style="font-weight:800" class="sd-txamt ' + (wd ? 'wd' : 'dep') + '">' + (wd ? '−' : '+') + esc(t.currency || '$') + Number(t.amount).toFixed(2) + '</td>' +
-          '<td>' + esc(txTypeLabel(t.type)) + '</td>' +
+          '<td>' + esc(txTypeLabel(t.type)) + (t.type === "purchase" && t.note ? '<small class="sd-txsub" title="' + esc(t.note) + '">' + esc(t.note) + "</small>" : "") + '</td>' +
           '<td>' + esc(t.method ? t.method.toUpperCase() : '—') + '</td>' +
           '<td><span class="sd-txpill ' + esc(t.status) + '">' + esc(T("sd." + t.status)) + '</span></td>' +
           '</tr>';
@@ -617,25 +639,39 @@
         '<p class="sd-txnote">' + esc(T("sd.uploadvoucher")) + '</p>' +
         '<div class="sd-field"><label>' + esc(T("sd.amount")) + '</label><input id="rcAmt" type="number" min="1" step="0.01" placeholder="0.00"></div>' +
         '<div class="sd-field"><label>' + esc(T("sd.photo")) + ' <i style="color:var(--no)">*</i></label>' +
-          '<div class="sd-filepick"><label class="sd-browse">' + esc(T("sd.browse")) + '<input type="file" id="rcFile" accept="image/*"></label>' +
+          // Browse | file name picker → photo preview underneath (with ✕ to remove)
+          '<div class="sd-filepick" id="rcDrop"><label class="sd-browse"><input type="file" id="rcFile" accept="image/*">' + esc(T("sd.browse")) + '</label>' +
             '<span class="sd-filename" id="rcFn">' + esc(T("sd.chooseimg")) + '</span></div>' +
-          '<img class="sd-vprev" id="rcPrev" alt="" hidden></div>' +
+          '<div class="sd-vbox" id="rcFileBox" hidden><img id="rcPrev" alt="">' +
+            '<button type="button" id="rcRemove" class="sd-vrm" aria-label="' + esc(T("sd.removebtn")) + '">×</button></div></div>' +
       '</div>' +
       '<div class="sd-dfoot"><button class="sd-btn sd-btn-grey" id="rcCancel">' + esc(T("sd.cancel")) + '</button><button class="sd-btn" id="rcSave">' + esc(T("sd.confirm")) + '</button></div></div>';
     document.body.appendChild(root);
     function close() { root.remove(); }
     $("rcX").onclick = close; $("rcCancel").onclick = close;
     $("rcCopy").onclick = function () { try { navigator.clipboard.writeText(addr); } catch (e) {} ok(T("sd.copied")); };
-    $("rcFile").addEventListener("change", async function () {
-      var f = this.files[0]; if (!f) return;
-      $("rcFn").textContent = f.name;
+    // Photo: pick, drag & drop, change or remove
+    async function takeFile(f) {
+      if (!f) return;
+      if (!/^image\//.test(f.type)) { var m = $("rcMsg"); m.hidden = false; m.textContent = T("sd.photoreq"); return; }
       newImage = await fileToImage(f, 1200);
-      if (newImage) { var pv = $("rcPrev"); pv.src = newImage; pv.hidden = false; }
-    });
+      if (!newImage) return;
+      $("rcPrev").src = newImage; $("rcFn").textContent = f.name; $("rcFn").classList.add("has");
+      $("rcFileBox").hidden = false; $("rcDrop").classList.remove("sd-invalid"); $("rcMsg").hidden = true;
+    }
+    $("rcFile").addEventListener("change", function () { takeFile(this.files[0]); this.value = ""; });
+    $("rcRemove").onclick = function () { newImage = ""; $("rcFileBox").hidden = true; $("rcFn").textContent = T("sd.chooseimg"); $("rcFn").classList.remove("has"); };
+    var drop = $("rcDrop");
+    ["dragenter", "dragover"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("drag"); }); });
+    ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("drag"); }); });
+    drop.addEventListener("drop", function (e) { takeFile(e.dataTransfer && e.dataTransfer.files[0]); });
     $("rcSave").addEventListener("click", async function () {
       var msg = $("rcMsg"); msg.hidden = true;
       var amt = Number($("rcAmt").value) || 0;
       if (!(amt > 0)) { msg.hidden = false; msg.textContent = T("sd.amountreq"); return; }
+      // The payment screenshot is required.
+      var pick = $("rcDrop");
+      if (!newImage) { msg.hidden = false; msg.textContent = T("sd.photoreq"); if (pick) pick.classList.add("sd-invalid"); return; }
       if (!session.token) { reloginSoon(); return; }
       var btn = this; btn.disabled = true; btn.textContent = T("sd.saving");
       try {
@@ -650,6 +686,9 @@
   }
 
   // Withdrawal request modal.
+  // Withdrawals need money above the guarantee: withdrawable = wallet − guarantee.
+  // Without enough money the popup still opens, but only shows the balances
+  // and a notice — the form and Send button stay disabled.
   function openWithdraw() {
     var bal = (wallet.data && wallet.data.balances) || {};
     var walletMoney = Number(bal.walletMoney) || 0, guarantee = Number(bal.guaranteeMoney) || 0;
@@ -659,12 +698,16 @@
       '<div class="sd-dhead"><h3>' + esc(T("sd.withdrawtitle")) + '</h3><button type="button" class="sd-dclose" id="wdX" aria-label="Close">&times;</button></div>' +
       '<div class="sd-dbody">' +
         '<p class="sd-msg" id="wdMsg" hidden></p>' +
-        '<div class="sd-wbalrow"><span>' + esc(T("sd.walletbalance")) + ' :</span> <b>$' + walletMoney.toFixed(2) + '</b></div>' +
-        '<div class="sd-wbalrow last"><span>' + esc(T("sd.guaranteebalance")) + ' :</span> <b>$' + guarantee.toFixed(2) + '</b></div>' +
+        '<div class="sd-wdblock" id="wdBlock" hidden></div>' +
+        '<div class="sd-wbalrow"><span>' + esc(T("sd.walletbalance")) + ' :</span> <b id="wdWallet">$' + walletMoney.toFixed(2) + '</b></div>' +
+        '<div class="sd-wbalrow"><span>' + esc(T("sd.guaranteebalance")) + ' :</span> <b id="wdGuar">$' + guarantee.toFixed(2) + '</b></div>' +
+        '<div class="sd-wbalrow last"><span>' + esc(T("sd.withdrawable")) + ' :</span> <b id="wdAvail">$' + available.toFixed(2) + '</b></div>' +
+        '<div id="wdForm">' +
         '<div class="sd-field"><label>' + esc(T("sd.amount")) + ' <span class="sd-req">*</span></label><input id="wdAmt" type="number" min="1" step="0.01" placeholder="0.00"></div>' +
         '<div class="sd-field"><label>' + esc(T("sd.operatype")) + '</label><select id="wdOpera" class="sd-select" style="width:100%"><option value="user_balance">' + esc(T("sd.userbalance")) + '</option></select></div>' +
         '<div class="sd-field"><label>' + esc(T("sd.withdrawtype")) + '</label><select id="wdMethod" class="sd-select" style="width:100%"><option value="bank">' + esc(T("sd.bank")) + '</option><option value="usdt">' + esc(T("sd.usdt")) + '</option></select></div>' +
         '<div class="sd-field"><label>' + esc(T("sd.message")) + ' <span class="sd-req">*</span></label><textarea id="wdNote" rows="4" placeholder="' + esc(T("sd.messageph")) + '"></textarea></div>' +
+        '</div>' +
       '</div>' +
       '<div class="sd-dfoot" style="padding-top:4px"><button type="button" class="sd-btn" id="wdSave" style="width:100%">' + esc(T("sd.send")) + '</button></div></div>';
     document.body.appendChild(root);
@@ -673,6 +716,22 @@
     $("wdX").onclick = close;
     root.addEventListener("click", function (e) { if (e.target === root) close(); });
     document.addEventListener("keydown", onKey);
+
+    // Enable the form only when there's money to withdraw; re-checked with
+    // fresh balances from the server as soon as they arrive.
+    function applyBalances(b) {
+      walletMoney = Number(b.walletMoney) || 0; guarantee = Number(b.guaranteeMoney) || 0;
+      available = Math.max(0, Math.round((walletMoney - guarantee) * 100) / 100);
+      $("wdWallet").textContent = "$" + walletMoney.toFixed(2); $("wdGuar").textContent = "$" + guarantee.toFixed(2);
+      $("wdAvail").textContent = "$" + available.toFixed(2);
+      var can = available > 0, form = $("wdForm"), blk = $("wdBlock");
+      blk.hidden = can; if (!can) blk.textContent = T("sd.nowithdrawpop");
+      form.classList.toggle("sd-disabled", !can);
+      form.querySelectorAll("input,select,textarea").forEach(function (el) { el.disabled = !can; });
+      $("wdSave").disabled = !can;
+    }
+    applyBalances(bal);
+    fetchWallet(false).then(function (d) { if (d && d.balances && document.body.contains(root)) applyBalances(d.balances); });
 
     $("wdSave").addEventListener("click", async function () {
       var msg = $("wdMsg"); msg.hidden = true;
@@ -774,8 +833,10 @@
       }).join("") + "</tbody></table></div>" + pagerHtml(orders.page, pages, from + 1, from + list.length, all.length);
   }
   // "Showing 11–20 of 34" + ‹ 1 2 3 › (with … for long ranges)
-  function pagerHtml(page, pages, a, b, total) {
-    var info = '<span class="sd-pinfo">' + esc(T("sd.showing").replace("{a}", a).replace("{b}", b).replace("{n}", total)) + "</span>";
+  function pagerHtml(page, pages, a, b, total, noTotal, extra) {
+    // noTotal: product lists don't reveal how many products exist — page buttons only
+    var info = noTotal ? "<span></span>" : '<span class="sd-pinfo">' + esc(T("sd.showing").replace("{a}", a).replace("{b}", b).replace("{n}", total)) + "</span>";
+    if (noTotal && pages <= 1) return "";
     if (pages <= 1) return '<div class="sd-pager">' + info + "</div>";
     var nums = [], i;
     for (i = 1; i <= pages; i++) {
@@ -788,7 +849,7 @@
     return '<div class="sd-pager">' + info + '<div class="sd-pnums">' +
       btn(page - 1, "‹", page === 1 ? " dis" : "") +
       nums.map(function (n) { return n === "…" ? '<span class="sd-pgap">…</span>' : btn(n, n, n === page ? " on" : ""); }).join("") +
-      btn(page + 1, "›", page === pages ? " dis" : "") + "</div></div>";
+      btn(page + 1, "›", page === pages ? " dis" : "") + (extra || "") + "</div></div>";
   }
   function ensureOrders() {
     if (!orders.list) { $("ordGrid").innerHTML = '<p class="sd-empty">' + esc(T("sd.loading")) + "</p>"; $("ordEmpty").hidden = true; }
@@ -809,6 +870,8 @@
   function setChatBadge(n) {
     var txt = n > 99 ? "99+" : String(n), b = $("sdChatBadge");
     if (b) { b.hidden = !(n > 0); b.textContent = txt; }
+    var fb = document.querySelector("#spFab .sp-badge");
+    if (fb) { fb.hidden = !(n > 0); fb.textContent = txt; }
     // phones: Conversations lives under "More", so badge that tab too
     var more = $("sdTabMore");
     if (more) {
@@ -863,6 +926,7 @@
     $("viewWallet").hidden = name !== "wallet";
     $("viewOrders").hidden = name !== "orders";
     $("viewChat").hidden = name !== "chat";
+    if ($("spFab")) $("spFab").hidden = name === "chat";          // already on the chat
     var key = { storehouse: "sd.storehouse", products: "sd.products", wallet: "sd.withdraw", orders: "sd.orders", chat: "sd.conversations" }[name] || "sd.dashboard";
     var title = $("sdTopTitle"); if (title) { title.setAttribute("data-i18n", key); if (window.I18N) I18N.apply(title); }
     if (name === "storehouse") ensureStorehouse();
@@ -972,12 +1036,21 @@
     });
     // Storehouse filters + selection
     ["stSearch", "stCat", "stStock"].forEach(function (id) {
-      var el = $(id); if (el) el.addEventListener(id === "stSearch" ? "input" : "change", renderStore);
+      var el = $(id); if (el) el.addEventListener(id === "stSearch" ? "input" : "change", function () { store.page = 1; renderStore(); });
+    });
+    // page buttons under the product lists
+    [["stPager", store, function () { renderStore(); }, "stGrid"], ["mpPager", mine, function () { renderMy(); }, "mpGrid"]].forEach(function (x) {
+      var box = $(x[0]); if (!box) return;
+      box.addEventListener("click", function (e) {
+        var b = e.target.closest("[data-page]"); if (!b || b.disabled) return;
+        x[1].page = Number(b.getAttribute("data-page")) || 1; x[2]();
+        var top = $(x[3]); if (top) top.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     });
     if ($("stGrid")) { $("stGrid").addEventListener("click", onStoreClick); $("stGrid").addEventListener("change", onStoreInput); }
     if ($("stPanel")) { $("stPanel").addEventListener("click", onStoreClick); $("stPanel").addEventListener("input", onStoreInput); }
     // My Products
-    if ($("mpSearch")) $("mpSearch").addEventListener("input", renderMy);
+    if ($("mpSearch")) $("mpSearch").addEventListener("input", function () { mine.page = 1; renderMy(); });
     if ($("mpGrid")) $("mpGrid").addEventListener("click", onMyClick);
     if ($("mpAdd")) $("mpAdd").addEventListener("click", function () { switchView("storehouse"); });
 
@@ -1031,6 +1104,16 @@
     document.querySelectorAll(".sd-nav a").forEach(function (a) { a.addEventListener("click", closeDrawer); });
 
     buildLang();
+    // Floating support button (bottom-right on every view) → Conversations
+    if (!$("spFab")) {
+      var fab = document.createElement("button");
+      fab.type = "button"; fab.id = "spFab"; fab.className = "sp-fab on-seller";
+      fab.setAttribute("aria-label", T("sd.chatwithus"));
+      fab.innerHTML = '<img src="images/support-agent.svg" alt=""><span class="sp-dot"></span><span class="sp-badge" hidden>0</span><span class="sp-tip">' + esc(T("sd.chatwithus")) + "</span>";
+      fab.addEventListener("click", function () { switchView("chat"); });
+      document.body.appendChild(fab);
+      fab.hidden = !$("viewChat").hidden;
+    }
     startChatWatch();
     fetchOrders();
     document.addEventListener("i18n:change", function () { if (orders.list && !$("viewOrders").hidden) renderOrders(); });

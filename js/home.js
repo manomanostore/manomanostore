@@ -32,21 +32,27 @@ window.HOME = (function () {
     var deals = await DATA.deals();
     var cats = await DATA.categories();
 
-    fill("topSelection", pick(all, 8));
+    // Our top selection: the first 30 products (ascending id, any badge) + a "View more" tile
+    var oldestFirst = function (list) { return list.slice().sort(function (x, y) { return (Number(x.id) || 0) - (Number(y.id) || 0); }); };
+    fill("topSelection", pick(oldestFirst(all), 30));
+    if (all.length) moreTile("topSelection", "category.html?all=1&order=asc");
     fill("bestSellers", best.length ? best : pick(all, 8));
-    fill("finds", deals.length ? deals : pick(all.slice().reverse(), 8));
+    // Today's best finds: newest products first (descending id)
+    var newestFirst = function (list) { return list.slice().sort(function (x, y) { return (Number(y.id) || 0) - (Number(x.id) || 0); }); };
+    fill("finds", pick(newestFirst(all), 30));   // the 30 newest products, any badge
 
     // Today's Deals panel (beside the banner)
     var tdList = document.getElementById("tdList");
     if (tdList) {
-      var td = (deals.length ? deals : all.slice().reverse()).slice(0, 5);
-      tdList.innerHTML = td.map(function (p) {
+      // Only products with the "Deal" badge, newest first (descending id)
+      var td = newestFirst(deals).slice(0, 5);
+      tdList.innerHTML = td.length ? td.map(function (p) {
         return '<a class="td-item" href="product.html?id='+encodeURIComponent(p.id)+'">'+
           '<img src="'+DATA.productImage(p, 160)+'" alt="'+UI.esc(p.name)+'" loading="lazy">'+
           '<div class="td-info"><div class="td-name">'+UI.esc(p.name)+'</div>'+
             '<div class="td-price"><span class="now">'+DATA.money(p.price)+'</span>'+
             (p.oldPrice ? '<span class="was">'+DATA.money(p.oldPrice)+'</span>' : '')+'</div></div></a>';
-      }).join("");
+      }).join("") : '<p class="td-empty">No deals right now — check back soon.</p>';
     }
 
     // Category circles (same generated images as the catalog)
@@ -86,6 +92,13 @@ window.HOME = (function () {
     }).join("");
   }
   function pick(arr, n) { return arr.slice(0, n); }
+  // A "View more" card at the end of a product row.
+  function moreTile(id, href) {
+    var el = document.getElementById(id); if (!el) return;
+    el.insertAdjacentHTML("beforeend", '<div class="row-item"><a class="more-tile" href="' + href + '">' +
+      '<span class="more-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>' +
+      '<span data-i18n="home.viewmore">' + UI.esc((window.I18N && I18N.t("home.viewmore")) || "View more") + "</span></a></div>");
+  }
   function unique(a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); }
 
   // Auto-scrolling hero banner: 5s advance, pauses on hover/focus/tab-hidden,

@@ -194,8 +194,12 @@ window.CHAT = (function () {
     var fullEl = null, themeMeta = document.querySelector('meta[name="theme-color"]');
     var themeOrig = themeMeta ? themeMeta.getAttribute("content") : null;
     function isShown() { return root.getClientRects().length > 0; }   // offsetParent is null for fixed elements
+    // The fixed container counts as full-screen only when it spans the whole
+    // width (phones). A small fixed popup (the website's desktop chat widget)
+    // keeps its own size.
     function fixedAncestor() {
-      for (var el = root; el && el !== document.body; el = el.parentElement) if (getComputedStyle(el).position === "fixed") return el;
+      for (var el = root; el && el !== document.body; el = el.parentElement)
+        if (getComputedStyle(el).position === "fixed") return el.getBoundingClientRect().width >= window.innerWidth - 2 ? el : null;
       return null;
     }
     function layout() {

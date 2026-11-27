@@ -234,3 +234,94 @@ html.ct-lock,html.ct-lock body{overflow:hidden !important;overscroll-behavior:no
 }
 @keyframes cti-in{from{transform:translateX(30%);opacity:.4}}
 @media (prefers-reduced-motion:reduce){ .cti.open .cti-main{animation:none} }
+
+/* ================= Floating support button (all panels + website) ================= */
+.sp-fab{position:fixed;right:24px;bottom:24px;z-index:900;width:62px;height:62px;padding:0;border:3px solid #fff;border-radius:50%;
+  background:#2f6df6;cursor:pointer;box-shadow:0 10px 28px rgba(16,40,110,.35);transition:transform .18s,box-shadow .18s;-webkit-tap-highlight-color:transparent}
+.sp-fab img{width:100%;height:100%;border-radius:50%;display:block}
+.sp-fab:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 14px 34px rgba(16,40,110,.42)}
+.sp-fab:active{transform:scale(.95)}
+.sp-fab[hidden]{display:none}
+.sp-fab::before{content:"";position:absolute;inset:-3px;border-radius:50%;border:2px solid rgba(47,109,246,.55);animation:sp-pulse 2.6s ease-out infinite;pointer-events:none}
+@keyframes sp-pulse{0%{transform:scale(1);opacity:.9}70%,100%{transform:scale(1.45);opacity:0}}
+@media (prefers-reduced-motion:reduce){ .sp-fab::before{animation:none;display:none} }
+.sp-dot{position:absolute;right:1px;bottom:3px;width:13px;height:13px;border-radius:50%;background:#22c55e;border:2px solid #fff}
+.sp-badge{position:absolute;top:-6px;right:-6px;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#e23b4e;color:#fff;
+  font:800 11.5px/18px system-ui,sans-serif;display:grid;place-items:center;border:2px solid #fff}
+.sp-badge[hidden]{display:none}
+.sp-tip{position:absolute;right:calc(100% + 12px);top:50%;transform:translateY(-50%) translateX(6px);white-space:nowrap;background:#17203a;color:#fff;
+  font:700 13px system-ui,sans-serif;padding:8px 12px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:opacity .15s,transform .15s}
+@media (hover:hover){ .sp-fab:hover .sp-tip{opacity:1;transform:translateY(-50%)} }
+/* keep clear of each panel's bottom tab bar on phones */
+@media (max-width:820px){ .sp-fab.on-seller{bottom:calc(84px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px} }
+@media (max-width:900px){ .sp-fab.on-admin{bottom:calc(84px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px} }
+@media (max-width:859px){ .sp-fab.on-site{bottom:calc(76px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px}
+  body.has-cart-bar .sp-fab.on-site{bottom:148px} }
+
+/* Website chat popup (desktop: floating panel · phones: full screen app) */
+.sp-panel{position:fixed;right:24px;bottom:100px;z-index:1000;width:380px;height:min(600px,calc(100vh - 130px));height:min(600px,calc(100dvh - 130px));
+  background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 24px 60px rgba(16,24,48,.3);display:flex;flex-direction:column;
+  transform-origin:bottom right;animation:sp-in .18s ease-out}
+.sp-panel[hidden]{display:none}
+@keyframes sp-in{from{opacity:0;transform:translateY(10px) scale(.97)}}
+.sp-panel>.ct{flex:1;min-height:0}
+.sp-panel .ct-head{background:linear-gradient(135deg,#2f6df6,#1f58e0);color:#fff;border-bottom:0;padding-right:52px}
+.sp-panel .ct-title{color:#fff}.sp-panel .ct-sub{color:rgba(255,255,255,.85)}
+.sp-panel .ct-ist{display:none}
+.sp-close{position:absolute;top:14px;right:12px;z-index:8;width:34px;height:34px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;
+  display:grid;place-items:center;cursor:pointer}
+.sp-close:hover{background:rgba(255,255,255,.3)}
+.sp-guest{flex:1;display:flex;flex-direction:column}
+.sp-ghead{display:flex;align-items:center;gap:12px;padding:16px 52px 16px 16px;background:linear-gradient(135deg,#2f6df6,#1f58e0);color:#fff}
+.sp-ghead img{width:44px;height:44px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.35)}
+.sp-ghead b{display:block;font:700 16px system-ui,sans-serif}.sp-ghead small{font:500 12.5px system-ui,sans-serif;opacity:.85}
+.sp-gbody{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:26px 24px;
+  background:#f4f6fb radial-gradient(circle at 1px 1px,rgba(23,32,58,.045) 1px,transparent 0) 0 0/18px 18px;font-family:system-ui,sans-serif}
+.sp-gbody .sp-gic{width:64px;height:64px;border-radius:20px;background:#fff;display:grid;place-items:center;font-size:30px;box-shadow:0 8px 24px rgba(47,109,246,.14)}
+.sp-gbody h4{margin:6px 0 0;font-size:18px;color:#17203a}
+.sp-gbody p{margin:0;color:#6b7690;font-size:14px;line-height:1.5}
+.sp-gbtns{display:flex;flex-direction:column;gap:10px;width:100%;margin-top:12px}
+.sp-gbtns a{display:block;padding:12px;border-radius:12px;font:700 14.5px system-ui,sans-serif;text-decoration:none;text-align:center}
+.sp-gbtns .pri{background:#2f6df6;color:#fff}.sp-gbtns .pri:hover{background:#1f58e0}
+.sp-gbtns .sec{background:#fff;color:#2f6df6;border:1px solid #d9e3ff}.sp-gbtns .sec:hover{background:#eef3ff}
+@media (max-width:640px){
+  .sp-panel{inset:0;width:auto;height:auto;border-radius:0;animation:none}
+  .sp-panel .sp-close{display:none}          /* the chat's own back arrow closes it */
+  .sp-panel .sp-guest .sp-close{display:grid;top:calc(14px + env(safe-area-inset-top,0px))}
+  .sp-ghead{padding-top:calc(16px + env(safe-area-inset-top,0px))}
+}
+
+/* ---- Website theme (.sp-site): the shop's navy / teal / lime instead of the
+   dashboards' blue. Only the storefront button + popup carry this class. ---- */
+.sp-fab.sp-site{background:#16233f;box-shadow:0 10px 28px rgba(22,35,63,.4)}
+.sp-fab.sp-site:hover{box-shadow:0 14px 34px rgba(22,35,63,.5)}
+.sp-fab.sp-site::before{border-color:rgba(67,205,180,.75)}
+.sp-fab.sp-site .sp-dot{background:#b6e94f}
+.sp-fab.sp-site .sp-tip{background:#16233f}
+.sp-panel.sp-site .ct{--ct-blue:#16233f;--ct-blue2:#1f3257;--ct-seen:#b6e94f}
+.sp-panel.sp-site .ct-head,
+.sp-panel.sp-site .ct-is-full .ct-head,
+.sp-panel.sp-site .sp-ghead{background:linear-gradient(135deg,#1f3257,#16233f)}
+.sp-panel.sp-site .ct-sub .ct-live{background:#b6e94f}
+.sp-panel.sp-site .ct-msg.mine .ct-bubble{background:linear-gradient(160deg,#24395f,#16233f);color:#fff}
+.sp-panel.sp-site .ct-agent{color:#0f8a74}
+.sp-panel.sp-site .ct-msg.theirs .ct-text a{color:#0f8a74}
+.sp-panel.sp-site .ct-send{background:#43cdb4 !important;color:#16233f !important;box-shadow:0 4px 12px rgba(67,205,180,.4)}
+.sp-panel.sp-site .ct-send:disabled,
+.sp-panel.sp-site .ct-is-full .ct-send:disabled{background:#a9e8dc !important;color:#16233f !important;opacity:1;box-shadow:none}
+.sp-panel.sp-site .ct-attach:hover,.sp-panel.sp-site .ct-attach:active{background:#e3f8f4;color:#16233f !important}
+.sp-panel.sp-site .ct textarea:focus{border-color:#43cdb4;box-shadow:0 0 0 3px rgba(67,205,180,.18)}
+.sp-panel.sp-site .ct-is-full textarea:focus{box-shadow:0 1px 3px rgba(20,30,60,.12),0 0 0 2px rgba(67,205,180,.55)}
+.sp-panel.sp-site .ct-empty-ic{color:#16233f;box-shadow:0 8px 24px rgba(22,35,63,.12)}
+.sp-panel.sp-site .ct-chips button{border-color:#bfece3;color:#16233f}
+.sp-panel.sp-site .ct-chips button:hover{background:#e3f8f4;border-color:#43cdb4}
+.sp-panel.sp-site .ct-spin{border-top-color:#43cdb4}
+.sp-panel.sp-site .ct-drop>div{border-color:#43cdb4;color:#16233f}
+.sp-panel.sp-site .sp-gbody .sp-gic{box-shadow:0 8px 24px rgba(22,35,63,.12)}
+.sp-panel.sp-site .sp-gbody h4{color:#16233f}
+.sp-panel.sp-site .sp-gbtns .pri{background:#43cdb4;color:#16233f}
+.sp-panel.sp-site .sp-gbtns .pri:hover{background:#38bba3}
+.sp-panel.sp-site .sp-gbtns .sec{color:#16233f;border-color:#cfd6e3}
+.sp-panel.sp-site .sp-gbtns .sec:hover{background:#f4f6fa;border-color:#16233f}
+.sp-panel.sp-site .ct-ava.online::after{background:#b6e94f;border-color:#fff}
+.sp-panel.sp-site .ct-is-full .ct-ava.online::after{border-color:#16233f}

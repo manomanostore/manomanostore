@@ -116,7 +116,8 @@
   async function get(id) { return (await load()).byId[String(id)]; }
   async function byCategory(catId) { return (await all()).filter(function (p) { return p.cat_id === String(catId); }); }
   async function bestsellers() { return (await all()).filter(function (p) { return p.badge === "bestseller"; }); }
-  async function deals() { return (await all()).filter(function (p) { return p.badge === "deal" || (p.oldPrice && p.oldPrice > p.price); }); }
+  // Deals = products the admin gave the "Deal" badge (a discount alone doesn't make a deal).
+  async function deals() { return (await all()).filter(function (p) { return p.badge === "deal"; }); }
   async function choice() { return (await all()).filter(function (p) { return p.choice; }); }
   async function search(q) {
     q = (q || "").trim().toLowerCase(); if (!q) return [];

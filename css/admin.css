@@ -377,3 +377,4 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-pbtn.on{background:#16233f;border-color:#16233f;color:#fff}
 .adm-pbtn:disabled{opacity:.4;cursor:default}
 .adm-pgap{color:var(--muted);padding:0 2px}
+.adm-hint-sm{display:block;margin-top:5px;color:var(--muted);font-size:12px}

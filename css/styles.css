@@ -772,3 +772,30 @@ a.acct-stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .gal-th{width:68px;height:68px;border-radius:10px;overflow:hidden;border:2px solid var(--line);background:#fff;padding:0;cursor:pointer}
 .gal-th.on{border-color:var(--navy)}
 .gal-th img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* Listing pagination (category / deals / search) */
+.pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:22px 0 6px}
+.pg-btn{min-width:42px;height:42px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink);font:inherit;font-size:15px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s}
+.pg-btn:hover:not(:disabled){border-color:#9db8f9;background:#f5f8ff}
+.pg-btn.on{background:#2f6df6;border-color:#2f6df6;color:#fff}
+.pg-btn:disabled{opacity:.4;cursor:default}
+.pg-gap{color:var(--muted);padding:0 2px}
+.pg-more{margin-left:4px;height:42px;display:inline-flex;align-items:center;padding:0 14px;border-radius:12px;background:#eef3ff;color:#2f6df6;font-weight:800;font-size:15px}
+@media (max-width:560px){ .pager{justify-content:center;gap:6px} .pg-btn,.pg-more{height:38px;min-width:38px;font-size:14px} }
+.td-empty{margin:0;padding:22px 16px;text-align:center;color:var(--muted);font-size:14px}
+/* "View more" tile at the end of a home product row */
+.more-tile{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:280px;border-radius:var(--radius);
+  background:var(--card);border:2px dashed #c9d6f2;color:#2f6df6;font-weight:800;font-size:16px;text-decoration:none;transition:background .15s,border-color .15s}
+.more-tile:hover{background:#f5f8ff;border-color:#2f6df6}
+.more-ic{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;background:#eef3ff}
+/* All Brands → Popular products category filter */
+.pop-chips{margin:0 0 14px}
+.pop-chips .chip{cursor:pointer;font:inherit;font-size:13px;font-weight:700;color:var(--ink);transition:background .15s,border-color .15s}
+.pop-chips .chip:hover{border-color:var(--navy)}
+.pop-chips .chip.on{background:var(--navy);border-color:var(--navy);color:#fff}
+@media (max-width:620px){ .pop-chips{flex-wrap:nowrap;overflow-x:auto;margin:0 -14px 12px;padding:0 14px 4px} .pop-chips::-webkit-scrollbar{height:0} .pop-chips .chip{flex:0 0 auto} }
+/* Back-to-top sits above the floating support button */
+body.has-sp-fab .scroll-top{bottom:146px}
+body.has-sp-fab.has-cart-bar .scroll-top{bottom:218px}
+@media(min-width:860px){ body.has-sp-fab .scroll-top,body.has-sp-fab.has-cart-bar .scroll-top{bottom:100px} }
