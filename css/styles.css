@@ -197,8 +197,8 @@ footer.app .pay{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .pl-apay{color:#000;display:inline-flex;align-items:center;gap:2px;font-weight:700;font-size:13px}
 .pl-gpay{color:#5f6368;display:inline-flex;align-items:center;gap:2px;font-weight:700;font-size:13px}
 .pl-gpay b{color:#4285f4;font-size:15px;font-weight:800}
-.pl-gpay-img{height:20px;width:auto;display:block}
-.sum-pay .pl-gpay-img{height:17px}
+.pl-gpay-img{height:15px;width:auto;display:block}   /* lettering matches the Apple Pay tile */
+.sum-pay .pl-gpay-img{height:14px}
 /* International flags */
 .ft-flags{display:flex;gap:10px;margin-top:4px}
 .ft-flag{width:40px;height:40px;border-radius:50%;display:block;box-shadow:0 2px 6px rgba(0,0,0,.3);padding:0;overflow:hidden;transition:transform .15s}
@@ -238,7 +238,8 @@ body.has-cart-bar .ft-legalbar{padding-bottom:calc(16px + 136px + env(safe-area-
 .ft-legal{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px 20px;max-width:var(--maxw);margin:10px auto 0}
 .ft-legal a{display:inline;padding:0;color:#fff;font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .ft-legal a:hover{color:#cdd6e6}
-@media(min-width:860px){.ft-legalbar{padding-bottom:16px}}
+/* Desktop: no bottom tab bar / basket bar to clear, so no extra space under the footer */
+@media(min-width:860px){.ft-legalbar,body.has-cart-bar .ft-legalbar{padding-bottom:16px}}
 @media(max-width:560px){.ft-awards-in{gap:22px}.ft-awards-in img{height:46px}}
 
 /* ----------------------------- Bottom nav -------------------------------- */
