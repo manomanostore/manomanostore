@@ -59,8 +59,8 @@ var ORDER_STATUSES = ["pending", "received", "processing", "shipped", "delivered
 var SHEETS = {
   users:      { name: "Users",      headers: ["id","username","name","passwordHash","role","status","createdAt","updatedAt","lastLoginAt","tokenHash","tokenExpires","staff_code"],
                 textCols: ["username","passwordHash","tokenHash","staff_code"] },
-  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","shopImageURL","invite","rating","passwordHash","createdAt","updatedAt","tokenHash","tokenExpires"],
-                textCols: ["phone","email","passwordHash","staff_code","tokenHash"] },
+  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","shopImageURL","invite","rating","passwordHash","createdAt","updatedAt","tokenHash","tokenExpires","passwordHashPhone"],
+                textCols: ["phone","email","passwordHash","staff_code","tokenHash","passwordHashPhone"] },
   orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt",
                                               "seller_id","customer_name","customer_phone","address","note","created_by","updatedAt"],
                 textCols: ["identifier","customer_phone"] },
@@ -117,6 +117,7 @@ function doPost(e) {
     switch (action) {
       case "registerSeller":return json(withLock(function () { return registerSeller(body); }));
       case "sellerLogin":   return json(withLock(function () { return sellerLogin(body); }));
+      case "sellerLinkPhone":return json(withLock(function () { return sellerLinkPhone(body); }));
       case "sellerProfile": return json(withLock(function () { return sellerUpdateProfile(body); }));
       case "sellerPassword":return json(withLock(function () { return sellerChangePassword(body); }));
       case "sellerProducts":    return json(sellerListProducts(body));
@@ -188,24 +189,58 @@ function registerSeller(b) {
     certFront: saveSellerDoc(b.certFront, id, "front"), certBack: saveSellerDoc(b.certBack, id, "back"),
     invite: code
   };
+  // Registered with BOTH email and mobile → also keep the mobile-salted hash so
+  // they can sign in with either.
+  if (email && pid.length >= 6 && b.passwordHashPhone) rec.passwordHashPhone = String(b.passwordHashPhone);
+  ensureColumns("sellers", ["passwordHashPhone"]);
   appendNamed("sellers", rec);
   return { ok: true, message: "Thanks! Your shop application has been submitted and is pending review." };
 }
 
 // Seller sign-in against the SAME Sellers sheet used at registration. They can
 // only sign in once a staff member flips status to 1 (verified).
+// The browser salts the password hash with what the seller typed, so:
+//   • by email → compare with passwordHash (salted with the email)
+//   • by mobile, seller has no email → passwordHash (salted with the mobile)
+//   • by mobile, seller also has an email → passwordHashPhone (salted with the
+//     mobile). It's created at registration / admin password set / password
+//     change, or linked on the seller's next EMAIL sign-in (linkPhone flag).
+function sellerSaltId(v) { return normId(v.email) || loginId(v.phone); }
 function sellerLogin(b) {
   var id = loginId(b.identifier != null && b.identifier !== "" ? b.identifier : b.email);
   if (!id || !b.passwordHash) return { ok: false, error: "Enter your email or mobile and password." };
-  var v = readRows("sellers").filter(function (r) { return loginId(r.email) === id || loginId(r.phone) === id; })[0];
-  if (!v || String(v.passwordHash) !== String(b.passwordHash))
+  var rows = readRows("sellers").filter(function (r) { return r.id !== ""; });
+  var byEmail = rows.filter(function (r) { return normId(r.email) && loginId(r.email) === id; })[0];
+  var v = byEmail || rows.filter(function (r) { return id.length >= 6 && loginId(r.phone) === id; })[0];
+  if (!v) return { ok: false, error: "Incorrect email/mobile or password." };
+  var h = String(b.passwordHash), good = String(v.passwordHash) === h;
+  if (!good && !byEmail && v.passwordHashPhone) good = String(v.passwordHashPhone) === h;
+  if (!good) {
+    if (!byEmail && normId(v.email) && !v.passwordHashPhone)
+      return { ok: false, error: "Mobile sign-in isn't set up for this account yet. Sign in once with your email — after that your mobile number works too." };
     return { ok: false, error: "Incorrect email/mobile or password." };
+  }
   if (!truthyFlag(v.status))
     return { ok: false, error: "Your shop is pending review. You can sign in once a staff member approves it." };
   ensureColumns("sellers", ["tokenHash", "tokenExpires"]);   // so the token can be stored even if initSheets wasn't run
   var token = Utilities.getUuid() + Utilities.getUuid();
   setSellerToken(v.id, token);
-  return { ok: true, token: token, seller: publicSeller(v, token) };
+  // Signed in by email but mobile sign-in isn't linked yet → the browser (which
+  // has the password right now) sends the mobile-salted hash via sellerLinkPhone.
+  var linkPhone = !!(byEmail && loginId(v.phone).length >= 6 && !v.passwordHashPhone);
+  return { ok: true, token: token, seller: publicSeller(v, token), linkPhone: linkPhone };
+}
+
+// Store the mobile-salted password hash (enables sign-in with the mobile). The
+// caller proves the password with currentHash (the email-salted hash).
+function sellerLinkPhone(b) {
+  try {
+    var me = requireSeller(b.token);
+    if (!b.currentHash || String(me.passwordHash) !== String(b.currentHash)) return { ok: false, error: "Password check failed." };
+    if (loginId(me.phone).length < 6 || !b.phoneHash) return { ok: false, error: "No mobile number on this account." };
+    ensureColumns("sellers", ["passwordHashPhone"]);
+    return saveRecord("sellers", { id: me.id, passwordHashPhone: String(b.phoneHash) }, function () { return ""; });
+  } catch (err) { return authErr(err); }
 }
 
 // Make sure a sheet has these columns (appended at the END if missing) so a
@@ -256,6 +291,13 @@ function sellerUpdateProfile(b) {
     var patch = { id: me.id };
     if (b.name !== undefined)     patch.name = String(b.name).trim().slice(0, 80);
     if (b.phone !== undefined)    patch.phone = String(b.phone).trim().slice(0, 30);
+    // The mobile is part of the sign-in: a seller without an email can't change it
+    // here (their password is tied to it); with an email, the old mobile sign-in
+    // is dropped and re-linked on their next email sign-in.
+    if (patch.phone !== undefined && loginId(patch.phone) !== loginId(me.phone)) {
+      if (!normId(me.email)) return { ok: false, error: "Your mobile number is your sign-in ID. Ask support to change it." };
+      patch.passwordHashPhone = "";
+    }
     if (b.shopName !== undefined) patch.shopName = String(b.shopName).trim().slice(0, 100);
     if (patch.shopName === "" && b.shopName !== undefined) return { ok: false, error: "Shop name can't be empty." };
 
@@ -288,7 +330,10 @@ function sellerChangePassword(b) {
     if (!b.newHash) return { ok: false, error: "Enter a new password." };
     if (String(b.newHash) === String(me.passwordHash))
       return { ok: false, error: "The new password must be different." };
-    var res = saveRecord("sellers", { id: me.id, passwordHash: b.newHash }, function () { return ""; });
+    ensureColumns("sellers", ["passwordHashPhone"]);
+    var patch = { id: me.id, passwordHash: b.newHash, passwordHashPhone: "" };
+    if (normId(me.email) && loginId(me.phone).length >= 6 && b.newHashPhone) patch.passwordHashPhone = String(b.newHashPhone);
+    var res = saveRecord("sellers", patch, function () { return ""; });
     if (!res.ok) return res;
     return { ok: true };
   } catch (err) {
@@ -689,7 +734,7 @@ function adminSetGuarantee(p, meData) {
 function adminSellerList(meData) {
   return walletScope(meData).sellers.map(function (v) {
     var out = {};
-    Object.keys(v).forEach(function (k) { if (k !== "passwordHash" && k !== "tokenHash" && k !== "tokenExpires") out[k] = v[k]; });
+    Object.keys(v).forEach(function (k) { if (k !== "passwordHash" && k !== "passwordHashPhone" && k !== "tokenHash" && k !== "tokenExpires") out[k] = v[k]; });
     out.hasPassword = !!String(v.passwordHash || "");
     return out;
   });
@@ -722,7 +767,10 @@ function adminSaveVendor(p, meData) {
   ["id", "shopName", "name", "email", "phone", "status", "shop_status", "rating"].forEach(function (k) { if (p[k] !== undefined) rec[k] = p[k]; });
   if (rec.email !== undefined) rec.email = normId(rec.email);
   if (rec.phone !== undefined) rec.phone = String(rec.phone).trim().slice(0, 30);
-  if (p.passwordHash) rec.passwordHash = String(p.passwordHash);
+  if (p.passwordHash) {
+    rec.passwordHash = String(p.passwordHash);
+    rec.passwordHashPhone = p.passwordHashPhone ? String(p.passwordHashPhone) : "";   // mobile sign-in for sellers with email + mobile
+  }
 
   if (!staff && p.invite !== undefined) {          // superadmin/manager: assign to a staff member ("" = none)
     var code = String(p.invite || "").trim().toUpperCase();
@@ -744,6 +792,17 @@ function adminSaveVendor(p, meData) {
     if (clash) return { ok: false, error: "Another seller already uses that email or mobile number." };
   }
   if (!p.id && rec.passwordHash && !em && ph.length < 6) return { ok: false, error: "Add an email or mobile number so the seller can sign in." };
+  // The password hash is tied to the sign-in email (or the mobile when there's no
+  // email). Changing that without a new password would lock the seller out.
+  if (p.id && !p.passwordHash) {
+    var cur = readRows("sellers").filter(function (v) { return String(v.id) === String(p.id); })[0];
+    if (cur && String(cur.passwordHash || "")) {
+      var next = { email: rec.email !== undefined ? rec.email : cur.email, phone: rec.phone !== undefined ? rec.phone : cur.phone };
+      if (sellerSaltId(next) !== sellerSaltId(cur))
+        return { ok: false, error: "Set a new password too when you change the seller's sign-in email/mobile." };
+      if (rec.phone !== undefined && loginId(rec.phone) !== loginId(cur.phone)) rec.passwordHashPhone = "";   // re-linked on their next email sign-in
+    }
+  }
   ensureColumns("sellers", SHEETS.sellers.headers);
   var res = saveRecord("sellers", rec, validateVendor);
   if (!res.ok) return res;

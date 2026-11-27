@@ -33,6 +33,15 @@ window.SELLERLOGIN = (function () {
         var j = await r.json();
         btn.disabled = false; btn.textContent = "Sign in";
         if (!j.ok) return msg(j.error || "Couldn't sign you in.", "err");
+        // First email sign-in of a seller who also has a mobile: link mobile
+        // sign-in (needs the password, which only this page has right now).
+        if (j.linkPhone && j.seller && AUTH.loginId(j.seller.phone || "").length >= 6) {
+          try {
+            var phoneHash = await AUTH.hash("seller:" + AUTH.loginId(j.seller.phone), password);
+            await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({ action: "sellerLinkPhone", token: j.token, currentHash: passwordHash, phoneHash: phoneHash }) });
+          } catch (e) {}
+        }
         SELLER.save(j.seller);
         UI.toast("Welcome back, " + (j.seller.shopName || j.seller.name || "seller") + "!");
         setTimeout(function () { location.href = next; }, 500);

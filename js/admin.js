@@ -1137,6 +1137,8 @@ window.ADMIN = (function () {
           var ident = email ? AUTH.loginId(email) : AUTH.loginId(phone);
           if (!ident || (!email && ident.length < 6)) return "Add an email or mobile number so the seller can sign in.";
           payload.passwordHash = await AUTH.hash("seller:" + ident, pw);
+          // email + mobile → a second hash so the seller can sign in with either
+          if (email && AUTH.loginId(phone).length >= 6) payload.passwordHashPhone = await AUTH.hash("seller:" + AUTH.loginId(phone), pw);
         }
         if ($("vStaff")) payload.invite = $("vStaff").value;
         var r = await api("saveVendor", payload);

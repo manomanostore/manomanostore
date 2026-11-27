@@ -209,10 +209,14 @@
       if (!window.AUTH) return fail("Missing crypto module.");
       var btn = this; btn.disabled = true; btn.textContent = T("sd.saving");
       try {
-        var salt = "seller:" + (session.email || "");
+        // Salt = the sign-in email, or the mobile digits for sellers without an email.
+        var em = AUTH.loginId(session.email || ""), ph = AUTH.loginId(session.phone || "");
+        var salt = "seller:" + (em || ph);
         var currentHash = await AUTH.hash(salt, cur), newHash = await AUTH.hash(salt, nw);
+        var body = { action: "sellerPassword", token: session.token, currentHash: currentHash, newHash: newHash };
+        if (em && ph.length >= 6) body.newHashPhone = await AUTH.hash("seller:" + ph, nw);   // keeps mobile sign-in working
         var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "sellerPassword", token: session.token, currentHash: currentHash, newHash: newHash }) });
+          body: JSON.stringify(body) });
         var j = await r.json();
         if (!j.ok) { btn.disabled = false; btn.textContent = T("sd.save"); return fail(j.auth ? T("sd.relogin") : (j.error || T("sd.pwwrong"))); }
         close(); ok(T("sd.pwchanged"));

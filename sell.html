@@ -106,10 +106,12 @@
       // Sign-in identity = email if given, else the mobile number (digits only).
       var loginIdent = email ? AUTH.loginId(email) : AUTH.loginId(phone);
       var passwordHash = await AUTH.hash("seller:" + loginIdent, pw);
+      // Email AND mobile given → also hash with the mobile so either can sign in.
+      var passwordHashPhone = (email && AUTH.loginId(phone).length >= 6) ? await AUTH.hash("seller:" + AUTH.loginId(phone), pw) : "";
       var certFront = await fileToData(frontFile), certBack = await fileToData(backFile);
       var r = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "registerSeller", name: name, email: email, phone: phone,
-          passwordHash: passwordHash, shopName: shop, certType: certType,
+          passwordHash: passwordHash, passwordHashPhone: passwordHashPhone, shopName: shop, certType: certType,
           certFront: certFront, certBack: certBack, invite: invite }) });
       var j = await r.json();
       if (!j.ok) { btn.disabled = false; btn.textContent = "Register your shop"; return fail(j.error || "Couldn't submit your application."); }
