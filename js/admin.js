@@ -83,6 +83,7 @@ window.ADMIN = (function () {
   function logout(msg) {
     localStorage.removeItem(SKEY); session = null; catalog = null;
     if (_txTimer) { clearInterval(_txTimer); _txTimer = null; }
+    if (_visTimer) { clearInterval(_visTimer); _visTimer = null; }
     if (_chatTimer) { clearInterval(_chatTimer); _chatTimer = null; }
     if (_chatW) { _chatW.destroy(); _chatW = null; }
     _chatData = null; _chatSel = null; _chatMax = 0;
@@ -255,6 +256,7 @@ window.ADMIN = (function () {
     window.onhashchange = route;
     route();
     startTxAlerts();
+    startVisBadge();
     startChatAlerts();
   }
 
@@ -300,9 +302,27 @@ window.ADMIN = (function () {
     _txBadge = n;
     document.querySelectorAll('.adm-nav a[data-route="wallet"], .adm-tab[data-route="wallet"]').forEach(function (a) {
       var b = a.querySelector(".adm-navbadge");
-      if (!b) { b = document.createElement("b"); b.className = "adm-navbadge"; a.appendChild(b); }
+      if (!b) { b = document.createElement("b"); b.className = "adm-navbadge green"; a.appendChild(b); }
       b.hidden = !(n > 0); b.textContent = n > 99 ? "99+" : String(n);
     });
+  }
+  // Count on the "Visitors" menu item: devices that visited today (superadmin/manager only).
+  var _visTimer = null;
+  function paintVisBadge(n) {
+    document.querySelectorAll('.adm-nav a[data-route="visitors"], .adm-tab[data-route="visitors"]').forEach(function (a) {
+      var b = a.querySelector(".adm-navbadge");
+      if (!b) { b = document.createElement("b"); b.className = "adm-navbadge"; b.title = "Devices that visited today"; a.appendChild(b); }
+      b.hidden = !(n > 0); b.textContent = n > 99 ? "99+" : String(n);
+    });
+  }
+  function startVisBadge() {
+    if (!session || _visTimer || !canRoute("visitors")) return;
+    var poll = async function () {
+      if (!session) return;
+      try { var r = await api("visitorBadge"); if (r && r.ok) paintVisBadge(Number(r.today) || 0); } catch (e) {}
+    };
+    poll();
+    _visTimer = setInterval(poll, 60000);
   }
   // After approving/rejecting, refresh the count right away instead of waiting for the next poll.
   async function refreshTxBadge() {
@@ -1524,6 +1544,7 @@ window.ADMIN = (function () {
     var res = await api("listVisitors");
     if (!res.ok) throw new Error(res.error);
     var all = res.visitors || [], s = res.stats || {}, dv = s.devices || {};
+    paintVisBadge(Number(s.today) || 0);   // keep the menu badge in step with the page
     var IST_KEY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
     var dayKey = function (iso) { var d = new Date(iso); return isNaN(d) ? "" : IST_KEY.format(d); };
     var todayKey = IST_KEY.format(new Date()), weekKey = IST_KEY.format(new Date(Date.now() - 6 * 864e5));

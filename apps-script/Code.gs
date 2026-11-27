@@ -96,7 +96,7 @@ var PERMS = {
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
   chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES,
   sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES, editOrder: ADMIN_ROLES, deleteOrder: ADMIN_ROLES,
-  listVisitors: ["superadmin", "manager"], blockVisitor: ["superadmin", "manager"], clearVisitors: ["superadmin"]
+  listVisitors: ["superadmin", "manager"], visitorBadge: ["superadmin", "manager"], blockVisitor: ["superadmin", "manager"], clearVisitors: ["superadmin"]
 };
 
 /* ----------------------------- HTTP handlers ----------------------------- */
@@ -313,6 +313,20 @@ function listVisitors() {
   }).sort(function (a, b) { return ms(b.lastSeen) - ms(a.lastSeen); }).slice(0, 2000);
   return { visitors: list, stats: { total: rows.length, visits: visits, today: nToday, week: nWeek, newToday: nNew, blocked: nBlocked,
            devices: devices, countries: top } };
+}
+
+// Admin menu badge: how many devices visited today (IST). Reads only the
+// lastSeen / createdAt columns, so it stays cheap to poll.
+function visitorBadge() {
+  var sh = sheet("visitors"), hdr = sheetHeaders("visitors"), n = sh.getLastRow() - 1;
+  var cL = hdr.indexOf("lastSeen"), cC = hdr.indexOf("createdAt"), today = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd");
+  if (n < 1 || (cL < 0 && cC < 0)) return { today: 0 };
+  var count = 0, vals = sh.getRange(2, 1, n, hdr.length).getValues();
+  vals.forEach(function (r) {
+    var x = (cL > -1 && r[cL] !== "") ? r[cL] : (cC > -1 ? r[cC] : ""), d = x instanceof Date ? x : new Date(x);
+    if (!isNaN(d) && Utilities.formatDate(d, "Asia/Kolkata", "yyyy-MM-dd") === today) count++;
+  });
+  return { today: count };
 }
 
 // Superadmin: delete every logged device (keeps the header row).
@@ -1604,6 +1618,7 @@ function adminCall(b) {
       chatThread:      function () { return adminChatThread(p, me.data); },
       chatSend:        function () { return adminChatSend(p, me.data); },
       listVisitors:    function () { return listVisitors(); },
+      visitorBadge:    function () { return visitorBadge(); },
       blockVisitor:    function () { return withLock(function () { return blockVisitor(p, me.data); }); },
       clearVisitors:   function () { return withLock(clearVisitors); },
       importCatalog:   function () { return withLock(function () {
