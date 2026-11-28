@@ -420,7 +420,7 @@
      support team (same conversation as Conversations in their dashboard);
      anyone else is asked to sign in / become a seller. chat.js only loads
      the first time the popup opens. */
-  var CHAT_V = "20261128u", spPanel = null, spChat = null;
+  var CHAT_V = "20261128v", spPanel = null, spChat = null;
   function tr(k, fb) { var v = window.I18N ? I18N.t(k) : k; return v && v !== k ? v : fb; }
   function chatPost(body) {
     return fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) })
@@ -487,6 +487,7 @@
       their: { avatar: "images/support-agent-site.svg" },
       fetch: function (sinceId, mark) { return chatPost({ action: "sellerChat", token: s.token, sinceId: sinceId, mark: mark }); },
       send: function (m) { return chatPost({ action: "sellerChatSend", token: s.token, text: m.text, images: m.images }); },
+      getImage: function (m, url) { return chatPost({ action: "sellerChatImage", token: s.token, url: url }); },
       onBack: spClose,
       onAuth: function () { try { localStorage.removeItem("mm_seller"); } catch (e) {} if (spChat) spChat.destroy(); spGuest(); }
     });

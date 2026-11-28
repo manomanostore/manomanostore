@@ -94,7 +94,7 @@ var PERMS = {
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
   listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
-  chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES, chatDelete: ["superadmin"], chatClear: ["superadmin"],
+  chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES, chatDelete: ["superadmin"], chatClear: ["superadmin"], chatImage: ADMIN_ROLES,
   sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES, editOrder: ADMIN_ROLES, deleteOrder: ADMIN_ROLES,
   listVisitors: ["superadmin", "manager"], visitorBadge: ["superadmin", "manager"], blockVisitor: ["superadmin", "manager"], clearVisitors: ["superadmin"]
 };
@@ -135,6 +135,7 @@ function doPost(e) {
       case "sellerChat":     return json(sellerChat(body));
       case "sellerOrders":   return json(sellerOrders(body));
       case "sellerChatSend": return json(sellerChatSend(body));
+      case "sellerChatImage":return json(sellerChatImage(body));
       case "saveCart":      return json(withLock(function () { return saveCart(body); }));
       case "getCart":       return json({ ok: true, cart: getCartItems(String(body.cartId || "")) });
       case "createOrder":   return json(withLock(function () { return createOrder(body); }));
@@ -1451,6 +1452,30 @@ function adminChatThread(p, meData) {
   if (deny) return deny;
   return chatFetch(sid, "support", p.sinceId, p.mark === "delivered" ? "delivered" : "seen");
 }
+// "Copy image" in the chat: the browser can't read Drive images itself
+// (cross-origin), so it asks for the picture's bytes. Only an image that is
+// actually in this seller's conversation is served — never an arbitrary file.
+function chatImageData(sellerId, url) {
+  url = String(url || "");
+  var id = driveIdFromUrl(url);
+  if (!id) return { ok: false, error: "Not a chat image." };
+  var inChat = readRows("messages").some(function (r) {
+    return String(r.seller_id) === String(sellerId) && parseImages(r.images_json).some(function (u) { return driveIdFromUrl(u) === id; });
+  });
+  if (!inChat) return { ok: false, error: "Image not found in this conversation." };
+  try {
+    var blob = DriveApp.getFileById(id).getBlob();
+    return { ok: true, dataUrl: "data:" + (blob.getContentType() || "image/jpeg") + ";base64," + Utilities.base64Encode(blob.getBytes()) };
+  } catch (e) { return { ok: false, error: "Couldn't read the image." }; }
+}
+function adminChatImage(p, meData) {
+  var deny = adminChatAllowed(p.sellerId, meData);
+  return deny || chatImageData(p.sellerId, p.url);
+}
+function sellerChatImage(b) {
+  try { var me = requireSeller(b.token); return chatImageData(me.id, b.url); } catch (err) { return authErr(err); }
+}
+
 // Superadmin: delete one message (and its uploaded images) from a conversation.
 function adminChatDelete(p, meData) {
   var sid = p.sellerId, deny = adminChatAllowed(sid, meData);
@@ -1656,6 +1681,7 @@ function adminCall(b) {
       chatList:        function () { return adminChatList(me.data); },
       chatThread:      function () { return adminChatThread(p, me.data); },
       chatSend:        function () { return adminChatSend(p, me.data); },
+      chatImage:       function () { return adminChatImage(p, me.data); },
       chatDelete:      function () { return withLock(function () { return adminChatDelete(p, me.data); }); },
       chatClear:       function () { return withLock(function () { return adminChatClear(p, me.data); }); },
       listVisitors:    function () { return listVisitors(); },

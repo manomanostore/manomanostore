@@ -1516,6 +1516,7 @@ window.ADMIN = (function () {
       fetch: function (sinceId, mark) { return call("chatThread", { sinceId: sinceId, mark: mark }); },
       send: function (m) { return call("chatSend", { text: m.text, images: m.images }); },
       // Superadmin only: delete a message / clear the whole conversation.
+      getImage: function (m, url) { return call("chatImage", { url: url }); },
       onDelete: role() === "superadmin" ? function (m) { return call("chatDelete", { id: m.id }); } : null,
       onClear: role() === "superadmin" ? function () {
         return call("chatClear", {}).then(function (r) { if (r && r.ok) loadChatList().then(renderChatList).catch(function () {}); return r; });

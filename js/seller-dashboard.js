@@ -907,6 +907,7 @@
       onBack: function () { if (_chatPushed) history.back(); else switchView("dashboard"); },
       fetch: function (sinceId, mark) { return chatPost({ action: "sellerChat", sinceId: sinceId, mark: mark }); },
       send: function (m) { return chatPost({ action: "sellerChatSend", text: m.text, images: m.images }); },
+      getImage: function (m, url) { return chatPost({ action: "sellerChatImage", url: url }); },
       onAuth: reloginSoon
     });
   }

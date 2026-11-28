@@ -20,7 +20,8 @@ window.CHAT = (function () {
       emptyTitle: "How can we help?", emptySub: "Send us a message and our support team will reply here. You can attach screenshots too.",
       emptyAdminTitle: "No messages yet", emptyAdminSub: "Start the conversation — the seller will see it in their dashboard.",
       offline: "Can't reach the server. Retrying…", remove: "Remove", close: "Close", open: "Open original",
-      copy: "Copy", copyLink: "Copy image link", copied: "Copied", del: "Delete message", deleted: "Message deleted",
+      copy: "Copy text", copied: "Copied", copyImg: "Copy image", copyImgN: "Copy image {n}", copyingImg: "Copying image…",
+      copiedImg: "Image copied — paste it anywhere", copyImgFail: "Couldn't copy this image", copyImgNo: "This browser can't copy images — right-click the photo to save it", del: "Delete message", deleted: "Message deleted",
       delAsk: "Delete this message? It will be removed for the seller too.", clear: "Clear conversation",
       clearAsk: "Delete every message in this conversation? This can't be undone.", cleared: "Conversation cleared", more: "Message options",
       chips: ["Withdrawal not received", "Deposit not credited", "Shop verification", "Product question"]
@@ -33,7 +34,8 @@ window.CHAT = (function () {
       emptyTitle: "हम कैसे मदद कर सकते हैं?", emptySub: "हमें संदेश भेजें, हमारी सपोर्ट टीम यहीं जवाब देगी। आप स्क्रीनशॉट भी भेज सकते हैं।",
       emptyAdminTitle: "अभी कोई संदेश नहीं", emptyAdminSub: "बातचीत शुरू करें — सेलर इसे अपने डैशबोर्ड में देखेगा।",
       offline: "सर्वर से कनेक्ट नहीं हो पा रहा। फिर से कोशिश हो रही है…", remove: "हटाएँ", close: "बंद करें", open: "मूल इमेज खोलें",
-      copy: "कॉपी करें", copyLink: "इमेज लिंक कॉपी करें", copied: "कॉपी हो गया", del: "संदेश हटाएँ", deleted: "संदेश हटा दिया गया",
+      copy: "टेक्स्ट कॉपी करें", copied: "कॉपी हो गया", copyImg: "इमेज कॉपी करें", copyImgN: "इमेज {n} कॉपी करें", copyingImg: "इमेज कॉपी हो रही है…",
+      copiedImg: "इमेज कॉपी हो गई — कहीं भी पेस्ट करें", copyImgFail: "यह इमेज कॉपी नहीं हो सकी", copyImgNo: "यह ब्राउज़र इमेज कॉपी नहीं कर सकता — इमेज सेव करने के लिए उस पर राइट-क्लिक करें", del: "संदेश हटाएँ", deleted: "संदेश हटा दिया गया",
       delAsk: "यह संदेश हटाएँ? यह सेलर के लिए भी हट जाएगा।", clear: "बातचीत साफ़ करें",
       clearAsk: "इस बातचीत के सभी संदेश हटाएँ? इसे वापस नहीं लाया जा सकता।", cleared: "बातचीत साफ़ कर दी गई", more: "संदेश विकल्प",
       chips: ["निकासी नहीं मिली", "जमा राशि नहीं जुड़ी", "शॉप वेरिफ़िकेशन", "प्रोडक्ट से जुड़ा सवाल"]
@@ -498,14 +500,49 @@ window.CHAT = (function () {
       ta.style.cssText = "position:fixed;top:-1000px;opacity:0"; document.body.appendChild(ta); ta.select();
       var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ta.remove(); return ok;
     }
+    // ---- copy an image to the clipboard (as PNG), so it can be pasted anywhere
+    // (this chat's message box accepts pasted images too). Drive images can't be
+    // read cross-origin, so we try a direct fetch, then ask the server.
+    function blobToPng(blob) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(blob), img = new Image();
+        img.onload = function () {
+          var c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext("2d").drawImage(img, 0, 0); URL.revokeObjectURL(url);
+          c.toBlob(function (b) { b ? resolve(b) : reject(new Error("png")); }, "image/png");
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("img")); };
+        img.src = url;
+      });
+    }
+    function srcToBlob(m, src) {
+      if (/^data:/.test(src)) return fetch(src).then(function (r) { return r.blob(); });
+      return fetch(src, { mode: "cors", credentials: "omit" }).then(function (r) {
+        if (!r.ok) throw new Error("http"); return r.blob();
+      }).catch(function () {
+        if (!opts.getImage) throw new Error("no proxy");
+        return Promise.resolve(opts.getImage(m, src)).then(function (res) {
+          if (!res || !res.ok || !res.dataUrl) throw new Error((res && res.error) || "proxy");
+          return fetch(res.dataUrl).then(function (r) { return r.blob(); });
+        });
+      });
+    }
+    function copyImage(m, src) {
+      if (!navigator.clipboard || !navigator.clipboard.write || !window.ClipboardItem) { flash(L.copyImgNo); return; }
+      flash(L.copyingImg);
+      var png = srcToBlob(m, src).then(function (b) { return b.type === "image/png" ? b : blobToPng(b); });
+      // The promise goes straight into ClipboardItem (needed by Safari, fine in Chrome).
+      navigator.clipboard.write([new ClipboardItem({ "image/png": png })])
+        .then(function () { flash(L.copiedImg); }, function () { flash(L.copyImgFail); });
+    }
     function openMenu(row) {
       var m = row && row._m; if (!m) return;
       closeMenu();
-      var link = !m.text && (m.images || []).filter(function (u) { return /^https?:/.test(u); })[0];
+      var imgs = (localImgs[m.id] && localImgs[m.id].length ? localImgs[m.id] : (m.images || [])).filter(Boolean).slice(0, 6);
       var canDel = opts.onDelete && !m._pending && m.id != null;
       var acts = [];
       if (m.text) acts.push(["copy", svg("copy", 16), L.copy]);
-      else if (link) acts.push(["link", svg("copy", 16), L.copyLink]);
+      imgs.forEach(function (u, i) { acts.push(["img" + i, svg("img", 16), imgs.length > 1 ? L.copyImgN.replace("{n}", i + 1) : L.copyImg]); });
       if (canDel) acts.push(["del", svg("trash", 16), L.del]);
       if (!acts.length) return;
       menu = document.createElement("div"); menu.className = "ct-menu"; menu.setAttribute("role", "menu");
@@ -521,7 +558,7 @@ window.CHAT = (function () {
         var btn = e.target.closest("[data-do]"); if (!btn) return;
         var what = btn.getAttribute("data-do"); closeMenu();
         if (what === "copy") copyText(m.text);
-        else if (what === "link") copyText(link);
+        else if (/^img\d+$/.test(what)) copyImage(m, imgs[Number(what.slice(3))]);
         else if (what === "del") {
           var yes = opts.confirm ? await opts.confirm({ title: L.del, message: L.delAsk, confirmLabel: L.del }) : window.confirm(L.delAsk);
           if (!yes) return;
