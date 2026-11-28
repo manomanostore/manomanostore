@@ -1200,7 +1200,8 @@ function orderRec(o) {
            total: (o.total === "" || isNaN(t)) ? orderItemsTotal(items) : t, status: String(o.status || "received"), createdAt: o.createdAt,
            sellerId: o.seller_id === "" || o.seller_id == null ? "" : (Number(o.seller_id) || o.seller_id),
            customerName: String(o.customer_name || ""), customerPhone: String(o.customer_phone || ""),
-           address: String(o.address || ""), note: String(o.note || ""), createdBy: String(o.created_by || "") };
+           address: String(o.address || ""), note: String(o.note || ""), createdBy: String(o.created_by || ""),
+           updatedAt: o.updatedAt || "" };
 }
 
 /* ---- Staff-placed orders (VIP customers who don't order themselves) ----

@@ -834,10 +834,36 @@
     var month = list.filter(function (o) { var d = new Date(o.createdAt); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); });
     var count = function (arr, sts) { return arr.filter(function (o) { return sts.indexOf(o.status) > -1; }).length; };
     if ($("sdCardOrders")) $("sdCardOrders").textContent = list.length;
+    // Total Sales = Delivered Earning Amount: Σ amount of DELIVERED orders (same
+    // number as the Orders page), without the profit.
+    var delivered = list.filter(function (o) { return o.status === "delivered"; });
+    if ($("sdCardSales")) $("sdCardSales").textContent = money(delivered.reduce(function (n, o) { return n + (Number(o.total) || 0); }, 0));
+    paintSalesChart(delivered);
     var v = document.querySelectorAll(".sd-ord-row .sd-ord-v");
     if (v.length === 3) { v[0].textContent = count(month, ["pending", "received"]); v[1].textContent = count(month, ["cancelled"]); v[2].textContent = count(month, ["processing", "shipped"]); }
     var pill = document.querySelector('.sd-nav a[data-view="orders"] .sd-pill'), fresh = count(list, ["pending", "received"]);
     if (pill) { pill.textContent = fresh; pill.hidden = !fresh; }
+  }
+  // Sales Statistics: delivered sales per day for the last 7 days (IST), ending
+  // today, dated by when the order was marked delivered (else when it was placed).
+  function paintSalesChart(delivered) {
+    var bars = $("sdBars"), labels = document.querySelector(".sd-xlabels");
+    if (!bars) return;
+    var DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+    var WD = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "short" });   // translated with the page
+    var days = [];
+    for (var i = 6; i >= 0; i--) { var d = new Date(Date.now() - i * 864e5); days.push({ key: DAY.format(d), label: WD.format(d), amt: 0 }); }
+    var at = {}; days.forEach(function (x) { at[x.key] = x; });
+    delivered.forEach(function (o) {
+      var d = new Date(o.updatedAt || o.createdAt); if (isNaN(d)) return;
+      var x = at[DAY.format(d)]; if (x) x.amt += Number(o.total) || 0;
+    });
+    var max = Math.max.apply(null, days.map(function (x) { return x.amt; }));
+    bars.innerHTML = days.map(function (x) {
+      var pct = max > 0 ? Math.round(x.amt / max * 100) : 0;
+      return '<div class="sd-bar" style="height:' + pct + '%" title="' + esc(x.label + ": " + money(x.amt)) + '"></div>';
+    }).join("");
+    if (labels) labels.innerHTML = days.map(function (x) { return "<span>" + esc(x.label) + "</span>"; }).join("");
   }
   // Order date + time in Indian Standard Time: "27/11/2026" and "3:11 AM IST".
   var IST_DATE = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric" });
