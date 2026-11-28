@@ -19,6 +19,7 @@ window.HOME = (function () {
   async function init() {
     heroCarousel();                 // runs immediately — never waits on the catalog
     watchHeroHeights();
+    ["topSelection", "bestSellers", "finds"].forEach(function (id, k) { autoSlide(document.getElementById(id), k); });
     try { await paint(); } catch (e) { showLoadError(e); }
     // Re-render when the Sheet catalog arrives/changes (e.g. new categories).
     document.addEventListener("catalog:change", function () { paint(); });
@@ -112,6 +113,54 @@ window.HOME = (function () {
       '<span data-i18n="home.viewmore">' + UI.esc((window.I18N && I18N.t("home.viewmore")) || "View more") + "</span></a></div>");
   }
   function unique(a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); }
+
+  // Product rows slide on their own, one product every 3 s (mobile + desktop),
+  // in an endless loop: the row's cards are followed by one copy of themselves
+  // (hidden from screen readers / keyboard, still clickable), and once the
+  // first copy reaches the left edge the row silently jumps back by one set —
+  // so it keeps going even when every product already fits on screen. A row
+  // pauses while the shopper hovers, touches, scrolls or tabs into it
+  // (resuming a few seconds later), while it's off screen or the tab is
+  // hidden, and never moves with "reduce motion" on. Re-renders (catalog
+  // updates) drop the copies; the next tick rebuilds them.
+  function autoSlide(row, offset) {
+    if (!row || row._auto || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    row._auto = true;
+    var EVERY = 3000, holdUntil = 0, visible = true, hovering = false, focused = false;
+    var hold = function (ms) { holdUntil = Math.max(holdUntil, Date.now() + ms); };
+    function addCopy(real) {
+      real.forEach(function (el) {
+        var c = el.cloneNode(true);
+        c.classList.add("row-clone"); c.setAttribute("aria-hidden", "true");
+        [].forEach.call(c.querySelectorAll("a, button, input, [tabindex]"), function (f) { f.setAttribute("tabindex", "-1"); });
+        row.appendChild(c);
+      });
+    }
+    function tick() {
+      if (document.hidden || !visible || hovering || focused || Date.now() < holdUntil) return;
+      var real = [].filter.call(row.children, function (el) { return !el.classList.contains("row-clone"); });
+      if (real.length < 2 || row.querySelector(".skeleton")) return;    // still loading
+      if (!row.querySelector(".row-clone")) addCopy(real);
+      var first = real[0], copy = row.querySelector(".row-clone");
+      var w = real[1].offsetLeft - first.offsetLeft, set = copy.offsetLeft - first.offsetLeft;
+      if (!w || !set) return;
+      // Few products on a wide screen: add copies until the loop point can be reached.
+      for (var n = 1; n < 4 && row.scrollWidth - row.clientWidth < set + w; n++) addCopy(real);
+      if (row.scrollLeft >= set - 2) row.scrollLeft -= set;     // same picture, one set earlier
+      row.scrollBy({ left: w, behavior: "smooth" });
+    }
+    // Stagger the rows so they don't all move at the same moment.
+    setTimeout(function () { setInterval(tick, EVERY); }, offset * 900);
+    if (window.IntersectionObserver) new IntersectionObserver(function (es) { visible = es[0].isIntersecting; }, { threshold: 0.3 }).observe(row);
+    row.addEventListener("pointerenter", function (e) { if (e.pointerType === "mouse") hovering = true; });
+    row.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") { hovering = false; hold(1500); } });
+    row.addEventListener("pointerdown", function () { hold(6000); });
+    row.addEventListener("touchstart", function () { hold(6000); }, { passive: true });
+    row.addEventListener("touchend", function () { hold(5000); }, { passive: true });
+    row.addEventListener("wheel", function () { hold(6000); }, { passive: true });
+    row.addEventListener("focusin", function () { focused = true; });
+    row.addEventListener("focusout", function () { focused = false; hold(3000); });
+  }
 
   // Auto-scrolling hero banner: 5s advance, pauses on hover/focus/tab-hidden,
   // swipeable, dots + arrows, respects "reduce motion". Re-callable: controls

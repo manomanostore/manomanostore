@@ -1602,7 +1602,11 @@ window.ADMIN = (function () {
     var pct = function (n) { return s.total ? Math.round(n / s.total * 100) + "%" : "0%"; };
     // This admin's own device — shown as "This device" and can't be blocked (it would lock them out).
     var me = window.VISIT ? VISIT.self() : {};
-    var isMe = function (v) { return (me.vid && v.visitorId === me.vid) || (me.ip && v.ip === me.ip && v.userAgent === me.ua && v.screen === me.screen); };
+    // Same device in any browser: IP + device type + OS family + screen size (as the server groups them).
+    var devKey = function (ip, dev, os, sc) { return ip ? [ip, dev || "", String(os || "").split(" ")[0], String(sc || "").split(" ")[0]].join("|") : ""; };
+    var myKey = devKey(me.ip, me.device, me.os, me.screen);
+    var isMe = function (v) { return (me.vid && v.visitorId === me.vid) || (me.ip && v.ip === me.ip && v.userAgent === me.ua && v.screen === me.screen) ||
+                                     (myKey && me.device && devKey(v.ip, v.device, v.os, v.screen) === myKey); };
     var AREA_CLS = { "Website": "web", "Seller panel": "seller", "Admin panel": "admin" };
     function draw() {
       var q = vf.q.trim().toLowerCase();

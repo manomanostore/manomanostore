@@ -120,7 +120,8 @@ window.VISIT = (function () {
       var last = Number(get("sessionStorage", "mm_vchk")) || 0;
       if (!isBlocked() && Date.now() - last < 5 * 60e3) return;
       var fp = json("sessionStorage", "mm_vfp") || {};
-      post({ action: "logVisit", check: true, visit: { visitorId: vid, ip: fp.ip || "", userAgent: navigator.userAgent, screen: screenText() } });
+      var di = deviceInfo();
+      post({ action: "logVisit", check: true, visit: { visitorId: vid, ip: fp.ip || "", userAgent: navigator.userAgent, screen: screenText(), device: di.device, os: di.os } });
       return;
     }
     set("sessionStorage", key, "1");
@@ -159,7 +160,8 @@ window.VISIT = (function () {
   // The admin Visitors page uses this to stop an admin blocking their own device.
   function self() {
     var fp = json("sessionStorage", "mm_vfp") || {};
-    return { vid: get("localStorage", "mm_vid") || "", ip: fp.ip || "", ua: navigator.userAgent, screen: screenText() };
+    var d = deviceInfo();
+    return { vid: get("localStorage", "mm_vid") || "", ip: fp.ip || "", ua: navigator.userAgent, screen: screenText(), device: d.device, os: d.os };
   }
   return { area: AREA, self: self, track: track };
 })();

@@ -179,7 +179,7 @@ function logVisit(b) {
     page: clean(v.page, 200), referrer: clean(v.referrer, 200), user: clean(v.user, 80),
     user_agent: clean(v.userAgent, 400), lastSeen: istNow()
   };
-  var blocked = isVisitorBlocked(vid, rec.ip, rec.user_agent, rec.screen);
+  var blocked = isVisitorBlocked(vid, rec.ip, rec.user_agent, rec.screen, rec.device, rec.os);
   if (b.check) return { ok: true, blocked: blocked };
   // Throttle per visitor id + area + signed-in user, so moving from the shop to
   // the admin/seller panel (or signing in) still updates the row.
@@ -190,6 +190,7 @@ function logVisit(b) {
     var sh = sheet("visitors"), hdr = visitorHeaders(sh), data = sh.getDataRange().getValues();
     var col = function (name) { return hdr.indexOf(name); };
     var cV = col("visitor_id"), cIp = col("ip"), cUa = col("user_agent"), cSc = col("screen"), cL = col("lastSeen"), cC = col("createdAt");
+    var cD = col("device"), cOs = col("os"), cBr = col("browser"), key = deviceKey(rec.ip, rec.device, rec.os, rec.screen);
     // Older rows from before "lastSeen" existed: use their first-seen time so the sort below is right.
     var fill = false;
     for (var f = 1; f < data.length; f++) if (data[f][cL] === "" && data[f][cC] !== "") { data[f][cL] = data[f][cC]; fill = true; }
@@ -198,8 +199,10 @@ function logVisit(b) {
     for (var i = 1; i < data.length; i++) {
       var r = data[i];
       var sameId = String(r[cV]) === vid;
-      var sameDevice = rec.ip && rec.user_agent && String(r[cIp]) === rec.ip &&
-                       String(r[cUa]) === rec.user_agent && String(r[cSc]) === rec.screen;
+      // Same device in any browser (Chrome + Safari on one Mac = one row).
+      var sameDevice = (rec.ip && rec.user_agent && String(r[cIp]) === rec.ip &&
+                        String(r[cUa]) === rec.user_agent && String(r[cSc]) === rec.screen) ||
+                       (key && deviceKey(r[cIp], r[cD], r[cOs], r[cSc]) === key);
       if (sameId || sameDevice) hits.push(i + 1);
     }
     var out;
@@ -212,6 +215,8 @@ function logVisit(b) {
       var keep = hits[0], old = data[keep - 1], visits = 1, cB = col("blocked"), wasBlocked = false;
       hits.forEach(function (n) { visits += Number(data[n - 1][col("visits")]) || 1; if (truthy(data[n - 1][cB])) wasBlocked = true; });
       rec.id = old[col("id")]; rec.createdAt = old[cC] || rec.lastSeen; rec.visits = visits;
+      // Every browser this device has used, the current one first.
+      rec.browser = hits.reduce(function (b, n) { return mergeBrowsers(b, data[n - 1][cBr]); }, rec.browser);
       if (wasBlocked && !truthy(old[cB])) { rec.blocked = "1"; rec.blockedAt = istNow(); }
       (SHEETS.visitors.textCols || []).forEach(function (name) { if (col(name) > -1) sh.getRange(keep, col(name) + 1).setNumberFormat("@"); });
       sh.getRange(keep, 1, 1, hdr.length).setValues([hdr.map(function (h, c) { return rec[h] === undefined ? old[c] : rec[h]; })]);
@@ -223,6 +228,39 @@ function logVisit(b) {
     sortVisitors(sh, hdr);
     return out;
   });
+}
+
+// One device = one record, whichever browser it uses: same public IP + device
+// type + OS family + screen size (without the pixel ratio, which changes with
+// the browser's zoom). Blank when the IP is unknown.
+function deviceKey(ip, device, os, screen) {
+  ip = String(ip || "").trim(); if (!ip) return "";
+  return [ip, String(device || "").trim(), String(os || "").trim().split(" ")[0], String(screen || "").trim().split(" ")[0]].join("|");
+}
+// "Chrome 158, Safari 26": `first` stays in front, `more` adds browsers not listed yet.
+function mergeBrowsers(first, more) {
+  var fam = function (b) { return String(b).replace(/\s+[\d.]+$/, ""); }, out = [];
+  String(first || "").split(/\s*,\s*/).concat(String(more || "").split(/\s*,\s*/)).forEach(function (b) {
+    if (b && !out.some(function (x) { return fam(x) === fam(b); })) out.push(b);
+  });
+  return out.slice(0, 5).join(", ");
+}
+// Rows that belong to the same device (same visitor id or device key) as one
+// group each, newest first — so older duplicate rows still show once.
+function groupVisitors(rows) {
+  var ms = function (x) { var d = x instanceof Date ? x : new Date(x); return isNaN(d) ? 0 : d.getTime(); };
+  var seen = function (r) { return ms(r.lastSeen || r.createdAt); };
+  var groups = [], byId = {}, byKey = {};
+  rows.slice().sort(function (a, b) { return seen(b) - seen(a); }).forEach(function (r) {
+    var vid = String(r.visitor_id || ""), key = deviceKey(r.ip, r.device, r.os, r.screen);
+    var g = (vid && byId[vid]) || (key && byKey[key]);
+    if (!g) { g = { row: r, ids: [], visits: 0, createdAt: r.createdAt, browser: "", blocked: false, blockedAt: "" }; groups.push(g); }
+    g.ids.push(r.id); g.visits += Number(r.visits) || 1; g.browser = mergeBrowsers(g.browser, r.browser);
+    if (r.createdAt && (!ms(g.createdAt) || ms(r.createdAt) < ms(g.createdAt))) g.createdAt = r.createdAt;
+    if (truthy(r.blocked)) { g.blocked = true; g.blockedAt = g.blockedAt || r.blockedAt; }
+    if (vid) byId[vid] = g; if (key) byKey[key] = g;
+  });
+  return groups;
 }
 
 function truthy(x) { return x === true || x === 1 || /^(1|true|yes|blocked)$/i.test(String(x || "").trim()); }
@@ -241,18 +279,19 @@ function sortVisitors(sh, hdr) {
 function blockedVisitors() {
   var cache = CacheService.getScriptCache(), hit = cache.get("visit_blocked");
   if (hit) return JSON.parse(hit);
-  var set = { ids: {}, fps: {} };
+  var set = { ids: {}, fps: {}, keys: {} };
   readRows("visitors").forEach(function (r) {
     if (!truthy(r.blocked)) return;
     if (r.visitor_id) set.ids[String(r.visitor_id)] = 1;
+    var k = deviceKey(r.ip, r.device, r.os, r.screen); if (k) set.keys[k] = 1;
     if (r.ip && r.user_agent) set.fps[[r.ip, r.user_agent, r.screen].join("|")] = 1;
   });
   try { cache.put("visit_blocked", JSON.stringify(set), 300); } catch (e) {}
   return set;
 }
-function isVisitorBlocked(vid, ip, ua, screen) {
-  var set = blockedVisitors();
-  return !!(set.ids[vid] || (ip && ua && set.fps[[ip, ua, screen].join("|")]));
+function isVisitorBlocked(vid, ip, ua, screen, device, os) {
+  var set = blockedVisitors(), k = device ? deviceKey(ip, device, os, screen) : "";
+  return !!(set.ids[vid] || (ip && ua && set.fps[[ip, ua, screen].join("|")]) || (k && set.keys && set.keys[k]));
 }
 
 // Admin: block / unblock one device (row id). A blocked device sees an
@@ -264,12 +303,19 @@ function blockVisitor(p, meData) {
   if (!row) return { ok: false, error: "Visitor not found — refresh and try again." };
   // Never let an admin block the device they're using (they'd lock themselves out).
   var me = p.self || {}, r = data[row - 1], col = function (n) { return r[hdr.indexOf(n)]; };
-  if (p.blocked && ((me.vid && String(col("visitor_id")) === String(me.vid)) ||
+  var key = deviceKey(col("ip"), col("device"), col("os"), col("screen")), vid = String(col("visitor_id") || "");
+  var myKey = me.device ? deviceKey(me.ip, me.device, me.os, me.screen) : "";
+  if (p.blocked && ((me.vid && String(col("visitor_id")) === String(me.vid)) || (myKey && myKey === key) ||
       (me.ip && me.ua && String(col("ip")) === String(me.ip) && String(col("user_agent")) === String(me.ua) && String(col("screen")) === String(me.screen))))
     return { ok: false, error: "That's the device you're using now — you can't block yourself." };
-  var on = !!p.blocked, at = on ? istNow() : "";
-  sh.getRange(row, hdr.indexOf("blocked") + 1).setValue(on ? "1" : "");
-  sh.getRange(row, hdr.indexOf("blockedAt") + 1).setNumberFormat("@").setValue(at);
+  var on = !!p.blocked, at = on ? istNow() : "", cB = hdr.indexOf("blocked") + 1, cBa = hdr.indexOf("blockedAt") + 1;
+  // Every row of this device (older duplicates from other browsers too).
+  var c = function (i, n) { return data[i][hdr.indexOf(n)]; };
+  for (var j = 1; j < data.length; j++) {
+    if (j !== row - 1 && !((vid && String(c(j, "visitor_id")) === vid) || (key && deviceKey(c(j, "ip"), c(j, "device"), c(j, "os"), c(j, "screen")) === key))) continue;
+    sh.getRange(j + 1, cB).setValue(on ? "1" : "");
+    sh.getRange(j + 1, cBa).setNumberFormat("@").setValue(at);
+  }
   CacheService.getScriptCache().remove("visit_blocked");
   return { blocked: on, blockedAt: at };
 }
@@ -286,45 +332,42 @@ function visitorHeaders(sh) {
 
 // Admin: summary numbers over every device, plus the 2,000 most recently seen.
 function listVisitors() {
-  var rows = readRows("visitors"), tz = "Asia/Kolkata";
+  var groups = groupVisitors(readRows("visitors")), tz = "Asia/Kolkata";
   var today = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
   var weekAgo = Utilities.formatDate(new Date(Date.now() - 6 * 864e5), tz, "yyyy-MM-dd");
   var iso = function (x) { return x instanceof Date ? x.toISOString() : String(x || ""); };
   var ms = function (x) { var d = x instanceof Date ? x : new Date(x); return isNaN(d) ? 0 : d.getTime(); };
   var day = function (x) { var t = ms(x); return t ? Utilities.formatDate(new Date(t), tz, "yyyy-MM-dd") : ""; };
   var devices = { Mobile: 0, Desktop: 0, Tablet: 0 }, countries = {}, nToday = 0, nWeek = 0, nNew = 0, visits = 0, nBlocked = 0;
-  rows.forEach(function (r) {
-    var seen = r.lastSeen || r.createdAt, d = day(seen);
+  groups.forEach(function (g) {
+    var r = g.row, seen = r.lastSeen || r.createdAt, d = day(seen);
     if (d === today) nToday++;
     if (d >= weekAgo) nWeek++;
-    if (day(r.createdAt) === today) nNew++;
-    visits += Number(r.visits) || 1;
-    if (truthy(r.blocked)) nBlocked++;
+    if (day(g.createdAt) === today) nNew++;
+    visits += g.visits;
+    if (g.blocked) nBlocked++;
     if (devices[r.device] !== undefined) devices[r.device]++;
     var c = String(r.country || "Unknown"); countries[c] = (countries[c] || 0) + 1;
   });
   var top = Object.keys(countries).map(function (k) { return { country: k, visits: countries[k] }; })
     .sort(function (a, b) { return b.visits - a.visits; }).slice(0, 5);
-  var list = rows.map(function (r) {
-    return { id: r.id, visitorId: String(r.visitor_id || ""), area: String(r.area || "Website"), ip: String(r.ip || ""), country: r.country, region: r.region, city: r.city,
-             isp: r.isp, timezone: r.timezone, device: r.device, model: r.model, os: r.os, browser: r.browser, screen: r.screen,
+  var list = groups.map(function (g) {
+    var r = g.row;
+    return { id: r.id, ids: g.ids, visitorId: String(r.visitor_id || ""), area: String(r.area || "Website"), ip: String(r.ip || ""), country: r.country, region: r.region, city: r.city,
+             isp: r.isp, timezone: r.timezone, device: r.device, model: r.model, os: r.os, browser: g.browser, screen: r.screen,
              language: r.language, page: r.page, referrer: r.referrer, user: r.user, userAgent: r.user_agent,
-             createdAt: iso(r.createdAt), lastSeen: iso(r.lastSeen || r.createdAt), visits: Number(r.visits) || 1,
-             blocked: truthy(r.blocked), blockedAt: iso(r.blockedAt) };
+             createdAt: iso(g.createdAt), lastSeen: iso(r.lastSeen || r.createdAt), visits: g.visits,
+             blocked: g.blocked, blockedAt: iso(g.blockedAt) };
   }).sort(function (a, b) { return ms(b.lastSeen) - ms(a.lastSeen); }).slice(0, 2000);
-  return { visitors: list, stats: { total: rows.length, visits: visits, today: nToday, week: nWeek, newToday: nNew, blocked: nBlocked,
+  return { visitors: list, stats: { total: groups.length, visits: visits, today: nToday, week: nWeek, newToday: nNew, blocked: nBlocked,
            devices: devices, countries: top } };
 }
 
-// Admin menu badge: how many devices visited today (IST). Reads only the
-// lastSeen / createdAt columns, so it stays cheap to poll.
+// Admin menu badge: how many devices visited today (IST).
 function visitorBadge() {
-  var sh = sheet("visitors"), hdr = sheetHeaders("visitors"), n = sh.getLastRow() - 1;
-  var cL = hdr.indexOf("lastSeen"), cC = hdr.indexOf("createdAt"), today = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd");
-  if (n < 1 || (cL < 0 && cC < 0)) return { today: 0 };
-  var count = 0, vals = sh.getRange(2, 1, n, hdr.length).getValues();
-  vals.forEach(function (r) {
-    var x = (cL > -1 && r[cL] !== "") ? r[cL] : (cC > -1 ? r[cC] : ""), d = x instanceof Date ? x : new Date(x);
+  var today = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd"), count = 0;
+  groupVisitors(readRows("visitors")).forEach(function (g) {   // one per device, like the Visitors page
+    var x = g.row.lastSeen || g.row.createdAt, d = x instanceof Date ? x : new Date(x);
     if (!isNaN(d) && Utilities.formatDate(d, "Asia/Kolkata", "yyyy-MM-dd") === today) count++;
   });
   return { today: count };
