@@ -19,7 +19,8 @@ window.HOME = (function () {
   async function init() {
     heroCarousel();                 // runs immediately — never waits on the catalog
     watchHeroHeights();
-    ["topSelection", "bestSellers", "finds"].forEach(function (id, k) { autoSlide(document.getElementById(id), k); });
+    // Category circles + product rows slide on their own (staggered start).
+    ["catCircles", "topSelection", "bestSellers", "finds"].forEach(function (id, k) { autoSlide(document.getElementById(id), k); });
     try { await paint(); } catch (e) { showLoadError(e); }
     // Re-render when the Sheet catalog arrives/changes (e.g. new categories).
     document.addEventListener("catalog:change", function () { paint(); });
@@ -114,7 +115,7 @@ window.HOME = (function () {
   }
   function unique(a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); }
 
-  // Product rows slide on their own, one product every 3 s (mobile + desktop),
+  // Category circles and product rows slide on their own, one item every 3 s (mobile + desktop),
   // in an endless loop: the row's cards are followed by one copy of themselves
   // (hidden from screen readers / keyboard, still clickable), and once the
   // first copy reaches the left edge the row silently jumps back by one set —
@@ -139,7 +140,7 @@ window.HOME = (function () {
     function tick() {
       if (document.hidden || !visible || hovering || focused || Date.now() < holdUntil) return;
       var real = [].filter.call(row.children, function (el) { return !el.classList.contains("row-clone"); });
-      if (real.length < 2 || row.querySelector(".skeleton")) return;    // still loading
+      if (real.length < 2 || row.querySelector(".skeleton, .cc-skel")) return;    // still loading
       if (!row.querySelector(".row-clone")) addCopy(real);
       var first = real[0], copy = row.querySelector(".row-clone");
       var w = real[1].offsetLeft - first.offsetLeft, set = copy.offsetLeft - first.offsetLeft;
