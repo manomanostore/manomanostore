@@ -908,3 +908,15 @@ a.acct-stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 body.has-sp-fab .scroll-top{bottom:146px}
 body.has-sp-fab.has-cart-bar .scroll-top{bottom:218px}
 @media(min-width:860px){ body.has-sp-fab .scroll-top,body.has-sp-fab.has-cart-bar .scroll-top{bottom:100px} }
+
+/* ---- loading placeholders (real data only — no sample content) ---- */
+@keyframes skelShine{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.hc-skel,.cc-skel,.td-skel{background:linear-gradient(90deg,#eceff5 0,#f6f7fb 40%,#eceff5 80%) #eceff5;background-size:800px 100%;animation:skelShine 1.3s linear infinite}
+.hc-slide.hc-skel{display:block;aspect-ratio:3/1;min-width:100%}
+.hero-carousel.hc-none{display:none}
+.cc-skel{flex:0 0 auto;width:76px;height:76px;border-radius:50%;margin:0 11px 30px}
+.td-skel{height:64px;border-radius:12px;margin:10px 14px}
+.load-err{padding:18px;color:var(--muted);font-weight:600}
+.load-err .btn{margin-left:8px;padding:6px 14px}
+@media(max-width:719px){.cc-skel{width:66px;height:66px;margin:0 9px 26px}}
+.hero-carousel:has(.hc-skel) .hc-arrow,.hero-carousel:has(.hc-skel) .hc-dots{display:none}

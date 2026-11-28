@@ -19,13 +19,24 @@ window.HOME = (function () {
   async function init() {
     heroCarousel();                 // runs immediately — never waits on the catalog
     watchHeroHeights();
-    await paint();
+    try { await paint(); } catch (e) { showLoadError(e); }
     // Re-render when the Sheet catalog arrives/changes (e.g. new categories).
     document.addEventListener("catalog:change", function () { paint(); });
   }
 
+  // Catalog couldn't be loaded (offline / server down): replace the loading
+  // placeholders with a retry message instead of leaving them spinning forever.
+  function showLoadError(e) {
+    var msg = '<p class="load-err">' + UI.esc((e && e.message) || "Couldn't load the shop.") +
+      ' <button type="button" class="btn btn-ghost" onclick="location.reload()">Retry</button></p>';
+    ["topSelection", "bestSellers", "finds"].forEach(function (id) { var el = document.getElementById(id); if (el) el.innerHTML = msg; });
+    var td = document.getElementById("tdList"); if (td) td.innerHTML = "";
+    var cc = document.getElementById("catCircles"); if (cc) cc.innerHTML = "";
+    var hc = document.getElementById("heroCarousel"); if (hc) hc.classList.add("hc-none");
+  }
+
   async function paint() {
-    DATA.banners().then(setHeroBanners);   // swap in admin banners when available
+    DATA.banners().then(setHeroBanners, function () {});   // admin banners (errors handled by init)
     var all = await DATA.all();
     var choice = await DATA.choice();
     var best = await DATA.bestsellers();
@@ -150,10 +161,13 @@ window.HOME = (function () {
     s.stop(); s.go(0); s.start();
   }
 
-  // Swap the hero slides for admin-managed banner images (when any exist).
+  // Show the admin-managed banner images (Banners in the admin panel). With no
+  // banners at all, the slider is hidden rather than showing sample artwork.
   function setHeroBanners(banners) {
-    var track = document.getElementById("hcTrack");
-    if (!track || !banners || !banners.length) return;         // none -> keep the built-in hero
+    var track = document.getElementById("hcTrack"), root = document.getElementById("heroCarousel");
+    if (!track) return;
+    if (!banners || !banners.length) { if (root) root.classList.add("hc-none"); return; }
+    if (root) root.classList.remove("hc-none");
     track.innerHTML = banners.map(function (b) {
       return '<a class="hc-slide" href="'+UI.esc(b.link || "deals.html")+'">'+
         '<img src="'+UI.esc(b.imageUrl)+'" alt="Promotion" width="1600" height="533" loading="lazy"></a>';

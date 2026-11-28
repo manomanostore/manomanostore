@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="images/logo-64.png" type="image/png">
 <link rel="apple-touch-icon" href="images/logo-192.png">
-<link rel="stylesheet" href="css/styles.css?v=20261128r">
+<link rel="stylesheet" href="css/styles.css?v=20261128w">
 </head>
 <body>
 <div id="site-header"></div>
@@ -20,10 +20,8 @@
   <section class="hero-carousel" id="heroCarousel" aria-label="Promotions" aria-roledescription="carousel">
     <div class="hc-viewport">
       <div class="hc-track" id="hcTrack">
-        <a class="hc-slide" href="deals.html"><img src="images/banner-1.png" alt="Mega sale on popular products — up to 60% off" width="1600" height="533" fetchpriority="high"></a>
-        <a class="hc-slide" href="deals.html"><img src="images/banner-2.png" alt="New season styles — buy 2, get 1 free" width="1600" height="533" loading="lazy"></a>
-        <a class="hc-slide" href="deals.html"><img src="images/banner-3.png" alt="Beauty week — up to 45% off" width="1600" height="533" loading="lazy"></a>
-        <a class="hc-slide" href="deals.html"><img src="images/banner-4.png" alt="The latest smartphones from $699" width="1600" height="533" loading="lazy"></a>
+        <!-- banners come from the admin panel (Banners); a placeholder shows while they load -->
+        <div class="hc-slide hc-skel" aria-hidden="true"></div>
       </div>
     </div>
     <button class="hc-arrow hc-prev" type="button" aria-label="Previous banner"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -31,12 +29,16 @@
     <div class="hc-dots" id="hcDots" role="tablist" aria-label="Choose banner"></div>
   </section>
     <section class="cat-circles-wrap" aria-label="Shop by category">
-      <div class="cat-circles" id="catCircles"></div>
+      <div class="cat-circles" id="catCircles">
+        <span class="cc-skel"></span><span class="cc-skel"></span><span class="cc-skel"></span><span class="cc-skel"></span><span class="cc-skel"></span><span class="cc-skel"></span><span class="cc-skel"></span>
+      </div>
     </section>
     </div>
     <aside class="today-deals" aria-label="Today's deals">
       <div class="td-head"><h2 data-i18n="home.today">Today's Deals</h2><span class="td-hot" data-i18n="home.hot">Hot</span></div>
-      <div class="td-list" id="tdList"></div>
+      <div class="td-list" id="tdList">
+        <div class="td-skel"></div><div class="td-skel"></div><div class="td-skel"></div><div class="td-skel"></div>
+      </div>
       <a class="td-all" href="deals.html" data-i18n="home.seeall">See all deals ›</a>
     </aside>
   </div>
@@ -81,12 +83,12 @@
 <script src="js/i18n.js?v=20261128j"></script>
 <script src="js/visit.js?v=20261127zt"></script>
 <script src="data/catalog.js"></script>
-<script src="js/data.js?v=20261127zb"></script>
+<script src="js/data.js?v=20261128w"></script>
 <script src="js/cart.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/ui.js?v=20261128v"></script>
 <script src="js/render.js"></script>
-<script src="js/home.js?v=20261128m"></script>
+<script src="js/home.js?v=20261128x"></script>
 <script>
   document.querySelectorAll(".scroll-x").forEach(function(el){ if(el.innerHTML==="__SK__") el.innerHTML=RENDER.skeletons(4); });
   UI.mount({active:"home"}).then(HOME.init);

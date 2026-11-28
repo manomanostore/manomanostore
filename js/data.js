@@ -9,10 +9,11 @@
   function pct(p) { if (!p.oldPrice || p.oldPrice <= p.price) return 0; return Math.round((1 - p.price / p.oldPrice) * 100); }
 
   // ---- load catalog -------------------------------------------------------
-  // Google Apps Script takes ~2-5 s per request, so pages never wait on it:
+  // Only REAL (Sheet) data is ever shown:
   //   1. a saved copy of the Sheet catalog (localStorage)   -> instant
-  //   2. otherwise the bundled data/products.json            -> fast
-  //   3. only if both are unavailable (e.g. file://), wait for the Sheet
+  //   2. otherwise wait for the Sheet (pages show loading placeholders)
+  // The bundled sample catalog (data/catalog.js / products.json) is used only
+  // when no backend is configured (API_URL empty, e.g. local development).
   // The Sheet is re-checked in the background (at most every few minutes) and
   // saved, so edits made in the Sheet show up on the next page view.
   var SHEET_KEY = "mm_sheet_catalog_v1", REFRESH_MS = 5 * 60 * 1000;
@@ -33,6 +34,12 @@
     if (hasData(saved)) {
       if (Date.now() - saved.at > REFRESH_MS) refreshFromSheet();
       return normalize(saved);
+    }
+    // A backend is configured: never show the sample catalog — wait for the Sheet.
+    if (C.API_URL) {
+      var live = await fetchSheet();
+      if (live) return normalize(live);
+      throw new Error("Couldn't load the catalog. Check your connection and try again.");
     }
     // Embedded catalog (data/catalog.js) — works even from file:// where fetch
     // of a local JSON file is blocked. Always check the Sheet in the background
@@ -57,6 +64,21 @@
   // Fetch the Sheet catalog and remember it. When it brings something new, swap
   // it into the in-memory cache and tell pages to re-render ("catalog:change"),
   // so Sheet edits (e.g. new categories) appear without a manual reload.
+  // First load on a new device: fetch the Sheet (retry once) and save it, even
+  // when it's still empty — an empty shop shows empty states, not sample data.
+  async function fetchSheet() {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        var r = await fetch(C.API_URL + "?action=getProducts", { method: "GET" });
+        var j = await r.json();
+        if (!j.ok) continue;
+        var data = { at: Date.now(), categories: j.categories || [], products: j.products || [], banners: j.banners || [] };
+        try { localStorage.setItem(SHEET_KEY, JSON.stringify(data)); } catch (e) {}
+        return data;
+      } catch (e) {}
+    }
+    return null;
+  }
   async function refreshFromSheet() {
     if (!C.API_URL) return null;
     try {
