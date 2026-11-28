@@ -1515,6 +1515,12 @@ window.ADMIN = (function () {
                   (s.shopStatus === "verified" ? ' · <span style="color:#12a150;font-weight:600">Verified</span>' : "") },
       fetch: function (sinceId, mark) { return call("chatThread", { sinceId: sinceId, mark: mark }); },
       send: function (m) { return call("chatSend", { text: m.text, images: m.images }); },
+      // Superadmin only: delete a message / clear the whole conversation.
+      onDelete: role() === "superadmin" ? function (m) { return call("chatDelete", { id: m.id }); } : null,
+      onClear: role() === "superadmin" ? function () {
+        return call("chatClear", {}).then(function (r) { if (r && r.ok) loadChatList().then(renderChatList).catch(function () {}); return r; });
+      } : null,
+      confirm: function (o) { return confirmDialog({ title: o.title, message: esc(o.message), confirmLabel: o.confirmLabel }); },
       onAuth: function (msg) { logout(msg); },
       onBack: function () { if (_chatPushed) history.back(); else closeThread(); }
     });

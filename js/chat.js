@@ -20,6 +20,9 @@ window.CHAT = (function () {
       emptyTitle: "How can we help?", emptySub: "Send us a message and our support team will reply here. You can attach screenshots too.",
       emptyAdminTitle: "No messages yet", emptyAdminSub: "Start the conversation — the seller will see it in their dashboard.",
       offline: "Can't reach the server. Retrying…", remove: "Remove", close: "Close", open: "Open original",
+      copy: "Copy", copyLink: "Copy image link", copied: "Copied", del: "Delete message", deleted: "Message deleted",
+      delAsk: "Delete this message? It will be removed for the seller too.", clear: "Clear conversation",
+      clearAsk: "Delete every message in this conversation? This can't be undone.", cleared: "Conversation cleared", more: "Message options",
       chips: ["Withdrawal not received", "Deposit not credited", "Shop verification", "Product question"]
     },
     hi: {
@@ -30,6 +33,9 @@ window.CHAT = (function () {
       emptyTitle: "हम कैसे मदद कर सकते हैं?", emptySub: "हमें संदेश भेजें, हमारी सपोर्ट टीम यहीं जवाब देगी। आप स्क्रीनशॉट भी भेज सकते हैं।",
       emptyAdminTitle: "अभी कोई संदेश नहीं", emptyAdminSub: "बातचीत शुरू करें — सेलर इसे अपने डैशबोर्ड में देखेगा।",
       offline: "सर्वर से कनेक्ट नहीं हो पा रहा। फिर से कोशिश हो रही है…", remove: "हटाएँ", close: "बंद करें", open: "मूल इमेज खोलें",
+      copy: "कॉपी करें", copyLink: "इमेज लिंक कॉपी करें", copied: "कॉपी हो गया", del: "संदेश हटाएँ", deleted: "संदेश हटा दिया गया",
+      delAsk: "यह संदेश हटाएँ? यह सेलर के लिए भी हट जाएगा।", clear: "बातचीत साफ़ करें",
+      clearAsk: "इस बातचीत के सभी संदेश हटाएँ? इसे वापस नहीं लाया जा सकता।", cleared: "बातचीत साफ़ कर दी गई", more: "संदेश विकल्प",
       chips: ["निकासी नहीं मिली", "जमा राशि नहीं जुड़ी", "शॉप वेरिफ़िकेशन", "प्रोडक्ट से जुड़ा सवाल"]
     }
   };
@@ -73,7 +79,9 @@ window.CHAT = (function () {
     left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>',
     ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
     img: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 18 5-5 4 4 3-3 4 4"/>',
-    alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>'
+    alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>'
   };
   function svg(name, size, extra) {
     return '<svg width="' + (size || 20) + '" height="' + (size || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"' + (extra || "") + ">" + ICON[name] + "</svg>";
@@ -149,6 +157,7 @@ window.CHAT = (function () {
         '<span class="ct-ava"></span>' +
         '<div class="ct-who"><b class="ct-title"></b><small class="ct-sub"></small></div>' +
         '<span class="ct-ist" title="Indian Standard Time"></span>' +
+        (opts.onClear ? '<button type="button" class="ct-clear">' + svg("trash", 18) + "</button>" : "") +
       "</header>" +
       '<div class="ct-scroll"><div class="ct-list" role="log" aria-live="polite"></div></div>' +
       '<button type="button" class="ct-jump" hidden>' + svg("down", 16) + "<span></span></button>" +
@@ -163,7 +172,7 @@ window.CHAT = (function () {
         "</div>" +
       "</form>" +
       '<div class="ct-drop" hidden><div>' + svg("img", 34) + "<span></span></div></div>";
-    ["head", "ava", "title", "sub", "ist", "scroll", "list", "jump", "offline", "compose", "tray", "attach", "send", "drop", "back"].forEach(function (k) { els[k] = root.querySelector(".ct-" + k); });
+    ["head", "ava", "title", "sub", "ist", "scroll", "list", "jump", "offline", "compose", "tray", "attach", "send", "drop", "back", "clear"].forEach(function (k) { els[k] = root.querySelector(".ct-" + k); });
     els.file = root.querySelector('input[type="file"]'); els.text = root.querySelector("textarea");
 
     function paintLabels() {
@@ -174,6 +183,7 @@ window.CHAT = (function () {
       els.jump.querySelector("span").textContent = L.newmsg;
       els.drop.querySelector("span").textContent = L.drop;
       els.offline.textContent = L.offline;
+      if (els.clear) { els.clear.title = L.clear; els.clear.setAttribute("aria-label", L.clear); }
     }
     function setHeader(h) {
       h = h || {};
@@ -282,6 +292,7 @@ window.CHAT = (function () {
           '<div class="' + cls + '" data-key="' + key + '">' +
             (!mine && !sameAsNext ? theirAva() : "") +
             '<div class="ct-bubble">' +
+              '<button type="button" class="ct-act" data-act aria-label="' + esc(L.more) + '" title="' + esc(L.more) + '">' + svg("down", 14) + "</button>" +
               (agent && !sameAsPrev ? '<div class="ct-agent">' + esc(agent) + "</div>" : "") +
               imagesHtml(imgs) +
               (m.text ? '<div class="ct-text">' + richText(m.text) + "</div>" : "") +
@@ -349,6 +360,16 @@ window.CHAT = (function () {
       if (added) msgs.sort(function (a, b) { return (Number(a.id) || 0) - (Number(b.id) || 0); });
       return incoming;
     }
+    // Drop messages that no longer exist on the server (deleted / conversation cleared).
+    function prune(alive) {
+      var ok = {}; alive.forEach(function (id) { ok[String(id)] = 1; });
+      var before = msgs.length;
+      msgs = msgs.filter(function (m) { return ok[String(m.id)]; });
+      if (msgs.length !== before) { byId = {}; msgs.forEach(function (m) { byId[String(m.id)] = m; }); }
+    }
+    function removeLocal(id) {
+      msgs = msgs.filter(function (m) { return String(m.id) !== String(id); }); delete byId[String(id)]; render();
+    }
     async function poll(first) {
       if (dead || busy) return;
       var visible = document.visibilityState === "visible" && isShown();
@@ -362,6 +383,7 @@ window.CHAT = (function () {
         failCount = 0; els.offline.hidden = true;
         var wasBottom = nearBottom();
         var incoming = merge(r.messages);
+        if (Array.isArray(r.alive)) prune(r.alive);
         lastSeen = Math.max(lastSeen, Number(r.lastSeen) || 0);
         lastDelivered = Math.max(lastDelivered, Number(r.lastDelivered) || 0);
         var firstLoad = !loaded; loaded = true;
@@ -461,6 +483,79 @@ window.CHAT = (function () {
         if (list.length) lightbox(list, Number(im.getAttribute("data-img")), L);
       }
     });
+    /* ---------------- message menu: copy / delete ---------------- */
+    var menu = null;
+    function closeMenu() { if (menu) { menu.remove(); menu = null; } document.removeEventListener("mousedown", outside, true); }
+    function outside(e) { if (menu && !menu.contains(e.target)) closeMenu(); }
+    function copyText(t) {
+      var done = function () { flash(L.copied); };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(t).then(done, function () { legacyCopy(t) && done(); });
+      } else if (legacyCopy(t)) done();
+    }
+    function legacyCopy(t) {
+      var ta = document.createElement("textarea"); ta.value = t; ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:-1000px;opacity:0"; document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ta.remove(); return ok;
+    }
+    function openMenu(row) {
+      var m = row && row._m; if (!m) return;
+      closeMenu();
+      var link = !m.text && (m.images || []).filter(function (u) { return /^https?:/.test(u); })[0];
+      var canDel = opts.onDelete && !m._pending && m.id != null;
+      var acts = [];
+      if (m.text) acts.push(["copy", svg("copy", 16), L.copy]);
+      else if (link) acts.push(["link", svg("copy", 16), L.copyLink]);
+      if (canDel) acts.push(["del", svg("trash", 16), L.del]);
+      if (!acts.length) return;
+      menu = document.createElement("div"); menu.className = "ct-menu"; menu.setAttribute("role", "menu");
+      menu.innerHTML = acts.map(function (a) { return '<button type="button" role="menuitem" data-do="' + a[0] + '"' + (a[0] === "del" ? ' class="danger"' : "") + ">" + a[1] + "<span>" + esc(a[2]) + "</span></button>"; }).join("");
+      root.appendChild(menu);
+      var b = row.querySelector(".ct-bubble").getBoundingClientRect(), rr = root.getBoundingClientRect();
+      var w = menu.offsetWidth, h = menu.offsetHeight, mine = row.classList.contains("mine");
+      var left = mine ? b.right - rr.left - w : b.left - rr.left, top = b.bottom - rr.top + 6;
+      if (top + h > rr.height - 8) top = b.top - rr.top - h - 6;          // no room below → open above
+      menu.style.left = Math.max(8, Math.min(left, rr.width - w - 8)) + "px";
+      menu.style.top = Math.max(8, top) + "px";
+      menu.addEventListener("click", async function (e) {
+        var btn = e.target.closest("[data-do]"); if (!btn) return;
+        var what = btn.getAttribute("data-do"); closeMenu();
+        if (what === "copy") copyText(m.text);
+        else if (what === "link") copyText(link);
+        else if (what === "del") {
+          var yes = opts.confirm ? await opts.confirm({ title: L.del, message: L.delAsk, confirmLabel: L.del }) : window.confirm(L.delAsk);
+          if (!yes) return;
+          var r; try { r = await opts.onDelete(m); } catch (x) { r = { ok: false, error: x.message }; }
+          if (r && r.ok) { removeLocal(m.id); flash(L.deleted); } else flash((r && r.error) || L.offline);
+        }
+      });
+      setTimeout(function () { document.addEventListener("mousedown", outside, true); }, 0);
+    }
+    els.list.addEventListener("click", function (e) {
+      var a = e.target.closest("[data-act]"); if (!a) return;
+      e.stopPropagation(); openMenu(a.closest(".ct-msg"));
+    }, true);
+    // right-click (desktop) / long-press (Android) on a message bubble
+    els.list.addEventListener("contextmenu", function (e) {
+      var bub = e.target.closest(".ct-bubble"); if (!bub || e.target.closest("a")) return;
+      e.preventDefault(); openMenu(bub.closest(".ct-msg"));
+    });
+    // long-press for iPhone (no contextmenu event there)
+    var lpTimer = null;
+    els.list.addEventListener("touchstart", function (e) {
+      var bub = e.target.closest(".ct-bubble"); if (!bub) return;
+      clearTimeout(lpTimer); lpTimer = setTimeout(function () { openMenu(bub.closest(".ct-msg")); }, 550);
+    }, { passive: true });
+    ["touchend", "touchmove", "touchcancel"].forEach(function (ev) { els.list.addEventListener(ev, function () { clearTimeout(lpTimer); }, { passive: true }); });
+    els.scroll.addEventListener("scroll", closeMenu, { passive: true });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+    if (els.clear) els.clear.addEventListener("click", async function () {
+      var yes = opts.confirm ? await opts.confirm({ title: L.clear, message: L.clearAsk, confirmLabel: L.clear }) : window.confirm(L.clearAsk);
+      if (!yes) return;
+      var r; try { r = await opts.onClear(); } catch (x) { r = { ok: false, error: x.message }; }
+      if (r && r.ok) { msgs = []; byId = {}; render(); flash(L.cleared); } else flash((r && r.error) || L.offline);
+    });
+
     // keep pinned to the bottom while images finish loading
     els.list.addEventListener("load", function (e) { if (e.target.tagName === "IMG" && nearBottomish) toBottom(); }, true);
     els.scroll.addEventListener("scroll", function () { nearBottomish = nearBottom(); if (nearBottomish) els.jump.hidden = true; }, { passive: true });
@@ -486,7 +581,7 @@ window.CHAT = (function () {
       focus: function () { els.text.focus(); },
       layout: layout,
       destroy: function () {
-        dead = true; clearTimeout(timer); unlayout();
+        dead = true; clearTimeout(timer); unlayout(); closeMenu();
         document.removeEventListener("visibilitychange", onVis);
         window.removeEventListener("resize", layout);
         if (window.visualViewport) { visualViewport.removeEventListener("resize", layout); visualViewport.removeEventListener("scroll", layout); }

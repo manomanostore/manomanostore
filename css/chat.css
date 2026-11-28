@@ -325,3 +325,24 @@ html.ct-lock,html.ct-lock body{overflow:hidden !important;overscroll-behavior:no
 .sp-panel.sp-site .sp-gbtns .sec:hover{background:#f4f6fa;border-color:#16233f}
 .sp-panel.sp-site .ct-ava.online::after{background:#b6e94f;border-color:#fff}
 .sp-panel.sp-site .ct-is-full .ct-ava.online::after{border-color:#16233f}
+
+/* ---- message options (copy / delete) ---- */
+/* sits just outside the bubble (right of theirs, left of mine) so it never covers text */
+.ct .ct-act{position:absolute;top:50%;right:-32px;transform:translateY(-50%);width:26px;height:26px;border:1px solid #e3e7f0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+  background:#fff;color:#55617a;box-shadow:0 1px 4px rgba(20,30,60,.12);opacity:0;transition:opacity .12s;z-index:2;padding:0}
+.ct .ct-msg.mine .ct-act{right:auto;left:-32px}
+.ct .ct-act:hover{color:#1f58e0;border-color:#c9d6f5}
+.ct .ct-msg:hover .ct-act{opacity:1}
+.ct .ct-act:focus-visible{opacity:1}
+@media (hover:none){ .ct .ct-act{display:none} }           /* phones: long-press the message instead */
+.ct-menu{position:absolute;z-index:30;min-width:170px;background:#fff;border:1px solid #e6e9f2;border-radius:12px;box-shadow:0 14px 34px rgba(16,25,50,.2);padding:5px;animation:ctMenu .12s ease}
+@keyframes ctMenu{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.ct-menu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;padding:9px 10px;border-radius:8px;font:inherit;font-size:14px;font-weight:600;color:#17203a;cursor:pointer;text-align:left}
+.ct-menu button:hover{background:#f2f5fb}
+.ct-menu button svg{color:#6b7488;flex:none}
+.ct-menu button.danger{color:#d93636}.ct-menu button.danger svg{color:#d93636}
+.ct-menu button.danger:hover{background:#fdeeee}
+.ct .ct-clear{flex:0 0 auto;width:34px;height:34px;border-radius:10px;border:1px solid var(--ct-line);background:var(--ct-card);color:#d93636;display:grid;place-items:center;cursor:pointer;margin-left:6px;padding:0}
+.ct .ct-clear:hover{background:#fdeeee;border-color:#f3c3c8}
+.ct.ct-is-full .ct-clear{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.25);color:#fff}
+.ct-text{user-select:text;-webkit-user-select:text}

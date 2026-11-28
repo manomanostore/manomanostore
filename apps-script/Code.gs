@@ -94,7 +94,7 @@ var PERMS = {
   saveBanner: ["superadmin", "manager"], deleteBanner: ["superadmin", "manager"],
   listWallet: ADMIN_ROLES, walletFeed: ADMIN_ROLES, addTx: ADMIN_ROLES, updateTx: ["superadmin", "manager"], setGuarantee: ADMIN_ROLES,
   listAdmins: ["superadmin"], saveAdmin: ["superadmin"], deleteAdmin: ["superadmin"],
-  chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES,
+  chatList: ADMIN_ROLES, chatThread: ADMIN_ROLES, chatSend: ADMIN_ROLES, chatDelete: ["superadmin"], chatClear: ["superadmin"],
   sellerShop: ADMIN_ROLES, placeOrder: ADMIN_ROLES, editOrder: ADMIN_ROLES, deleteOrder: ADMIN_ROLES,
   listVisitors: ["superadmin", "manager"], visitorBadge: ["superadmin", "manager"], blockVisitor: ["superadmin", "manager"], clearVisitors: ["superadmin"]
 };
@@ -1368,7 +1368,10 @@ function chatFetch(sellerId, viewer, sinceId, mark) {
   var since = Number(sinceId) || 0;
   var out = rows.filter(function (r) { return (Number(r.id) || 0) > since; }).map(chatMsgPublic);
   if (!since && out.length > 300) out = out.slice(-300);
-  return { messages: out, lastDelivered: lastDelivered, lastSeen: lastSeen, unread: unread, lastId: lastId };
+  // Ids of every message that still exists, so both apps drop messages the
+  // superadmin deleted (or a cleared conversation) on their next refresh.
+  var alive = rows.map(function (r) { return Number(r.id) || 0; });
+  return { messages: out, alive: alive, lastDelivered: lastDelivered, lastSeen: lastSeen, unread: unread, lastId: lastId };
 }
 
 // Save a new message. Images (base64 data URLs) are uploaded BEFORE taking the
@@ -1448,6 +1451,42 @@ function adminChatThread(p, meData) {
   if (deny) return deny;
   return chatFetch(sid, "support", p.sinceId, p.mark === "delivered" ? "delivered" : "seen");
 }
+// Superadmin: delete one message (and its uploaded images) from a conversation.
+function adminChatDelete(p, meData) {
+  var sid = p.sellerId, deny = adminChatAllowed(sid, meData);
+  if (deny) return deny;
+  var sh = sheet("messages"), vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x == null ? "" : x).trim(); });
+  var cId = h.indexOf("id"), cSel = h.indexOf("seller_id"), cImg = h.indexOf("images_json");
+  for (var i = vals.length - 1; i >= 1; i--) {
+    if (String(vals[i][cId]) === String(p.id) && String(vals[i][cSel]) === String(sid)) {
+      if (cImg > -1) parseImages(vals[i][cImg]).forEach(function (u) { if (/drive\.google\.com/i.test(u)) deleteDriveFile(u); });
+      sh.deleteRow(i + 1);
+      return { deleted: Number(p.id) || p.id };
+    }
+  }
+  return { ok: false, error: "Message not found — it may already be deleted." };
+}
+
+// Superadmin: delete every message in one seller's conversation (and their images).
+function adminChatClear(p, meData) {
+  var sid = p.sellerId, deny = adminChatAllowed(sid, meData);
+  if (deny) return deny;
+  var sh = sheet("messages"), vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x == null ? "" : x).trim(); });
+  var cSel = h.indexOf("seller_id"), cImg = h.indexOf("images_json"), n = 0;
+  // Delete bottom-up in runs of consecutive rows (fast, and row numbers stay valid).
+  var i = vals.length - 1;
+  while (i >= 1) {
+    if (String(vals[i][cSel]) !== String(sid)) { i--; continue; }
+    var end = i;
+    while (i >= 1 && String(vals[i][cSel]) === String(sid)) {
+      if (cImg > -1) parseImages(vals[i][cImg]).forEach(function (u) { if (/drive\.google\.com/i.test(u)) deleteDriveFile(u); });
+      i--;
+    }
+    sh.deleteRows(i + 2, end - i); n += end - i;
+  }
+  return { cleared: n };
+}
+
 function adminChatSend(p, meData) {
   var sid = p.sellerId, deny = adminChatAllowed(sid, meData);
   if (deny) return deny;
@@ -1617,6 +1656,8 @@ function adminCall(b) {
       chatList:        function () { return adminChatList(me.data); },
       chatThread:      function () { return adminChatThread(p, me.data); },
       chatSend:        function () { return adminChatSend(p, me.data); },
+      chatDelete:      function () { return withLock(function () { return adminChatDelete(p, me.data); }); },
+      chatClear:       function () { return withLock(function () { return adminChatClear(p, me.data); }); },
       listVisitors:    function () { return listVisitors(); },
       visitorBadge:    function () { return visitorBadge(); },
       blockVisitor:    function () { return withLock(function () { return blockVisitor(p, me.data); }); },
