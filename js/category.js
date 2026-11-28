@@ -15,6 +15,8 @@ window.CATEGORY = (function () {
     if (!p.cat && !p.q && !p.badge && !p.deals && !p.all) return showIndex();
 
     var title = "Browse", list = [];
+    var shopsDone = null;
+    if (p.q && window.SHOPS) shopsDone = SHOPS.search(p.q);     // stores matching the search, fetched alongside
     if (p.q) { title = 'Results for "' + p.q + '"'; list = await DATA.search(p.q); }
     else if (p.badge === "choice") { title = CONFIG.BRAND_SHORT + " Choice"; list = await DATA.choice(); }
     else if (p.deals) { title = "Deals for every project"; list = await DATA.deals(); }
@@ -41,6 +43,11 @@ window.CATEGORY = (function () {
     buildFilters(list);
     buildSort();
     apply();
+    if (shopsDone) shopsDone.then(function (shops) {
+      SHOPS.renderResults(document.getElementById("shopResults"), shops);
+      // Only stores matched: show them without an empty product list under them.
+      if (shops.length && !list.length) document.getElementById("listing").hidden = true;
+    });
   }
 
   async function showIndex() {

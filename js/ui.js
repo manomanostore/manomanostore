@@ -295,6 +295,10 @@
       var q = document.getElementById("searchInput").value.trim();
       location.href = "category.html?q=" + encodeURIComponent(q);
     });
+    searchSuggest(form, document.getElementById("searchInput"));
+    // Results page: keep the searched words in the search box.
+    var sq = /category\.html$/i.test(location.pathname) ? new URLSearchParams(location.search).get("q") : "";
+    if (sq) document.getElementById("searchInput").value = sq;
 
     // drawer open/close
     function openD(){document.getElementById("drawer").classList.add("open");document.getElementById("drawerBack").classList.add("open");}
@@ -323,7 +327,7 @@
     menu.innerHTML = Object.keys(langs).map(function (l) {
       return '<button type="button" class="lang-opt" role="menuitem" data-lang="'+l+'">'+
         '<span class="lang-flag">'+langs[l].flag+'</span><span class="lang-nm">'+esc(langs[l].name)+'<small>'+esc(langs[l].country)+'</small></span></button>';
-    }).join("");
+    }).join("") + (I18N.moreItem ? I18N.moreItem() : "");
     function paint() {
       var l = I18N.get();
       cur.innerHTML = '<span class="lang-flag">'+langs[l].flag+'</span><span class="lang-code">'+esc(langs[l].code)+'</span>';
@@ -413,6 +417,95 @@
     var input = document.getElementById("searchInput");
     if (input) input.addEventListener("focus", function () { wrap.classList.remove("compact"); setVisible(); });
     setVisible(); update();
+  }
+
+  /* ---------------- Search suggestions (header search, every page) ----------
+     While typing (2+ letters) a list opens under the search box: matching
+     seller SHOPS (by shop name or seller name, from the server, with their
+     picture) and matching PRODUCTS (from the loaded catalog, with image and
+     price), plus "See all results". Arrow keys + Enter pick an entry, Esc or a
+     click outside closes it. Shop answers are cached per word typed. */
+  function searchSuggest(form, input) {
+    if (!form || !input || form._sugg) return;
+    form._sugg = true;
+    var box = document.createElement("div");
+    box.className = "sugg"; box.id = "searchSugg"; box.hidden = true; box.setAttribute("role", "listbox");
+    form.appendChild(box);
+    input.setAttribute("aria-controls", "searchSugg"); input.setAttribute("aria-autocomplete", "list");
+    var shopCache = {}, timer = 0, seq = 0, active = -1;
+
+    function shops(q) {
+      var k = q.toLowerCase();
+      if (!window.CONFIG || !CONFIG.API_URL) return Promise.resolve([]);
+      if (!shopCache[k]) shopCache[k] = fetch(CONFIG.API_URL + "?action=searchShops&q=" + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (j) { return (j && j.ok && j.shops) || []; })
+        .catch(function () { delete shopCache[k]; return []; });
+      return shopCache[k];
+    }
+    function products(q) {
+      if (!window.DATA || !DATA.search) return Promise.resolve([]);
+      return DATA.search(q).then(function (l) { return l.slice(0, 5); }, function () { return []; });
+    }
+    // Bold the typed part of a name.
+    function mark(text, q) {
+      text = String(text || ""); var i = text.toLowerCase().indexOf(q.toLowerCase());
+      if (i < 0) return esc(text);
+      return esc(text.slice(0, i)) + "<mark>" + esc(text.slice(i, i + q.length)) + "</mark>" + esc(text.slice(i + q.length));
+    }
+    function shopAvatar(s) {
+      var img = window.DATA && DATA.safeImageUrl ? DATA.safeImageUrl(s.shopImage) : "";
+      var name = String(s.shopName || "?"), n = 0;
+      for (var i = 0; i < name.length; i++) n = (n + name.charCodeAt(i)) % 997;
+      var C = ["#2f6df6", "#16a37f", "#e0712b", "#8b5cf6", "#d93676", "#0e9fb5", "#c2901a"];
+      return '<span class="shop-av" style="--av:' + C[n % C.length] + '">' +
+        (img ? '<img src="' + esc(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : "") +
+        "<b>" + esc(name.trim().charAt(0).toUpperCase() || "?") + "</b></span>";
+    }
+    function render(q, ps, ss, shopsLoading) {
+      var h = "";
+      if (ss.length) h += '<div class="sugg-h">Shops</div>' + ss.slice(0, 5).map(function (s) {
+        return '<a class="sugg-i" role="option" href="shop.html?id=' + encodeURIComponent(s.id) + '">' + shopAvatar(s) +
+          '<span class="sugg-t"><b>' + mark(s.shopName, q) + "</b><small>" + (s.verified ? '<span class="sugg-ver">✓ Verified</span> · ' : "") +
+          s.products + " product" + (s.products === 1 ? "" : "s") + "</small></span>" +
+          '<span class="sugg-tag">Shop</span></a>';
+      }).join("");
+      else if (shopsLoading) h += '<div class="sugg-h">Shops</div><div class="sugg-load"><span class="sugg-spin"></span>Searching shops…</div>';
+      if (ps.length) h += '<div class="sugg-h">Products</div>' + ps.map(function (p) {
+        return '<a class="sugg-i" role="option" href="product.html?id=' + encodeURIComponent(p.id) + '">' +
+          '<img src="' + DATA.productImage(p, 120) + '" alt="" loading="lazy">' +
+          '<span class="sugg-t"><b>' + mark(p.name, q) + "</b><small>" + DATA.money(p.price) + "</small></span></a>";
+      }).join("");
+      if (!ss.length && !ps.length && !shopsLoading) h += '<div class="sugg-none">No shops or products match “' + esc(q) + '”.</div>';
+      h += '<a class="sugg-all" role="option" href="category.html?q=' + encodeURIComponent(q) + '">See all results for “' + esc(q) + '” ›</a>';
+      box.innerHTML = h; box.hidden = false; active = -1;
+      input.setAttribute("aria-expanded", "true");
+    }
+    function close() { seq++; box.hidden = true; active = -1; input.setAttribute("aria-expanded", "false"); }
+    function run() {
+      var q = input.value.trim(), my = ++seq;
+      if (q.length < 2) { close(); return; }
+      var ps = [], ss = [], shopsDone = false;
+      products(q).then(function (l) { if (my === seq) { ps = l; render(q, ps, ss, !shopsDone); } });
+      shops(q).then(function (l) { if (my === seq) { ss = l; shopsDone = true; render(q, ps, ss, false); } });
+    }
+    function items() { return [].slice.call(box.querySelectorAll(".sugg-i, .sugg-all")); }
+    function highlight(i) {
+      var list = items(); if (!list.length) return;
+      active = (i + list.length) % list.length;
+      list.forEach(function (el, k) { el.classList.toggle("on", k === active); });
+      list[active].scrollIntoView({ block: "nearest" });
+    }
+    input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(run, 220); });
+    input.addEventListener("focus", function () { if (input.value.trim().length >= 2 && box.hidden) run(); });
+    input.addEventListener("keydown", function (e) {
+      if (box.hidden) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); highlight(active + 1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); highlight(active - 1); }
+      else if (e.key === "Escape") { close(); }
+      else if (e.key === "Enter" && active > -1) { e.preventDefault(); var el = items()[active]; if (el) location.href = el.getAttribute("href"); }
+    });
+    document.addEventListener("pointerdown", function (e) { if (!form.contains(e.target)) close(); });
   }
 
   /* ---------------- Floating support chat (every shop page) ----------------

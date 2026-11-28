@@ -1043,7 +1043,7 @@
       var l = langs[code];
       return '<button type="button" data-l="' + code + '"' + (code === I18N.get() ? ' class="on"' : '') +
         '><span class="sd-fl">' + l.flag + '</span><span class="lang-nm">' + l.name + '<small>' + l.country + '</small></span></button>';
-    }).join("");
+    }).join("") + (I18N.moreItem ? I18N.moreItem() : "");
     paintBtn();
     function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
     btn.addEventListener("click", function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); });
@@ -1072,6 +1072,9 @@
     var verified = String(session.shopStatus) === "1" || session.shopStatus === 1 || session.shopStatus === "verified";
 
     paintIdentity(session);
+    // "View your shop" opens this seller's public store page.
+    var vs = document.querySelector('.sd-nav a [data-i18n="sd.viewshop"]');
+    if (vs && session.id != null) vs.parentNode.href = "shop.html?id=" + encodeURIComponent(session.id);
     $("sdStars").innerHTML = stars(rating);
     $("sdRnum").textContent = rating.toFixed(1);
 

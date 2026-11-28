@@ -304,6 +304,22 @@ window.I18N = (function () {
   }
   if (LANGS[lang].g) startGoogle(LANGS[lang].g); else clearGoogleCookie();
 
+  // Footer shown under the languages in every language menu: "More +".
+  // Informational only — it isn't a button, and clicking it does
+  // nothing (the menu stays open). Styled once here so the shop, seller panel
+  // and admin panel menus all look the same.
+  function moreItem() {
+    if (!document.getElementById("langMoreCss")) {
+      var st = document.createElement("style"); st.id = "langMoreCss";
+      st.textContent = ".lang-more{display:block;margin:6px 2px 0;padding:11px 10px 8px 42px;border-top:1px solid rgba(16,35,63,.1);" +
+        "font-size:14px;font-weight:600;color:#7a8499;cursor:default;user-select:none;-webkit-user-select:none}";
+      (document.head || document.documentElement).appendChild(st);
+      // Clicks on it are swallowed, so the menu doesn't close or pick anything.
+      document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".lang-more")) { e.stopPropagation(); e.preventDefault(); } }, true);
+    }
+    return '<div class="lang-more" role="presentation" aria-disabled="true">More +</div>';
+  }
+
   // Builds a flag language picker: a button (flag + code) and a menu of every
   // language. Used by the admin panel; the shop and seller panel have their own
   // markup but share LANGS / setLang.
@@ -315,7 +331,7 @@ window.I18N = (function () {
       var L = LANGS[k];
       return '<button type="button" class="' + cls + (k === lang ? ' on' : '') + '" role="menuitem" data-lang="' + k + '">' +
         '<span class="lang-flag">' + L.flag + '</span><span class="lang-nm">' + L.name + '<small>' + L.country + '</small></span></button>';
-    }).join("");
+    }).join("") + moreItem();
     var close = function () { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
     btn.addEventListener("click", function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); });
     menu.addEventListener("click", function (e) { var o = e.target.closest("[data-lang]"); if (o) { close(); setLang(o.getAttribute("data-lang")); } });
@@ -323,5 +339,5 @@ window.I18N = (function () {
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
   }
 
-  return { t: t, apply: apply, setLang: setLang, get: function () { return lang; }, langs: LANGS, picker: picker };
+  return { t: t, apply: apply, setLang: setLang, get: function () { return lang; }, langs: LANGS, picker: picker, moreItem: moreItem };
 })();

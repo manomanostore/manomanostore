@@ -1172,6 +1172,10 @@ window.ADMIN = (function () {
       ? f("vCode", "Staff code", '<input value="'+esc(myStaffCode())+'" readonly><small class="adm-hint-sm">The seller is added under your code.</small>') : "";
     var pwField = f("vPw", (isNew ? "Password" : "New password") + ' <span class="opt">(' + (isNew ? "needed to sign in" : "leave blank to keep") + ')</span>',
       '<input id="vPw" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters">');
+    // Shop created date as an IST calendar day (YYYY-MM-DD) for the date picker.
+    var IST_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+    var todayIst = IST_DAY.format(new Date()), cd = v.createdAt ? new Date(v.createdAt) : null;
+    var createdDay = cd && !isNaN(cd) ? IST_DAY.format(cd) : (isNew ? todayIst : "");
     var cur = String(v.staffCode || v.invite || (isNew && venStaff !== "-" ? venStaff : "") || "").toUpperCase();
     var staffSel = role() !== "staff" && (catalog && catalog.staff || []).length
       ? f("vStaff", "Staff member", '<select id="vStaff"><option value="">— None —</option>'+catalog.staff.map(function (x) {
@@ -1190,6 +1194,8 @@ window.ADMIN = (function () {
         f("vStatus", "Login access", loginSel) +
         f("vShopStatus", "Shop status", shopSel) +
         f("vRating", "Rating <span class=\"opt\">(0–5)</span>", '<input id="vRating" type="number" min="0" max="5" step="0.5" value="'+esc(v.rating == null ? '' : v.rating)+'" placeholder="0–5">') +
+        f("vCreated", "Shop created date", '<input id="vCreated" type="date" max="'+todayIst+'" value="'+esc(createdDay)+'">'+
+          '<small class="adm-hint-sm">Shown on the shop page as “Seller since”.</small>') +
         pwField + extra +
       '</div>',
       async function () {
@@ -1208,6 +1214,9 @@ window.ADMIN = (function () {
           if (email && AUTH.loginId(phone).length >= 6) payload.passwordHashPhone = await AUTH.hash("seller:" + AUTH.loginId(phone), pw);
         }
         if ($("vStaff")) payload.invite = $("vStaff").value;
+        var day = $("vCreated").value;
+        if (day && day > todayIst) return "The shop created date can't be in the future.";
+        if (day && day !== createdDay) payload.createdAt = day;   // only when changed (keeps the original time otherwise)
         var r = await api("saveVendor", payload);
         if (!r.ok) return r.error;
         catalogChanged(); toast(isNew ? "Seller added" : "Seller saved"); route();

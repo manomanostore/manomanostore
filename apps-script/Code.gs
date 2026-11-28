@@ -52,6 +52,9 @@ var SELLER_TOKEN_HOURS = 24 * 365 * 10;
 // recharge screen). Change this to your own address.
 var USDT_ADDRESS = "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
+// Shown when a frozen seller tries to sign in (or uses an open session).
+var FROZEN_MSG = "Your account has been frozen. Please contact support.";
+
 // Currency symbol stored with every wallet transaction (change once here).
 var CURRENCY_SYMBOL = "₹";
 var ORDER_STATUSES = ["pending", "received", "processing", "shipped", "delivered", "cancelled"];
@@ -59,7 +62,7 @@ var ORDER_STATUSES = ["pending", "received", "processing", "shipped", "delivered
 var SHEETS = {
   users:      { name: "Users",      headers: ["id","username","name","passwordHash","role","status","createdAt","updatedAt","lastLoginAt","tokenHash","tokenExpires","staff_code"],
                 textCols: ["username","passwordHash","tokenHash","staff_code"] },
-  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","shopImageURL","invite","rating","passwordHash","createdAt","updatedAt","tokenHash","tokenExpires","passwordHashPhone"],
+  sellers:    { name: "Sellers",    headers: ["id","name","email","phone","status","shopName","shop_status","staff_code","certType","certFront","certBack","shopImageURL","invite","rating","passwordHash","createdAt","updatedAt","tokenHash","tokenExpires","passwordHashPhone","frozen","frozenAt"],
                 textCols: ["phone","email","passwordHash","staff_code","tokenHash","passwordHashPhone"] },
   orders:     { name: "Orders",     headers: ["id","userId","identifier","itemsJson","total","status","createdAt",
                                               "seller_id","customer_name","customer_phone","address","note","created_by","updatedAt"],
@@ -105,6 +108,8 @@ function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || "health";
   try {
     if (action === "getProducts") return json({ ok: true, categories: readCategories(), products: readProducts(false), banners: readBanners(false) });
+    if (action === "searchShops") return json(searchShops(e.parameter.q));
+    if (action === "getShop")     return json(getShop(e.parameter.id));
     if (action === "setupAdmin")  return json(withLock(function () { return setupAdmin(e.parameter || {}); }));
     if (action === "initSheets")  return json(withLock(function () { initSheets(); return { ok: true, message: "Sheets created / updated (columns added)." }; }));
     return json({ ok: true, status: "alive", brand: "ManoMano" });
@@ -457,6 +462,9 @@ function sellerLogin(b) {
       return { ok: false, error: "Mobile sign-in isn't set up for this account yet. Sign in once with your email — after that your mobile number works too." };
     return { ok: false, error: "Incorrect email/mobile or password." };
   }
+  // Frozen by staff/admin: refused even with the right password (checked after it,
+  // so a wrong password never reveals the account state).
+  if (truthyFlag(v.frozen)) return { ok: false, frozen: true, error: FROZEN_MSG };
   if (!truthyFlag(v.status))
     return { ok: false, error: "Your shop is pending review. You can sign in once a staff member approves it." };
   ensureColumns("sellers", ["tokenHash", "tokenExpires"]);   // so the token can be stored even if initSheets wasn't run
@@ -513,6 +521,7 @@ function requireSeller(token) {
     if (rows[i].tokenHash && String(rows[i].tokenHash) === h) {
       if (!rows[i].tokenExpires || new Date(rows[i].tokenExpires) < new Date())
         throw new Error("AUTH: Your session expired. Please sign in again.");
+      if (truthyFlag(rows[i].frozen)) throw new Error("AUTH: " + FROZEN_MSG);   // frozen while signed in
       return rows[i];
     }
   }
@@ -550,10 +559,7 @@ function sellerUpdateProfile(b) {
 
     var v = readRows("sellers").filter(function (r) { return String(r.id) === String(me.id); })[0] || me;
     return { ok: true, seller: publicSeller(v, b.token) };
-  } catch (err) {
-    var msg = String(err && err.message || err);
-    return { ok: false, auth: msg.indexOf("AUTH: ") === 0, error: msg.replace(/^AUTH: /, "") };
-  }
+  } catch (err) { return authErr(err); }
 }
 
 // Seller changes their own password. Both the current and new passwords arrive
@@ -573,10 +579,56 @@ function sellerChangePassword(b) {
     var res = saveRecord("sellers", patch, function () { return ""; });
     if (!res.ok) return res;
     return { ok: true };
-  } catch (err) {
-    var msg = String(err && err.message || err);
-    return { ok: false, auth: msg.indexOf("AUTH: ") === 0, error: msg.replace(/^AUTH: /, "") };
-  }
+  } catch (err) { return authErr(err); }
+}
+
+/* ---- Public seller stores (website search + store page) ----
+   Anyone can find a store by its shop name or the seller's name and open it.
+   Only APPROVED sellers (status 1) are listed, and only public details leave
+   the server: shop name, shop image, verified flag, rating, join date and the
+   products the shop sells. Never the seller's email / phone / password or
+   token data, and never stock quantities. */
+function shopIso(x) { return x instanceof Date ? x.toISOString() : String(x || ""); }
+// The shop's products that are on sale in the public catalog: one entry per
+// catalog product (no quantities), newest first.
+function shopProducts(sellerId, pub) {
+  var seen = {}, out = [];
+  readRows("sellerproducts").filter(function (r) {
+    return r.id !== "" && String(r.seller_id) === String(sellerId) && String(r.status || "active") === "active";
+  }).reverse().forEach(function (r) {
+    var p = pub[String(r.product_id)];
+    if (!p || seen[String(p.id)]) return;
+    seen[String(p.id)] = 1;
+    out.push({ id: p.id, name: p.name, price: p.price, oldPrice: p.oldPrice, rating: p.rating, badge: p.badge,
+               cat_id: p.cat_id, imageUrl: p.imageUrl, images: p.images });
+  });
+  return out;
+}
+function publicCatalogMap() { var m = {}; readProducts(false).forEach(function (p) { m[String(p.id)] = p; }); return m; }
+function shopCard(v, count) {
+  return { id: Number(v.id) || v.id, shopName: String(v.shopName || v.name || "Shop #" + v.id), shopImage: String(v.shopImageURL || ""),
+           verified: truthyFlag(v.shop_status), rating: clampRating(v.rating), products: count, since: shopIso(v.createdAt) };
+}
+function searchShops(q) {
+  q = String(q || "").trim().toLowerCase().slice(0, 60);
+  if (q.length < 2) return { ok: true, shops: [] };
+  var pub = publicCatalogMap();
+  var shops = readRows("sellers").filter(function (v) {
+    return v.id !== "" && truthyFlag(v.status) && !truthyFlag(v.frozen) && (String(v.shopName || "") + " " + String(v.name || "")).toLowerCase().indexOf(q) > -1;
+  }).map(function (v) {
+    var c = shopCard(v, shopProducts(v.id, pub).length);
+    c._starts = String(v.shopName || "").toLowerCase().indexOf(q) === 0 ? 0 : 1;
+    return c;
+  }).sort(function (a, b) { return (a._starts - b._starts) || (b.products - a.products) || a.shopName.localeCompare(b.shopName); })
+    .slice(0, 12);
+  shops.forEach(function (c) { delete c._starts; });
+  return { ok: true, shops: shops };
+}
+function getShop(id) {
+  var v = readRows("sellers").filter(function (r) { return r.id !== "" && String(r.id) === String(id); })[0];
+  if (!v || !truthyFlag(v.status) || truthyFlag(v.frozen)) return { ok: false, error: "This shop isn't available." };
+  var products = shopProducts(v.id, publicCatalogMap());
+  return { ok: true, shop: shopCard(v, products.length), products: products };
 }
 
 /* ---- A seller's own products (picked from the Storehouse catalog) ---- */
@@ -588,8 +640,7 @@ function sellerListProducts(b) {
     var me = requireSeller(b.token);
     return { ok: true, products: sellerProductList(me.id) };
   } catch (err) {
-    var m = String(err && err.message || err);
-    return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
+    return authErr(err);
   }
 }
 // The products in one seller's shop (SellerProducts rows), refreshed with the
@@ -683,8 +734,7 @@ function sellerAddProducts(b) {
 
     return { ok: true, added: added, updated: updated, charged: cost, walletMoney: round2(wallet - cost) };
   } catch (err) {
-    var m = String(err && err.message || err);
-    return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
+    return authErr(err);
   }
 }
 
@@ -696,8 +746,7 @@ function sellerRemoveProduct(b) {
     if (!row) return { ok: false, error: "Product not found in your shop." };
     return deleteRecord("sellerproducts", b.id);
   } catch (err) {
-    var m = String(err && err.message || err);
-    return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
+    return authErr(err);
   }
 }
 
@@ -791,7 +840,11 @@ function txPublic(r) {
            currency: String(r.currency || CURRENCY_SYMBOL), account: String(r.account || ""), voucher: String(r.voucher || ""),
            status: String(r.status || "pending"), note: String(r.note || ""), createdAt: r.createdAt };
 }
-function authErr(err) { var m = String(err && err.message || err); return { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") }; }
+function authErr(err) {
+  var m = String(err && err.message || err), out = { ok: false, auth: m.indexOf("AUTH: ") === 0, error: m.replace(/^AUTH: /, "") };
+  if (out.error === FROZEN_MSG) out.frozen = true;
+  return out;
+}
 
 // Seller's wallet screen: balances, the deposit address, and their history.
 function sellerWallet(b) {
@@ -1057,6 +1110,15 @@ function adminSaveVendor(p, meData) {
   if (p.id) { var deny = ownsSellerCheck(p.id, meData); if (deny) return deny; }
   else if (staff && !myCode) return { ok: false, error: "Your account has no staff code yet. Ask an admin to run initSheets." };
 
+  // Shop created date (optional, "YYYY-MM-DD" in IST): a real date, not in the future.
+  var created = "";
+  if (p.createdAt !== undefined && p.createdAt !== "") {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(p.createdAt));
+    var d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null;
+    if (!d || d.getUTCDate() !== +m[3] || +m[1] < 2000) return { ok: false, error: "Enter a valid shop created date." };
+    if (String(p.createdAt) > Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd")) return { ok: false, error: "The shop created date can't be in the future." };
+    created = p.createdAt + "T00:00:00+05:30";
+  }
   var rec = {};
   ["id", "shopName", "name", "email", "phone", "status", "shop_status", "rating"].forEach(function (k) { if (p[k] !== undefined) rec[k] = p[k]; });
   if (rec.email !== undefined) rec.email = normId(rec.email);
@@ -1064,6 +1126,16 @@ function adminSaveVendor(p, meData) {
   if (p.passwordHash) {
     rec.passwordHash = String(p.passwordHash);
     rec.passwordHashPhone = p.passwordHashPhone ? String(p.passwordHashPhone) : "";   // mobile sign-in for sellers with email + mobile
+    rec.tokenHash = ""; rec.tokenExpires = "";   // new password set by staff → signed out everywhere
+  }
+  // Freeze / unfreeze the account (frozen sellers can't sign in; open sessions end).
+  if (p.frozen !== undefined) {
+    var fz = p.frozen === true || truthyFlag(p.frozen);
+    rec.frozen = fz ? "1" : "";
+    if (p.id) {
+      var was = readRows("sellers").filter(function (v) { return String(v.id) === String(p.id); })[0];
+      if (!was || truthyFlag(was.frozen) !== fz) rec.frozenAt = fz ? istNow() : "";
+    } else rec.frozenAt = fz ? istNow() : "";
   }
 
   if (!staff && p.invite !== undefined) {          // superadmin/manager: assign to a staff member ("" = none)
@@ -1100,6 +1172,10 @@ function adminSaveVendor(p, meData) {
   ensureColumns("sellers", SHEETS.sellers.headers);
   var res = saveRecord("sellers", rec, validateVendor);
   if (!res.ok) return res;
+  if (created) {   // saveRecord never changes createdAt, so write it here
+    var sh = sheet("sellers"), row = findRowById(sh, res.record.id), col = sheetHeaders("sellers").indexOf("createdAt") + 1;
+    if (row && col) sh.getRange(row, col).setNumberFormat("@").setValue(created);
+  }
   return { ok: true, id: res.record.id };
 }
 
@@ -1137,6 +1213,7 @@ function readSellers() {
     v.shopStatus = truthyFlag(v.shop_status) ? "verified" : "unverified";
     v.staffCode = String(v.staff_code || "");
     v.rating = clampRating(v.rating);
+    v.frozen = truthyFlag(v.frozen);
     return v;
   });
 }
