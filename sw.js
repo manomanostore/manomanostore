@@ -1,5 +1,5 @@
 /* Service worker — app-shell cache for an app-like, offline-capable PWA */
-var CACHE = "manomano-v109";
+var CACHE = "manomano-v112";
 var SHELL = [
   "index.html", "category.html", "product.html", "cart.html", "login.html", "account.html", "blog.html", "brands.html", "sell.html", "seller-dashboard.html",
   "css/styles.css",

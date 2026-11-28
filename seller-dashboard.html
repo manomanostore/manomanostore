@@ -148,6 +148,15 @@
   .pw-toggle:focus-visible{outline:2px solid var(--blue,#2f6bff);outline-offset:1px}
   .pw-toggle[aria-pressed="true"]{color:var(--blue,#2f6bff)}
   input::-ms-reveal,input::-ms-clear{display:none}
+  /* products: delivered / pending order quantities */
+  .sd-tord{white-space:nowrap}
+  .sd-tqty{white-space:nowrap}
+  .sd-tqty.out{background:#fdecec;color:#c62828}
+  .sd-tqsub{font-size:11.5px;color:var(--muted,#8a94a8);margin-top:3px;white-space:nowrap}
+  .sd-ochip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 9px;border-radius:999px;font-weight:700;font-size:12px;margin:2px 6px 2px 0}
+  .sd-ochip.ok{background:#e9faf0;color:#13865a}
+  .sd-ochip.wait{background:#fff4e0;color:#a35c00}
+  .sd-omuted{color:var(--muted,#8a94a8);font-size:12.5px}
   .sd-table .sd-tno{width:44px;text-align:center;color:var(--muted,#6b7280);font-weight:700;font-variant-numeric:tabular-nums}
   .sd-fl{display:inline-flex}
   .lang-flag-img{width:22px;height:15px;border-radius:3px;object-fit:cover;box-shadow:0 0 0 1px rgba(0,0,0,.12);display:block}
@@ -888,12 +897,12 @@
 <div class="sd-toast" id="sdToast"></div>
 
 <script src="js/config.js?v=20261127zi"></script>
-<script src="js/i18n.js?v=20261128j"></script>
+<script src="js/i18n.js?v=20261128ze"></script>
 <script src="js/visit.js?v=20261127zt"></script>
 <script src="js/ui.js?v=20261128v"></script>
 <script src="js/auth.js?v=20261127zi"></script>
 <script src="js/login.js?v=20261127zi"></script>
 <script src="js/chat.js?v=20261128v"></script>
-<script src="js/seller-dashboard.js?v=20261128v"></script>
+<script src="js/seller-dashboard.js?v=20261128ze"></script>
 </body>
 </html>

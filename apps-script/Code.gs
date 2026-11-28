@@ -552,21 +552,40 @@ function sellerListProducts(b) {
 // The products in one seller's shop (SellerProducts rows), refreshed with the
 // catalog's current name / price / profit / image. Used by the seller dashboard
 // and by staff placing an order on a seller's behalf.
+// qty = units still AVAILABLE in the shop: bought − delivered (delivered orders
+// take units out of stock). Computed, so moving an order back from "delivered",
+// editing or deleting it puts the units back automatically.
 function sellerProductList(sellerId) {
   var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
+  var dq = sellerDeliveredQty(sellerId);
   return readRows("sellerproducts").filter(function (r) {
     return r.id !== "" && String(r.seller_id) === String(sellerId);
   }).map(function (r) {
     var p = cat[String(r.product_id)] || {};
+    var bought = Math.max(1, Math.floor(Number(r.qty) || 1));
+    var delivered = (dq["s" + r.id] || 0) + (dq["p" + r.product_id] || 0);
     return {
       id: Number(r.id) || r.id, productId: Number(r.product_id) || r.product_id,
       name: String(p.name || r.name || ""),
       price: Number(p.price != null ? p.price : r.price) || 0,
       profit: Number(p.sellerProfit != null ? p.sellerProfit : r.profit) || 0,
-      qty: Math.max(1, Math.floor(Number(r.qty) || 1)),
+      qty: Math.max(0, bought - delivered), bought: bought, delivered: delivered,
       imageUrl: String(p.imageUrl || ""), status: String(r.status || "active")
     };
   });
+}
+// Units delivered per shop product ("s<sellerProductId>"), and per catalog
+// product ("p<productId>") for older order lines without a shop-product id.
+function sellerDeliveredQty(sellerId) {
+  var map = {};
+  readRows("orders").forEach(function (o) {
+    if (o.id === "" || String(o.seller_id) !== String(sellerId) || String(o.status) !== "delivered") return;
+    (safeParse(o.itemsJson) || []).forEach(function (it) {
+      var key = (it.sellerProductId != null && it.sellerProductId !== "") ? "s" + it.sellerProductId : "p" + it.id;
+      map[key] = (map[key] || 0) + Math.max(1, Math.floor(Number(it.qty) || 1));
+    });
+  });
+  return map;
 }
 
 // Buy catalog products into the seller's shop, paid from their wallet.
@@ -640,11 +659,12 @@ function sellerRemoveProduct(b) {
 }
 
 /* ------------------------------ Wallet / money --------------------------- */
-// Balances are AUTO-COMPUTED from the Transactions + SellerProducts + Wallet
-// sheets, so nothing drifts:
+// Balances are AUTO-COMPUTED from the Transactions + SellerProducts + Wallet +
+// Orders sheets, so nothing drifts:
 //   walletMoney    = Σ approved deposits − Σ approved withdrawals − Σ product
-//                    purchases (+ delivered earnings, once Orders are wired)
-//   pendingBalance = Σ (price × qty) of the products the seller stocks
+//                    purchases + Σ delivered orders' (amount + profit)
+//   pendingBalance = Σ (price × available qty) of the products the seller
+//                    stocks (available = bought − delivered)
 //   guaranteeMoney = staff-set base (Wallet sheet) + approved guarantee recharges
 // Current time in Indian Standard Time as ISO-8601 with its offset, e.g.
 // "2026-11-27T00:47:12+05:30" — readable as IST in the Sheet and still parsed
@@ -665,10 +685,12 @@ function sellerBalances(sellerId) {
   });
   var w = readRows("wallet").filter(function (r) { return String(r.seller_id) === String(sellerId); })[0];
   var guaranteeBase = w ? Number(w.guarantee) || 0 : 0;
-  var deliveredEarnings = 0, deliveredProfit = 0;   // Orders not wired yet
+  // Delivered orders: their amount moves out of the pending balance and into the
+  // wallet together with the seller's profit on them.
+  var dv = sellerDelivered(sellerId), deliveredEarnings = dv.earnings, deliveredProfit = dv.profit;
   return {
-    walletMoney: round2(deposits - withdraws - purchases + deliveredEarnings),
-    pendingBalance: round2(sellerProductsValue(sellerId)),
+    walletMoney: round2(deposits - withdraws - purchases + deliveredEarnings + deliveredProfit),
+    pendingBalance: round2(sellerProductsValue(sellerId)),   // value of the units still in stock
     guaranteeMoney: round2(guaranteeBase + guaranteeAdds),
     totalProfit: round2(deliveredProfit),
     totalEarnings: round2(deposits - withdraws + deliveredEarnings),
@@ -676,15 +698,49 @@ function sellerBalances(sellerId) {
   };
 }
 
-// Σ (price × qty) over the catalog products the seller stocks.
-function sellerProductsValue(sellerId) {
-  var cat = {}; readProducts(true).forEach(function (p) { cat[String(p.id)] = p; });
-  var sum = 0;
-  readRows("sellerproducts").filter(function (r) { return String(r.seller_id) === String(sellerId); }).forEach(function (r) {
-    var p = cat[String(r.product_id)] || {}, price = Number(p.price != null ? p.price : r.price) || 0, qty = Math.max(1, Math.floor(Number(r.qty) || 1));
-    sum += price * qty;
+// Σ amount (price × qty) and Σ profit (profit × qty) of a seller's DELIVERED orders.
+function sellerDelivered(sellerId) {
+  var earnings = 0, profit = 0;
+  readRows("orders").forEach(function (o) {
+    if (o.id === "" || String(o.seller_id) !== String(sellerId) || String(o.status) !== "delivered") return;
+    var r = orderRec(o);
+    earnings += Number(r.total) || 0;
+    (r.items || []).forEach(function (it) { profit += (Number(it.profit) || 0) * Math.max(1, Math.floor(Number(it.qty) || 1)); });
   });
-  return sum;
+  return { earnings: round2(earnings), profit: round2(profit) };
+}
+
+// Wallet history entries for DELIVERED orders — the money each delivery added to
+// the wallet (order amount + seller profit). Built from the Orders sheet, the
+// same source as the balance, so the history always matches the wallet and an
+// order moved back from "delivered" drops out of both. Read-only (no sheet row).
+function deliveredTxs(sellerId, nameOf) {
+  var out = [];
+  readRows("orders").forEach(function (o) {
+    if (o.id === "" || String(o.status) !== "delivered") return;
+    if (sellerId != null ? String(o.seller_id) !== String(sellerId) : !(nameOf && nameOf[String(o.seller_id)])) return;
+    var r = orderRec(o), profit = 0;
+    (r.items || []).forEach(function (it) { profit += (Number(it.profit) || 0) * Math.max(1, Math.floor(Number(it.qty) || 1)); });
+    var what = (r.items || []).map(function (it) { return (it.name || "Product") + " ×" + Math.max(1, Math.floor(Number(it.qty) || 1)); }).join(", ");
+    var key = /^ORP\d{13}$/.test(r.identifier) ? r.identifier : "#" + r.id;
+    var note = "Order " + key + " — " + what + " · $" + round2(r.total).toFixed(2) + " + $" + round2(profit).toFixed(2) + " profit";
+    var tx = { id: "D" + r.id, type: "earning", method: "order", amount: round2((Number(r.total) || 0) + profit), currency: "$",
+               account: "", voucher: "", status: "approved", note: note.length > 300 ? note.slice(0, 297) + "…" : note,
+               createdAt: o.updatedAt || o.createdAt, orderId: r.id, auto: true };
+    if (nameOf) { tx.sellerId = Number(o.seller_id) || o.seller_id; tx.sellerName = nameOf[String(o.seller_id)] || ("#" + o.seller_id); }
+    out.push(tx);
+  });
+  return out;
+}
+// Newest first across sheet transactions and delivery earnings.
+function byDateDesc(a, b) {
+  var ta = new Date(a.createdAt).getTime() || 0, tb = new Date(b.createdAt).getTime() || 0;
+  return tb - ta;
+}
+
+// Σ (price × available qty) over the products still in the seller's shop.
+function sellerProductsValue(sellerId) {
+  return sellerProductList(sellerId).reduce(function (n, p) { return n + p.price * p.qty; }, 0);
 }
 
 function txPublic(r) {
@@ -699,6 +755,7 @@ function sellerWallet(b) {
   try {
     var me = requireSeller(b.token);
     var txs = readRows("transactions").filter(function (r) { return r.id !== "" && String(r.seller_id) === String(me.id); }).map(txPublic).reverse();
+    txs = txs.concat(deliveredTxs(me.id)).sort(byDateDesc);   // + money added by delivered orders
     return { ok: true, balances: sellerBalances(me.id), depositAddress: USDT_ADDRESS, transactions: txs };
   } catch (err) { return authErr(err); }
 }
@@ -830,7 +887,7 @@ function adminWallet(meData) {
   var sc = walletScope(meData);
   var txs = readRows("transactions").filter(function (r) { return r.id !== "" && sc.allowed[String(r.seller_id)]; }).map(function (r) {
     var pub = txPublic(r); pub.sellerId = Number(r.seller_id) || r.seller_id; pub.sellerName = sc.nameOf[String(r.seller_id)] || ("#" + r.seller_id); return pub;
-  }).reverse();
+  }).reverse().concat(deliveredTxs(null, sc.nameOf)).sort(byDateDesc);
   var rows = sc.sellers.map(function (s) { var bal = sellerBalances(s.id);
     return { id: s.id, shopName: s.shopName, name: s.name, email: s.email, guaranteeMoney: bal.guaranteeMoney, walletMoney: bal.walletMoney, pendingBalance: bal.pendingBalance }; });
   return { transactions: txs, sellers: rows, depositAddress: USDT_ADDRESS };
@@ -1120,6 +1177,10 @@ function adminPlaceOrder(p, meData) {
   if (qty < 1 || qty > 9999) return { ok: false, error: "Enter a quantity between 1 and 9999." };
   var item = sellerProductList(sid).filter(function (x) { return String(x.id) === String(p.sellerProductId); })[0];
   if (!item) return { ok: false, error: "That product is no longer in this seller's shop." };
+  // item.qty = units still available (bought − delivered)
+  if (qty > item.qty) return { ok: false, error: item.qty > 0
+    ? "Only " + item.qty + " unit" + (item.qty === 1 ? "" : "s") + " of this product left in the seller's shop."
+    : "This product is sold out in the seller's shop — the seller needs to add more stock." };
   var price = round2(item.price), total = round2(price * qty), now = istNow();
   ensureColumns("orders", SHEETS.orders.headers);
   var id = nextId(sheet("orders")), key = newOrderKey();

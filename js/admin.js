@@ -449,6 +449,10 @@ window.ADMIN = (function () {
     if (orderSeller && !sellers.some(function (s) { return String(s.id) === orderSeller; })) orderSeller = "";
     var sellerName = function (s) { return s.shopName || s.name || ("Seller #" + s.id); };
     function scoped() { return orderSeller ? all.filter(function (o) { return String(o.sellerId) === orderSeller; }) : all; }
+    // Older orders don't store the product picture: load the catalog once in the
+    // background and redraw so their thumbnails show the real product image.
+    if (!catalog && all.some(function (o) { return (o.items || []).some(function (it) { return !it.imageUrl && !it.image; }); }))
+      getCatalog().then(function () { if ((location.hash || "").slice(1).split("?")[0] === "orders" && $("ordersBox")) draw(); }).catch(function () {});
     function draw() {
       var base = scoped(), list = orderFilter ? base.filter(function (o) { return o.status === orderFilter; }) : base;
       $("ordStatus").innerHTML = '<option value="">All statuses ('+base.length+')</option>'+
@@ -497,11 +501,13 @@ window.ADMIN = (function () {
           (shopItems.length ? shopItems.length + " product" + (shopItems.length === 1 ? "" : "s") + " · tap one to create an order" : "")+'</span></div>'+
         (shopItems.length
           ? '<div class="adm-pgrid">'+shopItems.map(function (p) {
-              return '<button type="button" class="adm-pcard" data-sp="'+esc(p.id)+'">'+
+              // qty = units still available (bought − delivered)
+              var left = Math.max(0, Number(p.qty) || 0), bought = p.bought != null ? Number(p.bought) : null, out = left <= 0;
+              return '<button type="button" class="adm-pcard'+(out ? ' soldout' : '')+'" data-sp="'+esc(p.id)+'"'+(out ? ' disabled title="Sold out — the seller needs to add more stock"' : '')+'>'+
                 '<div class="adm-pimg">'+(p.imageUrl ? '<img src="'+esc(p.imageUrl)+'" alt="" loading="lazy">' : svg("box", 30))+'</div>'+
                 '<div class="adm-pbody"><div class="adm-pname">'+esc(p.name)+'</div>'+
-                  '<div class="adm-pmeta"><strong>'+money(p.price)+'</strong><span>In shop: '+esc(p.qty)+'</span></div>'+
-                  '<span class="adm-pcta">'+svg("plus", 15)+' Create order</span></div>'+
+                  '<div class="adm-pmeta"><strong>'+money(p.price)+'</strong><span>'+(out ? '<b class="adm-soldout">Sold out</b>' : 'In shop: '+esc(left)+(bought != null && bought !== left ? ' of '+esc(bought) : ''))+'</span></div>'+
+                  '<span class="adm-pcta">'+(out ? 'Seller must restock' : svg("plus", 15)+' Create order')+'</span></div>'+
               '</button>';
             }).join("")+'</div>'
           : '<div class="adm-empty" style="padding:26px"><h3>No products</h3><p>This seller hasn\'t added any products to their shop yet.</p></div>')+
@@ -522,8 +528,9 @@ window.ADMIN = (function () {
         '</div>'+
         f("oName", "Customer name *", '<input id="oName" type="text" maxlength="100" required autocomplete="off" placeholder="e.g. Rahul Sharma">')+
         '<div class="field"><label for="oQty">Quantity *</label><div class="adm-qty">'+
-          '<button type="button" data-q="-1" aria-label="Less">−</button><input id="oQty" type="number" min="1" max="9999" step="1" value="1" inputmode="numeric" required>'+
-          '<button type="button" data-q="1" aria-label="More">+</button></div></div>'+
+          '<button type="button" data-q="-1" aria-label="Less">−</button><input id="oQty" type="number" min="1" max="'+esc(Math.max(1, Number(p.qty) || 1))+'" step="1" value="1" inputmode="numeric" required>'+
+          '<button type="button" data-q="1" aria-label="More">+</button></div>'+
+          '<small>'+esc(Math.max(0, Number(p.qty) || 0))+' available in the shop</small></div>'+
         '<div class="adm-form-cols">'+
           f("oPhone", "Phone <span class=\"adm-opt\">optional</span>", '<input id="oPhone" type="tel" maxlength="30" autocomplete="off">')+
           f("oNote", "Note <span class=\"adm-opt\">optional</span>", '<input id="oNote" type="text" maxlength="500" autocomplete="off">')+
@@ -534,6 +541,7 @@ window.ADMIN = (function () {
           var name = $("oName").value.trim(), qty = Math.floor(Number($("oQty").value) || 0);
           if (!name) { $("oName").focus(); return "Enter the customer's name."; }
           if (qty < 1 || qty > 9999) { $("oQty").focus(); return "Enter a quantity between 1 and 9999."; }
+          if (p.qty != null && qty > Number(p.qty)) { $("oQty").focus(); return "Only " + p.qty + " available in the seller's shop."; }
           var r = await api("placeOrder", { sellerId: s.id, sellerProductId: p.id, qty: qty, customerName: name,
             customerPhone: $("oPhone").value.trim(), address: $("oAddr").value.trim(), note: $("oNote").value.trim() });
           if (!r.ok) return r.error;
@@ -642,6 +650,16 @@ window.ADMIN = (function () {
   }
   // "ORP2711260231101" for staff orders (the order key), "#12" for shop orders.
   function orderLabel(o) { return /^ORP\d{13}$/.test(o.identifier || "") ? o.identifier : "#" + o.id; }
+  // Small picture of an ordered product: the image saved on the order line, else
+  // the catalog product's image, else the generated placeholder.
+  function orderItemImg(it, size) {
+    var src = it.imageUrl || it.image || "";
+    if (!src && catalog && catalog.products) {
+      var p = catalog.products.filter(function (x) { return String(x.id) === String(it.id || it.productId); })[0];
+      if (p) src = p.imageUrl || (p.images && p.images[0]) || "";
+    }
+    return DATA.productImage({ name: it.name || "Product", imageUrl: src }, size || 80);
+  }
   function ordersTable(list, editable) {
     var cols = editable ? 8 : 7;
     return '<div class="adm-table-wrap"><table class="adm-table"><thead><tr><th>Order</th><th>Customer</th><th>Seller</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th>'+(editable ? '<th class="r">Actions</th>' : '')+'</tr></thead><tbody>'+
@@ -665,10 +683,15 @@ window.ADMIN = (function () {
         return '<tr><td>'+(key.charAt(0) === "#" ? '<strong>'+esc(key)+'</strong>' : '<strong class="adm-okey">'+esc(key)+'</strong><div class="adm-cell-sub">#'+esc(o.id)+'</div>')+'</td>'+
           '<td><div class="adm-cell-main">'+esc(o.customer || "Guest")+(o.createdBy ? ' <span class="adm-tag">VIP</span>' : "")+'</div>'+(sub ? '<div class="adm-cell-sub">'+esc(sub)+'</div>' : "")+'</td>'+
           '<td>'+(o.sellerName ? esc(o.sellerName) : '<span class="adm-cell-sub">—</span>')+'</td>'+
-          '<td>'+(editable && items.length ? '<button type="button" class="adm-link" data-items="'+esc(o.id)+'">'+count+' item'+(count === 1 ? "" : "s")+'</button>' : count)+'</td>'+
+          '<td>'+(items.length ? '<div class="adm-oitems">'+
+              '<span class="adm-othumbs">'+items.slice(0, 3).map(function (it) {
+                return '<img src="'+esc(orderItemImg(it, 80))+'" alt="" title="'+esc((it.name || "Product") + " × " + (it.qty || 1))+'" loading="lazy">'; }).join("")+'</span>'+
+              '<span class="adm-oitxt"><span class="adm-oname" title="'+esc(items.map(function (it) { return it.name; }).join(", "))+'">'+esc(items[0].name || "Product")+(items.length > 1 ? ' <em>+'+(items.length - 1)+' more</em>' : '')+'</span>'+
+              (editable ? '<button type="button" class="adm-link" data-items="'+esc(o.id)+'">'+count+' item'+(count === 1 ? "" : "s")+'</button>' : '<span class="adm-cell-sub">'+count+' item'+(count === 1 ? "" : "s")+'</span>')+
+              '</span></div>' : '<span class="adm-cell-sub">—</span>')+'</td>'+
           '<td><strong>'+money(o.total)+'</strong></td><td>'+fmtDateTime(o.createdAt)+'</td><td>'+status+'</td>'+(editable ? actions : '')+'</tr>'+
           (editable && items.length ? '<tr class="adm-subrow" id="items-'+esc(o.id)+'" hidden><td colspan="'+cols+'"><ul class="adm-items">'+
-            items.map(function (it) { return '<li><span>'+esc(it.name)+' <em>× '+esc(it.qty || 1)+'</em></span><b>'+money((it.price || 0) * (it.qty || 1))+'</b></li>'; }).join("")+
+            items.map(function (it) { return '<li><span class="adm-oline"><img src="'+esc(orderItemImg(it, 80))+'" alt="" loading="lazy">'+esc(it.name)+' <em>× '+esc(it.qty || 1)+'</em></span><b>'+money((it.price || 0) * (it.qty || 1))+'</b></li>'; }).join("")+
             details.join("")+
           '</ul></td></tr>' : '');
       }).join("")+'</tbody></table></div>';
@@ -1204,13 +1227,14 @@ window.ADMIN = (function () {
     function dt(iso) { return fmtDateTimeInline(iso); }
     function kindOf(s) { return s === "approved" ? "verified" : s === "rejected" ? "blocked" : "pending"; }
     function txRow(t) {
-      var actions = can("updateTx")
+      var auto = t.type === "earning";   // money a delivered order added (computed, not editable)
+      var actions = auto ? '<span class="adm-cell-sub">Auto · order delivered</span>' : can("updateTx")
         ? '<button type="button" class="adm-icon-btn" data-editamt="'+esc(t.id)+'" data-amt="'+esc(t.amount)+'" data-cur="'+esc(t.currency || '')+'" data-type="'+esc(t.type || '')+'" data-status="'+esc(t.status || 'pending')+'" title="Edit transaction" aria-label="Edit transaction">'+svg("edit")+'</button>'
         : '<span class="adm-cell-sub">'+(t.note ? esc(t.note) : (t.status === "pending" ? "Pending review" : "—"))+'</span>';
       return '<tr>'+
         '<td><div class="adm-cell-main">'+esc(t.sellerName)+'</div><div class="adm-cell-sub">#'+esc(t.id)+' · '+esc(dt(t.createdAt))+'</div></td>'+
-        '<td>'+esc(cap(t.type))+'</td>'+
-        '<td><strong>'+esc(t.currency || '$')+Number(t.amount).toFixed(2)+'</strong>'+(t.account ? '<div class="adm-cell-sub">'+esc(t.account)+'</div>' : '')+'</td>'+
+        '<td>'+esc(auto ? "Order delivered" : cap(t.type))+(auto && t.note ? '<div class="adm-cell-sub adm-clip" title="'+esc(t.note)+'">'+esc(t.note)+'</div>' : '')+'</td>'+
+        '<td><strong'+(auto ? ' class="adm-profit"' : '')+'>'+(auto ? '+' : '')+esc(t.currency || '$')+Number(t.amount).toFixed(2)+'</strong>'+(t.account ? '<div class="adm-cell-sub">'+esc(t.account)+'</div>' : '')+'</td>'+
         '<td>'+esc((t.method || '—').toUpperCase())+'</td>'+
         '<td>'+pill(t.status, kindOf(t.status))+'</td>'+
         '<td>'+(t.voucher ? '<a class="adm-link" target="_blank" rel="noopener" href="'+esc(t.voucher)+'">View</a>' : '<span class="adm-cell-sub">—</span>')+'</td>'+

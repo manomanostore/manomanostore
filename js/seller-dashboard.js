@@ -478,7 +478,51 @@
     } catch (e) {}
   }
 
-  function myRow(p, n) {
+  // Units ordered per shop product, from the seller's orders: delivered vs still
+  // in progress (pending / received / processing / shipped). Cancelled orders
+  // don't count. Order lines point at the shop product (sellerProductId), or at
+  // the catalog product (id) for older orders.
+  var IN_PROGRESS = ["pending", "received", "processing", "shipped"];
+  function orderQtyMap() {
+    var map = {};
+    (orders.list || []).forEach(function (o) {
+      var st = String(o.status || "pending");
+      if (st === "cancelled") return;
+      (o.items || []).forEach(function (it) {
+        var key = it.sellerProductId != null && it.sellerProductId !== "" ? "s" + it.sellerProductId : "p" + it.id;
+        var m = map[key] || (map[key] = { delivered: 0, progress: 0, by: {} });
+        var q = Math.max(1, Math.floor(Number(it.qty) || 1));
+        if (st === "delivered") m.delivered += q;
+        else if (IN_PROGRESS.indexOf(st) > -1) { m.progress += q; m.by[st] = (m.by[st] || 0) + q; }
+      });
+    });
+    return map;
+  }
+  function orderCell(p, map) {
+    if (!orders.list) return '<td class="sd-tord"><span class="sd-omuted">…</span></td>';
+    // orders linked to this shop product + older orders matched by catalog product
+    var a = { delivered: 0, progress: 0, by: {} };
+    [map["s" + p.id], map["p" + p.productId]].forEach(function (m) {
+      if (!m) return;
+      a.delivered += m.delivered; a.progress += m.progress;
+      Object.keys(m.by).forEach(function (k) { a.by[k] = (a.by[k] || 0) + m.by[k]; });
+    });
+    if (!a.delivered && !a.progress) return '<td class="sd-tord"><span class="sd-omuted">' + esc(T("sd.noord")) + "</span></td>";
+    var tip = Object.keys(a.by).map(function (k) { return a.by[k] + " " + T("sd.st." + k); }).join(" · ");
+    return '<td class="sd-tord">' +
+      '<span class="sd-ochip ok" title="' + esc(T("sd.delivered")) + '">✓ ' + a.delivered + " " + esc(T("sd.delivered")) + "</span>" +
+      '<span class="sd-ochip wait" title="' + esc(tip || T("sd.pendingq")) + '">⏳ ' + a.progress + " " + esc(T("sd.pendingq")) + "</span></td>";
+  }
+  // Units still available (server: bought − delivered); older servers only send qty.
+  function availQty(p) { var q = Math.floor(Number(p.qty)); return isNaN(q) ? 1 : Math.max(0, q); }
+  function qtyCell(p) {
+    var left = availQty(p), bought = p.bought != null ? Math.max(left, Math.floor(Number(p.bought) || 0)) : null;
+    var tip = bought != null ? T("sd.bought") + ": " + bought + " · " + T("sd.delivered") + ": " + Math.max(0, bought - left) : "";
+    return '<td title="' + esc(tip) + '">' +
+      (left > 0 ? '<span class="sd-tqty">× ' + left + "</span>" : '<span class="sd-tqty out">' + esc(T("sd.soldout")) + "</span>") +
+      (bought != null && bought !== left ? '<div class="sd-tqsub">' + esc(T("sd.ofbought").replace("{n}", bought)) + "</div>" : "") + "</td>";
+  }
+  function myRow(p, n, omap) {
     var img = p.imageUrl || "";
     var thumb = img ? '<span class="sd-tthumb" style="background-image:url(\'' + esc(img) + '\')"></span>'
       : '<span class="sd-tthumb" style="display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c7cedd" stroke-width="1.5"><path d="M3 9l9-5 9 5v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span>';
@@ -491,7 +535,8 @@
       '<td><div class="sd-tprod">' + thumb + '<span class="sd-tname" title="' + esc(full) + '">' + esc(short) + '</span></div></td>' +
       '<td class="sd-tprice">$' + Number(p.price).toFixed(2) + '</td>' +
       '<td class="sd-tprofit">$' + Number(p.profit || 0).toFixed(2) + '</td>' +
-      '<td><span class="sd-tqty">× ' + Math.max(1, Math.floor(Number(p.qty) || 1)) + '</span></td>' +
+      qtyCell(p) +
+      orderCell(p, omap || {}) +
       '<td>' + statusPill + '</td>' +
       '<td class="sd-tright"><button type="button" class="sd-rmbtn" data-myrm="' + esc(p.id) + '" aria-label="' + esc(T("sd.remove")) + '"><svg viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7zM9 7V5h6v2M10 11v6M14 11v6"/></svg></button></td>' +
       '</tr>';
@@ -503,7 +548,7 @@
     // Totals = Σ price×qty and Σ profit×qty over the shown products.
     var amount = 0, profit = 0;
     list.forEach(function (p) {
-      var qty = Math.max(1, Math.floor(Number(p.qty) || 1));
+      var qty = availQty(p);   // units still in stock (bought − delivered)
       amount += (Number(p.price) || 0) * qty;
       profit += (Number(p.profit) || 0) * qty;
     });
@@ -513,6 +558,7 @@
     mine.page = Math.min(Math.max(1, mine.page || 1), pages);
     var from = (mine.page - 1) * PRODUCTS_PER_PAGE, items = list.slice(from, from + PRODUCTS_PER_PAGE);
     var pageInfo = { items: items, pager: list.length ? pagerHtml(mine.page, pages, from + 1, from + items.length, list.length, false) : "" };
+    var omap = orderQtyMap();
     var stats = '<div class="sd-mpstats">' +
       '<div class="sd-mpstat"><span class="sd-mpic a"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg></span>' +
         '<div><span>' + esc(T("sd.totalamount")) + '</span><b>$' + amount.toFixed(2) + '</b></div></div>' +
@@ -521,8 +567,8 @@
       '</div>';
     var table = list.length ? '<div class="sd-tablewrap"><table class="sd-table"><thead><tr>' +
         '<th class="sd-tno">#</th><th>' + esc(T("sd.th.product")) + '</th><th>' + esc(T("sd.th.price")) + '</th>' +
-        '<th>' + esc(T("sd.profit")) + '</th><th>' + esc(T("sd.th.qty")) + '</th><th>' + esc(T("sd.status")) + '</th><th></th>' +
-        '</tr></thead><tbody>' + pageInfo.items.map(function (p, i) { return myRow(p, from + i + 1); }).join("") + '</tbody></table></div>' : "";
+        '<th>' + esc(T("sd.profit")) + '</th><th>' + esc(T("sd.th.qty")) + '</th><th>' + esc(T("sd.th.orders")) + '</th><th>' + esc(T("sd.status")) + '</th><th></th>' +
+        '</tr></thead><tbody>' + pageInfo.items.map(function (p, i) { return myRow(p, from + i + 1, omap); }).join("") + '</tbody></table></div>' : "";
     $("mpGrid").innerHTML = (list.length ? stats : "") + table;
     $("mpPager").innerHTML = pageInfo.pager;
     $("mpCount").textContent = "";
@@ -530,6 +576,8 @@
   }
 
   async function ensureMyProducts() {
+    // delivered / pending quantities come from the seller's orders
+    fetchOrders().then(function () { if (mine.loaded && !$("viewProducts").hidden) renderMy(); });
     if (mine.loaded) { renderMy(); return; }
     mine.loaded = true;
     $("mpGrid").innerHTML = ""; $("mpCount").textContent = T("sd.loading");
@@ -570,7 +618,7 @@
   var wallet = { data: null };
   function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
   function fmtDate(iso) { var d = new Date(iso); return isNaN(d) ? "" : IST_DATE.format(d); }   // IST, e.g. 27/11/2026
-  function txTypeLabel(t) { return t === "deposit" ? T("sd.deposit") : t === "withdraw" ? T("sd.withdraw2") : t === "guarantee" ? T("sd.guaranteet") : t === "purchase" ? T("sd.purchase") : t; }
+  function txTypeLabel(t) { return t === "deposit" ? T("sd.deposit") : t === "withdraw" ? T("sd.withdraw2") : t === "guarantee" ? T("sd.guaranteet") : t === "purchase" ? T("sd.purchase") : t === "earning" ? T("sd.earning") : t; }
 
   function paintWalletStats(bal) {
     if (!bal) return;
@@ -624,7 +672,7 @@
         return '<tr>' +
           '<td>' + istDateTime(t.createdAt) + '</td>' +
           '<td style="font-weight:800" class="sd-txamt ' + (wd ? 'wd' : 'dep') + '">' + (wd ? '−' : '+') + esc(t.currency || '$') + Number(t.amount).toFixed(2) + '</td>' +
-          '<td>' + esc(txTypeLabel(t.type)) + (t.type === "purchase" && t.note ? '<small class="sd-txsub" title="' + esc(t.note) + '">' + esc(t.note) + "</small>" : "") + '</td>' +
+          '<td>' + esc(txTypeLabel(t.type)) + ((t.type === "purchase" || t.type === "earning") && t.note ? '<small class="sd-txsub" title="' + esc(t.note) + '">' + esc(t.note) + "</small>" : "") + '</td>' +
           '<td>' + esc(t.method ? t.method.toUpperCase() : '—') + '</td>' +
           '<td><span class="sd-txpill ' + esc(t.status) + '">' + esc(T("sd." + t.status)) + '</span></td>' +
           '</tr>';

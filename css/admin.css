@@ -472,3 +472,19 @@ a.adm-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .adm-login{position:relative}
 .adm-login-lang{position:absolute;top:16px;right:16px;z-index:5}
 @media (max-width:719px){ .adm-lang-code{display:none} .adm-lang-btn{padding:0 9px} }
+
+/* ---- orders: small product pictures ---- */
+.adm-oitems{display:flex;align-items:center;gap:10px;min-width:270px;max-width:320px}
+.adm-othumbs{display:inline-flex;flex:none}
+.adm-othumbs img{width:44px;height:44px;border-radius:10px;object-fit:cover;background:#fff;border:2px solid #fff;box-shadow:0 0 0 1px var(--line,#e6e8ee)}
+.adm-othumbs img + img{margin-left:-18px}
+.adm-oitxt{display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:1;overflow:hidden}
+.adm-oname{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:13.5px;color:var(--ink,#0f1b3d)}
+.adm-oname em{font-style:normal;color:var(--muted,#6b7280);font-weight:500}
+.adm-oitxt .adm-link{padding:0;font-size:12.5px}
+.adm-oline{display:inline-flex;align-items:center;gap:10px}
+.adm-oline img{width:34px;height:34px;border-radius:8px;object-fit:cover;border:1px solid var(--line,#e6e8ee);background:#fff}
+
+.adm-pcard.soldout{opacity:.6;cursor:not-allowed}
+.adm-pcard.soldout .adm-pcta{background:#f3f4f7;color:var(--muted,#6b7280)}
+.adm-soldout{color:#c62828}
